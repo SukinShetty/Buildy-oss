@@ -1,0 +1,21 @@
+node_modules/
+out/
+dist/
+.env
+.env.local
+*.local
+
+# electron-vite build output
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+
+# logs
+*.log
+npm-debug.log*

@@ -1,0 +1,9 @@
+name = "buildy-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# No vars needed — API key is stored as a secret (see README for setup)
+[vars]
+
+# To add your API key as a secret:
+#   npx wrangler secret put ANTHROPIC_API_KEY

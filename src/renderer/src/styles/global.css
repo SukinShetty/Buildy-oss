@@ -1,0 +1,262 @@
+/* global.css
+   Design system for Buildy.
+   All color, spacing, and typography tokens defined as CSS custom properties.
+   Components reference these variables — never hardcode values. */
+
+/* ─── Design tokens ──────────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --color-bg:            #1C1C1E;
+  --color-surface:       #2C2C2E;
+  --color-surface-2:     #3A3A3C;
+  --color-surface-hover: #48484A;
+
+  /* Brand accent — builder orange */
+  --color-accent:        #FF6B2B;
+  --color-accent-muted:  rgba(255, 107, 43, 0.15);
+  --color-accent-hover:  #E55E22;
+
+  /* Text */
+  --color-text:          #FFFFFF;
+  --color-text-muted:    #AEAEB2;
+  --color-text-dim:      #636366;
+
+  /* Status */
+  --color-success:       #34C759;
+  --color-success-muted: rgba(52, 199, 89, 0.12);
+  --color-warning:       #FF9F0A;
+  --color-warning-muted: rgba(255, 159, 10, 0.12);
+  --color-danger:        #FF453A;
+  --color-danger-muted:  rgba(255, 69, 58, 0.12);
+  --color-info:          #0A84FF;
+  --color-info-muted:    rgba(10, 132, 255, 0.12);
+
+  /* Borders */
+  --color-border:        rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.15);
+
+  /* Prompt card — green-tinted for the "next prompt" box */
+  --color-prompt-bg:     #0F1F0F;
+  --color-prompt-border: rgba(52, 199, 89, 0.35);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 9999px;
+
+  /* Typography */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+
+  /* App chrome */
+  --nav-height: 48px;
+  --titlebar-height: 28px; /* macOS traffic-light area */
+}
+
+/* ─── Reset ──────────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Allow text selection in inputs and guidance text */
+input, textarea, [data-selectable] {
+  user-select: text;
+}
+
+/* ─── Scrollbars ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-2);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-hover);
+}
+
+/* ─── Layout ─────────────────────────────────────────────────────────────────── */
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* On macOS with hiddenInset titlebar, leave room for traffic lights */
+  padding-top: env(titlebar-area-height, 0px);
+}
+
+.screen-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+button {
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  border-radius: var(--radius-sm);
+  transition: opacity 0.1s ease, background-color 0.1s ease, transform 0.1s ease;
+}
+
+button:active {
+  transform: scale(0.97);
+  opacity: 0.85;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-accent);
+  color: white;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+.btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-weight: 500;
+}
+.btn-secondary:hover {
+  background: var(--color-surface-hover);
+}
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  color: var(--color-text-muted);
+}
+.btn-ghost:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+}
+.btn-icon:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* ─── Inputs ─────────────────────────────────────────────────────────────────── */
+input[type="text"],
+input[type="password"],
+input[type="url"],
+textarea {
+  width: 100%;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  outline: none;
+  transition: border-color 0.15s ease;
+  resize: none;
+}
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="url"]:focus,
+textarea:focus {
+  border-color: var(--color-accent);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+/* ─── Cards ──────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+}
+
+/* ─── Typography helpers ─────────────────────────────────────────────────────── */
+.text-muted { color: var(--color-text-muted); }
+.text-dim   { color: var(--color-text-dim); }
+.text-accent { color: var(--color-accent); }
+.text-success { color: var(--color-success); }
+.text-warning { color: var(--color-warning); }
+.text-danger  { color: var(--color-danger); }
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* ─── Utility ────────────────────────────────────────────────────────────────── */
+.flex        { display: flex; }
+.flex-col    { flex-direction: column; }
+.items-center { align-items: center; }
+.gap-1       { gap: var(--space-1); }
+.gap-2       { gap: var(--space-2); }
+.gap-3       { gap: var(--space-3); }
+.gap-4       { gap: var(--space-4); }
+.w-full      { width: 100%; }
+.mt-2        { margin-top: var(--space-2); }
+.mt-3        { margin-top: var(--space-3); }
+.mt-4        { margin-top: var(--space-4); }
