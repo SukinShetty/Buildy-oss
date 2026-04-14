@@ -14,12 +14,12 @@ export function GuidanceSections({ result }: Props): React.ReactElement {
   return (
     <div style={styles.container}>
       {/* Not visible warning */}
-      {!result.claudeCodeVisible && (
+      {!result.screenContentVisible && (
         <StatusBanner
           color="var(--color-warning)"
           bg="var(--color-warning-muted)"
           icon="👁️‍🗨️"
-          text="Claude Code wasn't detected on screen. Make sure it's open and visible, then analyze again."
+          text="The watched screen content wasn't clearly visible. Try analyzing again."
         />
       )}
 

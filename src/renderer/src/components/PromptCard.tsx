@@ -23,7 +23,7 @@ export function PromptCard({ promptText }: Props): React.ReactElement {
       {/* Header */}
       <div style={styles.header}>
         <span style={styles.headerIcon}>📋</span>
-        <span style={styles.headerTitle}>Next prompt for Claude Code</span>
+        <span style={styles.headerTitle}>Suggested next action</span>
         <span style={styles.headerHint}>Copy this and paste it in</span>
       </div>
 

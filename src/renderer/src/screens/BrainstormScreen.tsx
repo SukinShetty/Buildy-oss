@@ -61,7 +61,7 @@ export function BrainstormScreen(): React.ReactElement {
   }, [])
 
   // Check if API is configured
-  const apiIsConfigured = settings.anthropicApiKey || (settings.useProxy && settings.proxyUrl)
+  const apiIsConfigured = settings.apiKey || settings.baseUrl || (settings.useProxy && settings.proxyUrl)
 
   async function handleSendMessage(): Promise<void> {
     const trimmedInput = inputText.trim()

@@ -45,9 +45,47 @@ export async function saveProjectMemory(projectMemory: ProjectMemory): Promise<v
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const fileContent = await fs.readFile(settingsFilePath, 'utf-8')
-    return JSON.parse(fileContent) as AppSettings
+    const raw = JSON.parse(fileContent) as Record<string, unknown>
+    return migrateSettings(raw)
   } catch {
     return defaultSettings()
+  }
+}
+
+/**
+ * Migrate settings from older versions.
+ * v1 had: { anthropicApiKey, proxyUrl, useProxy, autoAnalysisIntervalSeconds }
+ * v2 has: { provider, modelId, apiKey, baseUrl, useProxy, proxyUrl, autoAnalysisIntervalSeconds }
+ */
+function migrateSettings(raw: Record<string, unknown>): AppSettings {
+  const defaults = defaultSettings()
+
+  // v1 → v2: anthropicApiKey was renamed to apiKey, provider/modelId were added
+  if ('anthropicApiKey' in raw && !('provider' in raw)) {
+    return {
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4-6',
+      apiKey: String(raw.anthropicApiKey ?? ''),
+      baseUrl: '',
+      useProxy: Boolean(raw.useProxy ?? false),
+      proxyUrl: String(raw.proxyUrl ?? ''),
+      autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? 30),
+      elevenLabsApiKey: '',
+      elevenLabsVoiceId: defaults.elevenLabsVoiceId,
+    }
+  }
+
+  // Already v2+ shape — fill in any missing fields with defaults
+  return {
+    provider: (raw.provider as AppSettings['provider']) ?? defaults.provider,
+    modelId: String(raw.modelId ?? defaults.modelId),
+    apiKey: String(raw.apiKey ?? ''),
+    baseUrl: String(raw.baseUrl ?? ''),
+    useProxy: Boolean(raw.useProxy ?? false),
+    proxyUrl: String(raw.proxyUrl ?? ''),
+    autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? 30),
+    elevenLabsApiKey: String(raw.elevenLabsApiKey ?? ''),
+    elevenLabsVoiceId: String(raw.elevenLabsVoiceId ?? defaults.elevenLabsVoiceId),
   }
 }
 

@@ -1,18 +1,68 @@
 // index.ts — main process entry point
-// Creates the main window, system tray, and registers all IPC handlers.
+// Creates the main panel window, the floating companion window,
+// system tray, and registers all IPC handlers.
+//
+// Lifecycle:
+//   - Closing the main window QUITS the app (no hidden background processes)
+//   - Companion window closes with the main window
+//   - All speech and analysis stop on quit
+//   - Tray provides Open/Quit shortcuts but the app does NOT hide to tray by default
 
 import { app, BrowserWindow, Tray, Menu, nativeImage, shell } from 'electron'
 import { join } from 'path'
+import { IPC } from '../renderer/src/types'
 import { registerIpcHandlers } from './ipc-handlers'
-
-// electron-vite sets these globals to the correct paths for dev/production
-declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string
-declare const MAIN_WINDOW_VITE_NAME: string
+import { createCompanionWindow, showCompanion, resetCompanionPosition } from './companion-window'
+import { stopAnalysisLoop } from './analysis-loop'
 
 let mainWindow: BrowserWindow | null = null
+let companionWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
-// ─── Window ───────────────────────────────────────────────────────────────────
+// ─── Shutdown ────────────────────────────────────────────────────────────────
+
+/**
+ * Clean shutdown: stop analysis, stop speech, close all windows, quit.
+ * Called from every exit path to guarantee no orphaned processes.
+ */
+function shutdownApp(): void {
+  ;(app as any).isQuitting = true
+
+  // 1. Stop the background analysis loop
+  stopAnalysisLoop()
+
+  // 2. Tell the companion renderer to stop TTS immediately
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    try {
+      companionWindow.webContents.send(IPC.COMPANION_SHUTDOWN)
+    } catch {
+      // Window may already be gone
+    }
+  }
+
+  // 3. Destroy companion window
+  if (companionWindow && !companionWindow.isDestroyed()) {
+    companionWindow.destroy()
+  }
+  companionWindow = null
+
+  // 4. Destroy main window (allow it to close for real)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy()
+  }
+  mainWindow = null
+
+  // 5. Destroy tray
+  if (tray && !tray.isDestroyed()) {
+    tray.destroy()
+  }
+  tray = null
+
+  // 6. Quit the process
+  app.quit()
+}
+
+// ─── Main panel window (hidden by default — companion is primary UI) ─────────
 
 function createMainWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -20,37 +70,42 @@ function createMainWindow(): BrowserWindow {
     height: 720,
     minWidth: 480,
     minHeight: 600,
-    title: 'Buildy',
-    // On macOS, this gives a clean look with the traffic lights inside the window
-    // On Windows, this shows the standard title bar
+    title: 'Buildy Settings',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      contextIsolation: true,   // Security: renderer can't access Node.js directly
-      nodeIntegration: false,   // Security: renderer can't run Node.js code
-      sandbox: false,           // Needed for desktopCapturer access via preload
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
     },
-    backgroundColor: '#1C1C1E', // Matches --color-bg in global.css — prevents white flash on load
-    show: false,                // Don't show until 'ready-to-show' event fires
+    backgroundColor: '#1C1C1E',
+    show: false,
   })
 
-  // Load the renderer — dev server URL in development, built file in production
-  if (process.env.NODE_ENV === 'development') {
-    window.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL)
-    window.webContents.openDevTools({ mode: 'detach' })
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    window.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    if (process.env['BUILDY_DEBUG']) {
+      window.webContents.openDevTools({ mode: 'detach' })
+    }
   } else {
-    window.loadFile(join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`))
+    window.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Show window once the page has rendered to avoid a white flash
-  window.once('ready-to-show', () => {
-    window.show()
-  })
+  // Panel stays hidden on launch — companion is the primary UI.
+  // User opens it from companion gear icon or system tray.
 
-  // Open external links in the system browser, not inside the Electron window
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Closing the panel just hides it — companion keeps running.
+  // Quitting the app is done via tray or closing the companion.
+  window.on('close', (e) => {
+    if (!(app as any).isQuitting) {
+      e.preventDefault()
+      window.hide()
+    }
   })
 
   return window
@@ -59,14 +114,24 @@ function createMainWindow(): BrowserWindow {
 // ─── System Tray ─────────────────────────────────────────────────────────────
 
 function createSystemTray(): Tray {
-  // Use a simple template image (works on both Windows and macOS)
-  // In production, replace this with a real icon file from the assets folder
   const trayIcon = nativeImage.createEmpty()
   const newTray = new Tray(trayIcon)
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Open Buildy',
+      label: 'Show Buildy',
+      click: () => {
+        showCompanion()
+      },
+    },
+    {
+      label: 'Reset Position',
+      click: () => {
+        resetCompanionPosition()
+      },
+    },
+    {
+      label: 'Settings',
       click: () => {
         mainWindow?.show()
         mainWindow?.focus()
@@ -76,7 +141,7 @@ function createSystemTray(): Tray {
     {
       label: 'Quit Buildy',
       click: () => {
-        app.quit()
+        shutdownApp()
       },
     },
   ])
@@ -84,10 +149,8 @@ function createSystemTray(): Tray {
   newTray.setToolTip('Buildy — your builder buddy')
   newTray.setContextMenu(contextMenu)
 
-  // On macOS, double-clicking the tray icon opens the window
   newTray.on('double-click', () => {
-    mainWindow?.show()
-    mainWindow?.focus()
+    showCompanion()
   })
 
   return newTray
@@ -95,32 +158,37 @@ function createSystemTray(): Tray {
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 
+// Track quit intent so panel close handler knows to actually close
+;(app as any).isQuitting = false
+
 app.whenReady().then(() => {
   mainWindow = createMainWindow()
+  companionWindow = createCompanionWindow()
   tray = createSystemTray()
 
-  // Register all IPC handlers — must happen after window is created
-  // because some handlers (brainstorm streaming) push back to the window
-  registerIpcHandlers(mainWindow)
+  registerIpcHandlers(mainWindow, companionWindow)
 
-  console.log('🔨 Buildy launched')
+  console.log('Buildy launched — companion only (panel hidden)')
 })
 
-// On macOS: re-open the window when the dock icon is clicked and no windows are open
+// macOS: re-open when dock icon is clicked — show the companion, not the panel
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createMainWindow()
-    registerIpcHandlers(mainWindow)
+    companionWindow = createCompanionWindow()
+    registerIpcHandlers(mainWindow, companionWindow)
   } else {
-    mainWindow?.show()
-    mainWindow?.focus()
+    showCompanion()
   }
 })
 
-// On Windows/Linux: quit when all windows are closed
-// On macOS: keep the app running (standard macOS behavior)
+// Safety net: if all windows close for any reason, quit
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  stopAnalysisLoop()
+  app.quit()
+})
+
+// Safety net: clean up on quit signal (Cmd+Q, etc.)
+app.on('before-quit', () => {
+  stopAnalysisLoop()
 })

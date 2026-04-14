@@ -77,12 +77,110 @@ const buildyAPI = {
   saveProject: (project: ProjectMemory): Promise<void> =>
     ipcRenderer.invoke(IPC.SAVE_PROJECT, project),
 
+  // ─── Provider info ────────────────────────────────────────────────────────
+  getProviderInfos: (): Promise<unknown[]> =>
+    ipcRenderer.invoke(IPC.GET_PROVIDER_INFOS),
+
+  // ─── Connection test ────────────────────────────────────────────────────
+  testConnection: (settings: AppSettings): Promise<{ success: boolean; message: string; latencyMs: number | null }> =>
+    ipcRenderer.invoke(IPC.TEST_CONNECTION, settings),
+
   // ─── Settings ─────────────────────────────────────────────────────────────
   loadSettings: (): Promise<AppSettings> =>
     ipcRenderer.invoke(IPC.LOAD_SETTINGS),
 
   saveSettings: (settings: AppSettings): Promise<void> =>
     ipcRenderer.invoke(IPC.SAVE_SETTINGS, settings),
+
+  // ─── Companion mode ───────────────────────────────────────────────────────
+  startCompanion: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.COMPANION_START),
+
+  stopCompanion: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.COMPANION_STOP),
+
+  selectWatchSource: (sourceId: string, windowName: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.SELECT_WATCH_SOURCE, sourceId, windowName),
+
+  onWatchedSourceChanged: (handler: (event: unknown, data: { windowName: string | null; message: string | null }) => void): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { windowName: string | null; message: string | null }
+    ) => handler(_event, data)
+    ipcRenderer.on(IPC.COMPANION_WATCHED_SOURCE, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_WATCHED_SOURCE, listener)
+  },
+
+  pauseCompanion: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.COMPANION_PAUSE),
+
+  resumeCompanion: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.COMPANION_RESUME),
+
+  setQuietMode: (quiet: boolean): Promise<void> =>
+    ipcRenderer.invoke(IPC.COMPANION_QUIET, quiet),
+
+  askQuestion: (question: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.ASK_QUESTION, question),
+
+  transcribeAudio: (audioBuffer: ArrayBuffer): Promise<{ success: boolean; text: string; error?: string }> =>
+    ipcRenderer.invoke(IPC.TRANSCRIBE_AUDIO, Buffer.from(audioBuffer)),
+
+  onCompanionAnswer: (handler: (event: unknown, data: { question: string; answer: string }) => void): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { question: string; answer: string }
+    ) => handler(_event, data)
+    ipcRenderer.on(IPC.COMPANION_ANSWER, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_ANSWER, listener)
+  },
+
+  openPanel: (): void =>
+    ipcRenderer.send(IPC.OPEN_PANEL),
+
+  resetCompanion: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.RESET_COMPANION),
+
+  showCompanion: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.SHOW_COMPANION),
+
+  onCompanionAnalysis: (handler: (event: unknown, analysis: AnalysisResult) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, analysis: AnalysisResult) =>
+      handler(_event, analysis)
+    ipcRenderer.on(IPC.COMPANION_ANALYSIS, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_ANALYSIS, listener)
+  },
+
+  onCompanionState: (handler: (event: unknown, state: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: string) =>
+      handler(_event, state)
+    ipcRenderer.on(IPC.COMPANION_STATE, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_STATE, listener)
+  },
+
+  onCompanionSpeak: (handler: (event: unknown, data: { text: string; type: string }) => void): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { text: string; type: string }
+    ) => handler(_event, data)
+    ipcRenderer.on(IPC.COMPANION_SPEAK, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_SPEAK, listener)
+  },
+
+  onCompanionAudio: (handler: (event: unknown, data: { audioBase64: string; text: string; type: string }) => void): (() => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      data: { audioBase64: string; text: string; type: string }
+    ) => handler(_event, data)
+    ipcRenderer.on(IPC.COMPANION_AUDIO, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_AUDIO, listener)
+  },
+
+  onCompanionShutdown: (handler: () => void): (() => void) => {
+    const listener = () => handler()
+    ipcRenderer.on(IPC.COMPANION_SHUTDOWN, listener)
+    return () => ipcRenderer.removeListener(IPC.COMPANION_SHUTDOWN, listener)
+  },
 }
 
 contextBridge.exposeInMainWorld('buildy', buildyAPI)

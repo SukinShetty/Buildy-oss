@@ -39,7 +39,7 @@ export function GuidanceWorkspace(): React.ReactElement {
   const [windowPickerVisible, setWindowPickerVisible] = useState(false)
   const [pendingWindowId, setPendingWindowId] = useState<string | null>(null)
 
-  const apiIsConfigured = settings.anthropicApiKey || (settings.useProxy && settings.proxyUrl)
+  const apiIsConfigured = settings.apiKey || settings.baseUrl || (settings.useProxy && settings.proxyUrl)
   const isAnalyzing = analysisPhase === 'capturing' || analysisPhase === 'analyzing'
   const projectIsConfigured = project.projectName.trim().length > 0
 
@@ -259,8 +259,8 @@ export function GuidanceWorkspace(): React.ReactElement {
           latestAnalysis && (
             <>
               <GuidanceSections result={latestAnalysis} />
-              {latestAnalysis.nextPromptForClaudeCode && (
-                <PromptCard promptText={latestAnalysis.nextPromptForClaudeCode} />
+              {latestAnalysis.nextPrompt && (
+                <PromptCard promptText={latestAnalysis.nextPrompt} />
               )}
             </>
           )}

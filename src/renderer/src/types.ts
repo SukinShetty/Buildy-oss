@@ -38,22 +38,43 @@ export function emptyProjectMemory(): ProjectMemory {
   }
 }
 
+// ─── AI Provider ──────────────────────────────────────────────────────────────
+
+export type ProviderType =
+  | 'anthropic'
+  | 'openai'
+  | 'gemini'
+  | 'openrouter'
+  | 'ollama'
+  | 'lmstudio'
+  | 'custom'
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
-  // One of apiKey or proxyUrl must be set for analysis to work
-  anthropicApiKey: string      // Direct Anthropic API key (stored in local settings)
-  proxyUrl: string             // Optional: Cloudflare Worker URL (overrides apiKey if set)
-  useProxy: boolean            // If true, send requests to proxyUrl instead of Anthropic directly
-  autoAnalysisIntervalSeconds: number  // How often to auto-analyze (default: 30)
+  provider: ProviderType         // Which AI provider to use
+  modelId: string                // Model identifier (e.g. "claude-sonnet-4-6", "gpt-4o")
+  apiKey: string                 // API key — used by anthropic, openai, gemini, openrouter
+  baseUrl: string                // Base URL — used by ollama, lmstudio, custom, openrouter
+  useProxy: boolean              // If true, send Anthropic requests to proxyUrl
+  proxyUrl: string               // Cloudflare Worker URL (Anthropic proxy mode)
+  autoAnalysisIntervalSeconds: number
+  // ElevenLabs TTS (optional — falls back to system TTS if not configured)
+  elevenLabsApiKey: string
+  elevenLabsVoiceId: string      // ElevenLabs voice ID (default: Rachel — warm, friendly)
 }
 
 export function defaultSettings(): AppSettings {
   return {
-    anthropicApiKey: '',
-    proxyUrl: '',
+    provider: 'anthropic',
+    modelId: 'claude-sonnet-4-6',
+    apiKey: '',
+    baseUrl: '',
     useProxy: false,
+    proxyUrl: '',
     autoAnalysisIntervalSeconds: 30,
+    elevenLabsApiKey: '',
+    elevenLabsVoiceId: '21m00Tcm4TlvDq8ikWAM',  // Rachel — warm, conversational
   }
 }
 
@@ -76,18 +97,19 @@ export interface CaptureResult {
 
 // ─── Analysis ─────────────────────────────────────────────────────────────────
 
-// The exact JSON shape Claude must return for screen analysis.
-// Keep this in sync with the system prompt in claude-bridge.ts.
+// The exact JSON shape the AI must return for screen analysis.
+// Keep this in sync with the system prompt in prompt-builder.ts.
+// NOTE: Screen-agnostic — works for any watched window, not just Claude Code.
 export interface AnalysisResult {
-  claudeCodeVisible: boolean
-  whatIsHappening: string           // Plain language: what Claude Code is doing right now
+  screenContentVisible: boolean
+  whatIsHappening: string           // Plain language: what's happening on screen right now
   whatItMeans: string               // Why this matters for the product
   whatIsBuilt: string[]             // Features/things that appear to be done
   whatIsMissing: string[]           // Features/things still needed
   whatIsBroken: string[]            // Errors, failures, broken things
   whereUserIsStuck: string | null   // If the user appears stuck, describe it; else null
   bestNextMove: string              // One clear sentence: what to do right now
-  nextPromptForClaudeCode: string   // Exact prompt to copy-paste into Claude Code
+  nextPrompt: string                // Suggested next prompt or action
   builderNote: string               // Encouraging, buddy-style note from Buildy
   analyzedAt: string                // ISO date string
   analysisDurationMs: number
@@ -121,6 +143,27 @@ export const IPC = {
   BRAINSTORM_CHUNK:    'buildy:brainstorm-chunk',    // main → renderer push
   BRAINSTORM_DONE:     'buildy:brainstorm-done',     // main → renderer push
   BRAINSTORM_ERROR:    'buildy:brainstorm-error',    // main → renderer push
+  GET_PROVIDER_INFOS:  'buildy:get-provider-infos',  // renderer → main (provider metadata)
+  TEST_CONNECTION:     'buildy:test-connection',     // renderer → main (connectivity check)
+  COMPANION_ANALYSIS:  'buildy:companion-analysis',  // main → companion (new analysis result)
+  COMPANION_STATE:     'buildy:companion-state',     // main → companion (idle/thinking/speaking)
+  COMPANION_SPEAK:     'buildy:companion-speak',     // main → companion (trigger voice)
+  COMPANION_START:     'buildy:companion-start',     // renderer → main (start watching)
+  COMPANION_STOP:      'buildy:companion-stop',      // renderer → main (stop watching)
+  COMPANION_PAUSE:     'buildy:companion-pause',     // renderer → main (pause analysis)
+  COMPANION_RESUME:    'buildy:companion-resume',    // renderer → main (resume analysis)
+  COMPANION_QUIET:     'buildy:companion-quiet',     // renderer → main (quiet mode toggle)
+  OPEN_PANEL:          'buildy:open-panel',          // companion → main (open full panel)
+  RESET_COMPANION:     'buildy:reset-companion',    // any → main (reset companion position)
+  SHOW_COMPANION:      'buildy:show-companion',     // any → main (bring companion to front)
+  COMPANION_SHUTDOWN:  'buildy:companion-shutdown',  // main → companion (stop everything, app is quitting)
+  COMPANION_AUDIO:     'buildy:companion-audio',    // main → companion (ElevenLabs audio buffer to play)
+  PUSH_TO_TALK:        'buildy:push-to-talk',       // companion → main (voice input audio)
+  ASK_QUESTION:        'buildy:ask-question',       // companion → main (spoken question text)
+  TRANSCRIBE_AUDIO:    'buildy:transcribe-audio',   // companion → main (audio buffer for Whisper STT)
+  COMPANION_ANSWER:    'buildy:companion-answer',   // main → companion (answer to spoken question)
+  SELECT_WATCH_SOURCE: 'buildy:select-watch-source', // companion → main (user picks a window)
+  COMPANION_WATCHED_SOURCE: 'buildy:companion-watched-source', // main → companion (what's being watched)
   LOAD_PROJECT:        'buildy:load-project',
   SAVE_PROJECT:        'buildy:save-project',
   LOAD_SETTINGS:       'buildy:load-settings',
