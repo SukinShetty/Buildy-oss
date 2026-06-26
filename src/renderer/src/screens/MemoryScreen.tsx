@@ -45,7 +45,17 @@ export function MemoryScreen(): React.ReactElement {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
-        <div style={styles.headerTitle}>📋 Project Memory</div>
+        <div style={styles.headerRow}>
+          <div style={styles.headerTitle}>📋 Project Memory</div>
+          <button
+            className="btn-ghost"
+            onClick={() => setCurrentScreen('goal')}
+            style={styles.newProjectBtn}
+            title="State a fresh goal for a new project"
+          >
+            🎯 New project
+          </button>
+        </div>
         <div style={styles.headerSub}>
           This is what Buildy knows about your product. Better context = better guidance.
         </div>
@@ -241,6 +251,17 @@ const styles = {
     padding: '12px 16px 8px',
     borderBottom: '1px solid var(--color-border)',
     flexShrink: 0,
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  newProjectBtn: {
+    fontSize: 12,
+    padding: '4px 10px',
+    whiteSpace: 'nowrap' as const,
   },
   headerTitle: {
     fontSize: 14,

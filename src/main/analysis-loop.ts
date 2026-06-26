@@ -13,7 +13,7 @@
 //   Cleared on window switch. NOT persisted. NOT old project memory.
 
 import type { BrowserWindow } from 'electron'
-import type { AppSettings, AnalysisResult } from '../renderer/src/types'
+import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
 import { emptyProjectMemory } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
 import { captureWatchedWindow } from './capturer'
@@ -68,6 +68,7 @@ let watchedSourceId: string | null = null
 let watchedWindowName: string | null = null
 let companionRef: BrowserWindow | null = null
 let settingsGetter: (() => AppSettings) | null = null
+let watchedGoal: Goal | null = null   // injected into every analysis prompt so guidance is goal-aware
 
 const LOOP_INTERVAL_MS = 10_000
 const NORMAL_COOLDOWN_MS = 15_000
@@ -85,7 +86,8 @@ export function startWatching(
   companionWindow: BrowserWindow,
   sourceId: string,
   windowName: string,
-  getSettings: () => AppSettings
+  getSettings: () => AppSettings,
+  goal: Goal | null = null
 ): void {
   clearStaleState()
 
@@ -93,6 +95,7 @@ export function startWatching(
   watchedSourceId = sourceId
   watchedWindowName = windowName
   settingsGetter = getSettings
+  watchedGoal = goal
   isRunning = true
   isPaused = false
   isFirstCycle = true
@@ -227,7 +230,7 @@ async function callProviderForAnswer(
     }
     userContent.push({ type: 'text', text: userPrompt })
     body = {
-      model: settings.modelId || 'claude-sonnet-4-6',
+      model: settings.modelId || 'claude-opus-4-7',
       max_tokens: 500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
@@ -351,9 +354,12 @@ async function runOneAnalysisCycle(
   notifyCompanionState(companionWindow, 'thinking')
 
   const provider = getProvider(settings.provider)
+  // Companion uses no project memory — but DO inject the user's goal so guidance
+  // can judge whether the current activity moves toward it.
+  const analysisProject = watchedGoal ? { ...EMPTY_PROJECT, goal: watchedGoal } : EMPTY_PROJECT
   let analysis: AnalysisResult
   try {
-    analysis = await provider.analyzeScreen(capture, EMPTY_PROJECT, settings)
+    analysis = await provider.analyzeScreen(capture, analysisProject, settings)
   } catch (error) {
     console.error('[AnalysisLoop] Analysis failed:', error)
     notifyCompanionState(companionWindow, 'idle')

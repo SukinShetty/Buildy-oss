@@ -12,6 +12,7 @@ interface NavTab {
 }
 
 const NAV_TABS: NavTab[] = [
+  { id: 'goal',       label: 'Set Goal',   icon: '🎯' },
   { id: 'brainstorm', label: 'Brainstorm', icon: '💡' },
   { id: 'guidance',   label: 'Guidance',   icon: '👁️' },
   { id: 'memory',     label: 'Memory',     icon: '📋' },

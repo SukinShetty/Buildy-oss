@@ -10,6 +10,7 @@
     "package": "npm run build && electron-builder"
   },
   "dependencies": {
+    "framer-motion": "^12.40.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

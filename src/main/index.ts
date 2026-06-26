@@ -19,6 +19,10 @@ let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
+// App / tray icon — Buildy mascot logo. Resolved relative to the built main
+// process output (out/main → project root → renderer assets).
+const LOGO_PATH = join(__dirname, '../../src/renderer/src/assets/buildy-logo.png')
+
 // ─── Shutdown ────────────────────────────────────────────────────────────────
 
 /**
@@ -71,6 +75,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 480,
     minHeight: 600,
     title: 'Buildy Settings',
+    icon: LOGO_PATH,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -114,7 +119,12 @@ function createMainWindow(): BrowserWindow {
 // ─── System Tray ─────────────────────────────────────────────────────────────
 
 function createSystemTray(): Tray {
-  const trayIcon = nativeImage.createEmpty()
+  // Tray icon from the Buildy logo, scaled down to a tray-appropriate size.
+  // Falls back to an empty image if the file can't be loaded.
+  const loadedIcon = nativeImage.createFromPath(LOGO_PATH)
+  const trayIcon = loadedIcon.isEmpty()
+    ? nativeImage.createEmpty()
+    : loadedIcon.resize({ width: 18, height: 18 })
   const newTray = new Tray(trayIcon)
 
   const contextMenu = Menu.buildFromTemplate([

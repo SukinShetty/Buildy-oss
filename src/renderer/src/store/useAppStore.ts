@@ -16,7 +16,7 @@ import { emptyProjectMemory, defaultSettings } from '../types'
 
 // ─── Screen navigation ────────────────────────────────────────────────────────
 
-export type AppScreen = 'brainstorm' | 'guidance' | 'memory' | 'settings'
+export type AppScreen = 'goal' | 'brainstorm' | 'guidance' | 'memory' | 'settings'
 
 // ─── Analysis state ───────────────────────────────────────────────────────────
 

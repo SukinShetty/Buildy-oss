@@ -7,6 +7,24 @@
 
 export type ExplanationStyle = 'very_simple' | 'balanced' | 'technical'
 
+// ─── Goal ───────────────────────────────────────────────────────────────────
+// The user's stated purpose for what they're building. Every analysis is judged
+// against this so the user knows whether each step moves them toward the goal.
+
+export interface Goal {
+  purpose: string            // the main "what are you building" answer
+  audience?: string          // "Who is this for?"
+  mostImportant?: string     // "single most important thing it should do"
+  successCriteria?: string   // "what does success look like in one month"
+  createdAt: string          // ISO timestamp
+  lastReviewedAt?: string    // when the goal was last shown to / reviewed by the user
+}
+
+export function emptyGoal(): Goal {
+  const now = new Date().toISOString()
+  return { purpose: '', createdAt: now, lastReviewedAt: now }
+}
+
 export interface ProjectMemory {
   projectName: string
   productSummary: string
@@ -17,6 +35,8 @@ export interface ProjectMemory {
   activeBlockers: string[]
   explanationStyle: ExplanationStyle
   brainstormSummary: string   // Extracted from the brainstorm chat
+  goal: Goal | null           // The user's stated goal (null until set; skipping leaves it null)
+  goalPromptSeen: boolean      // true once the user has set OR skipped the goal prompt
   createdAt: string           // ISO date string
   updatedAt: string
 }
@@ -33,6 +53,8 @@ export function emptyProjectMemory(): ProjectMemory {
     activeBlockers: [],
     explanationStyle: 'very_simple',
     brainstormSummary: '',
+    goal: null,
+    goalPromptSeen: false,
     createdAt: now,
     updatedAt: now,
   }
@@ -67,7 +89,7 @@ export interface AppSettings {
 export function defaultSettings(): AppSettings {
   return {
     provider: 'anthropic',
-    modelId: 'claude-sonnet-4-6',
+    modelId: 'claude-opus-4-7',
     apiKey: '',
     baseUrl: '',
     useProxy: false,
@@ -100,6 +122,10 @@ export interface CaptureResult {
 // The exact JSON shape the AI must return for screen analysis.
 // Keep this in sync with the system prompt in prompt-builder.ts.
 // NOTE: Screen-agnostic — works for any watched window, not just Claude Code.
+
+// How the current activity relates to the user's goal.
+export type GoalAlignment = 'on-track' | 'drift' | 'blocked'
+
 export interface AnalysisResult {
   screenContentVisible: boolean
   whatIsHappening: string           // Plain language: what's happening on screen right now
@@ -111,6 +137,9 @@ export interface AnalysisResult {
   bestNextMove: string              // One clear sentence: what to do right now
   nextPrompt: string                // Suggested next prompt or action
   builderNote: string               // Encouraging, buddy-style note from Buildy
+  // Goal alignment — present only when the user has set a goal (see Goal type).
+  goalAlignment?: GoalAlignment | null
+  alignmentNote?: string            // One-sentence plain-English reason for the alignment judgment
   analyzedAt: string                // ISO date string
   analysisDurationMs: number
 }
@@ -168,4 +197,7 @@ export const IPC = {
   SAVE_PROJECT:        'buildy:save-project',
   LOAD_SETTINGS:       'buildy:load-settings',
   SAVE_SETTINGS:       'buildy:save-settings',
+  GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
+  GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
+  GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)
 } as const
