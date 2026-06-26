@@ -12,7 +12,7 @@
 //
 // This parser handles all of those cases gracefully.
 
-import type { AnalysisResult, ExtractedProjectData } from '../../renderer/src/types'
+import type { AnalysisResult, ExtractedProjectData, GoalAlignment } from '../../renderer/src/types'
 
 /**
  * Parse raw model output text into a structured AnalysisResult.
@@ -193,9 +193,24 @@ function normalizeAnalysisResult(
     bestNextMove: toStr(parsed.bestNextMove, ''),
     nextPrompt: toStr(parsed.nextPrompt, ''),
     builderNote: toStr(parsed.builderNote, ''),
+    goalAlignment: toGoalAlignment(parsed.goalAlignment),
+    alignmentNote: parsed.alignmentNote != null ? toStr(parsed.alignmentNote, '') : undefined,
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }
+}
+
+/**
+ * Coerce a value to a valid GoalAlignment, or null if absent/unrecognized.
+ * Tolerates minor model variations like "on track" or "ontrack".
+ */
+function toGoalAlignment(value: unknown): GoalAlignment | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, '-')
+  if (normalized === 'on-track' || normalized === 'ontrack') return 'on-track'
+  if (normalized === 'drift' || normalized === 'drifting') return 'drift'
+  if (normalized === 'blocked') return 'blocked'
+  return null
 }
 
 function toBool(value: unknown, fallback: boolean): boolean {

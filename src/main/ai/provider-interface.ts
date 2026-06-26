@@ -25,13 +25,14 @@ export type ProviderType =
 
 // ─── Model capabilities ─────────────────────────────────────────────────────
 
-export type QualityTier = 'recommended' | 'capable' | 'experimental'
+export type QualityTier = 'recommended' | 'best-for-vision' | 'capable' | 'experimental'
 
 export interface ModelOption {
   id: string
   label: string
   supportsVision: boolean
   qualityTier: QualityTier
+  description?: string  // Short capability blurb shown under the model name
 }
 
 // ─── Provider metadata ───────────────────────────────────────────────────────

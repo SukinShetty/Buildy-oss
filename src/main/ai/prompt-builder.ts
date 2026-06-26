@@ -26,8 +26,29 @@ export function buildAnalysisSystemPrompt(
     ? `\n${formatProjectContextForPrompt(project)}\n`
     : ''
 
+  // Goal context — injected whenever the user has set a goal (see Goal type).
+  const goal = project.goal
+  const hasGoal = !!(goal && goal.purpose && goal.purpose.trim())
+  const goalBlock = hasGoal
+    ? `
+USER'S GOAL: ${goal!.purpose}
+WHO IT IS FOR: ${goal!.audience || 'not specified'}
+MOST IMPORTANT FEATURE: ${goal!.mostImportant || 'not specified'}
+SUCCESS CRITERIA: ${goal!.successCriteria || 'not specified'}
+
+Every analysis you produce should be judged against this goal. Your job is to keep the user moving toward this goal.
+`
+    : ''
+
+  // Extra mandatory JSON fields, ONLY when a goal exists (so analysis still works without one).
+  const goalSchema = hasGoal
+    ? `,
+  "goalAlignment": "on-track OR drift OR blocked — your judgment of whether the current on-screen activity is moving the user toward the USER'S GOAL above. MANDATORY.",
+  "alignmentNote": "One plain-English sentence explaining the goalAlignment (e.g. 'This is exactly what we need for the customer list' or 'This looks like a tangent — we are styling the login page but the customer list is still incomplete'). MANDATORY."`
+    : ''
+
   return `You are Buildy, a screen-aware AI builder buddy. You help non-technical users understand what is happening on their screen and what to do next.
-${projectBlock}
+${projectBlock}${goalBlock}
 You are looking at a screenshot of ${screenLabel}.
 
 LANGUAGE: Always respond in English regardless of what language appears on screen.
@@ -60,8 +81,8 @@ YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
   "whatIsBroken": ["errors or problems, explained in plain English"],
   "whereUserIsStuck": "simple description or null",
   "bestNextMove": "One clear sentence telling the user what to do next, in plain English",
-  "nextPrompt": "Specific suggested next action based ONLY on what you see",
-  "builderNote": "Short encouraging note"
+  "nextPrompt": "ALWAYS provide this. A complete, ready-to-paste prompt the user can send straight to Claude Code to do the next step. Write it as a direct instruction to Claude Code, based ONLY on what you see on screen. Never leave this empty.",
+  "builderNote": "Short encouraging note"${goalSchema}
 }`
 }
 

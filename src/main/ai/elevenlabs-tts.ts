@@ -14,6 +14,28 @@
 import { fetchWithTimeout } from './fetch-with-timeout'
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1'
+const TTS_MAX_CHARS = 300
+
+/**
+ * Clean text before sending to TTS: strip markdown / control markers that would
+ * otherwise be read aloud or cause choppy synthesis, and cap the length so
+ * playback stays short and smooth.
+ */
+function sanitizeForTTS(raw: string): string {
+  let t = raw
+    .replace(/\[PROMPT_START\]|\[PROMPT_END\]/g, '') // control markers
+    .replace(/\*\*/g, '')                            // bold markers
+    .replace(/#{1,6}/g, '')                          // markdown headings (##, ###, ...)
+    .replace(/`+/g, '')                              // code ticks
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (t.length > TTS_MAX_CHARS) {
+    const cut = t.lastIndexOf(' ', TTS_MAX_CHARS)
+    t = t.slice(0, cut > 0 ? cut : TTS_MAX_CHARS).trim()
+  }
+  return t
+}
 
 export interface ElevenLabsTTSResult {
   success: boolean
@@ -35,11 +57,12 @@ export async function synthesizeSpeech(
     return { success: false, audioBase64: null, error: 'No ElevenLabs API key configured' }
   }
 
-  if (!text.trim()) {
+  const cleanText = sanitizeForTTS(text)
+  if (!cleanText) {
     return { success: false, audioBase64: null, error: 'Empty text' }
   }
 
-  console.log(`[ElevenLabs] TTS request: "${text.slice(0, 60)}..." voice=${voiceId}`)
+  console.log(`[ElevenLabs] TTS request: "${cleanText.slice(0, 60)}..." (${cleanText.length} chars) voice=${voiceId}`)
 
   try {
     const response = await fetchWithTimeout(
@@ -51,8 +74,9 @@ export async function synthesizeSpeech(
           'xi-api-key': apiKey,
         },
         body: JSON.stringify({
-          text: text.trim(),
-          model_id: 'eleven_multilingual_v2',
+          text: cleanText,
+          // Streaming-friendly turbo model for faster, smoother playback
+          model_id: 'eleven_turbo_v2_5',
           voice_settings: {
             stability: 0.65,
             similarity_boost: 0.80,

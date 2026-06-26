@@ -22,12 +22,14 @@ export const anthropicProviderInfo: ProviderInfo = {
   requiresApiKey: true,
   requiresBaseUrl: false,
   defaultBaseUrl: 'https://api.anthropic.com',
-  defaultModel: 'claude-sonnet-4-6',
+  defaultModel: 'claude-opus-4-7',
   supportsStreaming: true,
   models: [
-    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', supportsVision: true, qualityTier: 'capable' },
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', supportsVision: true, qualityTier: 'recommended', description: 'Latest and most capable model.' },
+    { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', supportsVision: true, qualityTier: 'best-for-vision', description: '3x higher image resolution than Opus 4.6, 98.5% visual acuity — ideal for dense terminal screenshots.' },
+    { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', supportsVision: true, qualityTier: 'recommended', description: 'Previous flagship. Strong all-round quality.' },
+    { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended', description: 'Fast and balanced quality for the cost.' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', supportsVision: true, qualityTier: 'capable', description: 'Fastest and most affordable.' },
   ],
 }
 
