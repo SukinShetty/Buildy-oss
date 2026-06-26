@@ -11,8 +11,8 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 
-const COMPANION_WIDTH = 340
-const COMPANION_HEIGHT = 480
+const COMPANION_WIDTH = 380
+const COMPANION_HEIGHT = 380
 
 let companionRef: BrowserWindow | null = null
 
@@ -58,11 +58,11 @@ export function createCompanionWindow(): BrowserWindow {
     x: pos.x,
     y: pos.y,
     frame: false,
-    transparent: false,
-    backgroundColor: '#1C1C1E',
+    transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     skipTaskbar: false,
-    hasShadow: true,
+    hasShadow: false,
     alwaysOnTop: true,
     show: false,
     webPreferences: {

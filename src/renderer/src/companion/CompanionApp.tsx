@@ -4,9 +4,10 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useCompanionStore } from '../store/useCompanionStore'
-import { CompanionAvatar } from './CompanionAvatar'
+import { Mascot } from '../components/Mascot'
+import type { MascotState } from '../components/Mascot'
 import { PromptPopup } from './PromptPopup'
-import { playAudio, speakSystemTTS, stopAllAudio } from './VoiceGuidance'
+import { playAudio, speakSystemTTS, stopAllAudio, resetSpeechDedup } from './VoiceGuidance'
 import type { AnalysisResult } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
 
@@ -52,7 +53,7 @@ export function CompanionApp(): React.ReactElement {
         console.log('[CompanionApp] Received audio for playback')
         setLastSpokenText(d.text); setAvatarState('speaking')
         if (!isMutedRef.current) {
-          await playAudio(d.audioBase64)
+          await playAudio(d.audioBase64, d.text)
         } else {
           console.log('[CompanionApp] Muted — skipping audio playback')
         }
@@ -97,6 +98,7 @@ export function CompanionApp(): React.ReactElement {
   async function pickWindow(id: string, name: string): Promise<void> {
     setShowWindowPicker(false)
     clearAnalysis()
+    resetSpeechDedup()  // fresh watching session can speak anything
     setWatchedSource(name, null)
     await window.buildy.selectWatchSource(id, name)
   }
@@ -187,7 +189,7 @@ export function CompanionApp(): React.ReactElement {
     else if (latestAnalysis || lastAnswer) setShowPromptCard(true)
     else openPicker()
   }
-  function onStop(): void { stopAllAudio(); stopRecording(); setMicState('idle'); setAvatarState('idle') }
+  function onStop(): void { stopAllAudio(); resetSpeechDedup(); stopRecording(); setMicState('idle'); setAvatarState('idle') }
   function onMute(): void { const m = !isMuted; setMuted(m); if (m) stopAllAudio() }
   function onPause(): void {
     const p = !isPaused; setPaused(p)
@@ -209,7 +211,7 @@ export function CompanionApp(): React.ReactElement {
     : watchedSourceMessage
       ? watchedSourceMessage
       : watchedWindowName
-        ? `watching: ${trunc(watchedWindowName, 32)}`
+        ? watchedWindowName
         : 'click orb to pick a window'
 
   const micLabel = micState === 'listening' ? 'listening...'
@@ -218,11 +220,26 @@ export function CompanionApp(): React.ReactElement {
     : micError ? micError
     : null
 
+  // Map the existing companion/mic state to a mascot pose (presentational only).
+  const mascotState: MascotState =
+    micState === 'listening' ? 'listening'
+    : avatarState === 'speaking' ? 'speaking'
+    : avatarState === 'thinking' || micState === 'transcribing' || micState === 'answering' ? 'thinking'
+    : watchedWindowName ? 'watching'
+    : 'idle'
+
   return (
     <div style={S.root}>
       <div style={S.drag} />
 
-      <CompanionAvatar state={avatarState} onClick={onOrbClick} onContextMenu={openPicker} />
+      <div
+        style={S.mascotWrap}
+        onClick={onOrbClick}
+        onContextMenu={(e) => { e.preventDefault(); openPicker() }}
+        title="Click to interact — right-click to pick a window"
+      >
+        <Mascot state={mascotState} size={150} />
+      </div>
 
       <div style={S.watchLabel}>{watchLabel}</div>
 
@@ -323,15 +340,15 @@ function MicBtn({ micState, onClick, disabled }: { micState: MicState; onClick: 
 
 // ─── SVG icons ───────────────────────────────────────────────────────────────
 
-const stopIcon = '<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><rect width="8" height="8" rx="1.5"/></svg>'
-const muteOffIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19 4.9a10 10 0 010 14.1M15.5 8.5a5 5 0 010 7"/></svg>'
-const muteOnIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>'
-const pauseIcon = '<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><rect x="0" y="0" width="2.5" height="8" rx="0.5"/><rect x="5.5" y="0" width="2.5" height="8" rx="0.5"/></svg>'
-const playIcon = '<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><polygon points="1,0 8,4 1,8"/></svg>'
-const quietIcon = '<svg width="10" height="10" viewBox="0 0 10 10"><text x="5" y="8" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">Q</text></svg>'
-const micIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
-const monitorIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
-const gearIcon = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'
+const stopIcon = '<svg width="18" height="18" viewBox="0 0 8 8" fill="currentColor"><rect width="8" height="8" rx="1.5"/></svg>'
+const muteOffIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19 4.9a10 10 0 010 14.1M15.5 8.5a5 5 0 010 7"/></svg>'
+const muteOnIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>'
+const pauseIcon = '<svg width="18" height="18" viewBox="0 0 8 8" fill="currentColor"><rect x="0" y="0" width="2.5" height="8" rx="0.5"/><rect x="5.5" y="0" width="2.5" height="8" rx="0.5"/></svg>'
+const playIcon = '<svg width="18" height="18" viewBox="0 0 8 8" fill="currentColor"><polygon points="1,0 8,4 1,8"/></svg>'
+const quietIcon = '<svg width="18" height="18" viewBox="0 0 10 10"><text x="5" y="8" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">Q</text></svg>'
+const micIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
+const monitorIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
+const gearIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'
 
 function trunc(t: string, n: number): string { return t.length > n ? t.slice(0, n - 1) + '\u2026' : t }
 
@@ -342,10 +359,21 @@ const S = {
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
+    justifyContent: 'center',
     height: '100%',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     padding: '0 10px 10px',
     gap: 0,
+    background: 'transparent',
+  },
+  mascotWrap: {
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    // Drag the whole window from the mascot; the button pill opts out below.
+    WebkitAppRegion: 'drag' as unknown as string,
   },
   drag: {
     width: '100%',
@@ -356,28 +384,37 @@ const S = {
   },
   watchLabel: {
     marginTop: 4,
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: 500,
+    color: 'rgba(255,255,255,0.7)',
     letterSpacing: '0.02em',
     textAlign: 'center' as const,
-    maxWidth: 260,
-    lineHeight: 1.2,
+    maxWidth: 200,
+    lineHeight: 1.3,
     flexShrink: 0,
-    textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+    textShadow: '0 2px 10px rgba(0,0,0,0.9)',
+    // Wrap long text, then truncate at 3 lines (no mid-word cutoff with "...")
+    overflowWrap: 'break-word' as const,
+    wordBreak: 'break-word' as const,
+    display: '-webkit-box',
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
   },
   pill: {
     display: 'flex',
     alignItems: 'center',
-    gap: 1,
-    marginTop: 6,
-    background: 'rgba(20,20,22,0.75)',
+    gap: 8,
+    marginTop: 8,
+    background: 'rgba(0,0,0,0.5)',
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
-    borderRadius: 20,
-    padding: '3px 4px',
-    border: '1px solid rgba(255,255,255,0.08)',
-    boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+    borderRadius: 999,
+    padding: '10px 16px',
+    boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
     flexShrink: 0,
+    // Keep buttons clickable — exclude the pill from the window drag region.
+    WebkitAppRegion: 'no-drag' as unknown as string,
   },
   pillDivider: {
     width: 1,
@@ -390,8 +427,8 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 24,
-    height: 20,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     background: 'transparent',
     color: 'rgba(255,255,255,0.35)',
