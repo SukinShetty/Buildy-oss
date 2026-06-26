@@ -6,7 +6,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
 import type { MascotState } from '../components/Mascot'
-import { PromptPopup } from './PromptPopup'
 import { playAudio, speakSystemTTS, stopAllAudio, resetSpeechDedup } from './VoiceGuidance'
 import type { AnalysisResult } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
@@ -16,10 +15,10 @@ interface WindowItem { id: string; name: string; thumbnailBase64: string }
 export function CompanionApp(): React.ReactElement {
   const {
     avatarState, latestAnalysis, isMuted, isPaused, isQuietMode,
-    showPromptCard, watchedWindowName, watchedSourceMessage, showWindowPicker,
+    watchedWindowName, watchedSourceMessage, showWindowPicker,
     micState, micError, lastAnswer,
     setAvatarState, setLatestAnalysis, setMuted, setPaused, setQuietMode,
-    setLastSpokenText, setShowPromptCard, setWatchedSource, setShowWindowPicker,
+    setLastSpokenText, setWatchedSource, setShowWindowPicker,
     setMicState, setMicError, setLastAnswer,
     clearAnalysis,
   } = useCompanionStore()
@@ -47,6 +46,8 @@ export function CompanionApp(): React.ReactElement {
       window.buildy.onCompanionAnalysis((_: unknown, a: AnalysisResult) => {
         setLastAnswer(null)
         setLatestAnalysis(a)
+        // Render guidance in its OWN window so it never overflows the mascot.
+        window.buildy.showGuidance(a)
       }),
       window.buildy.onCompanionState((_: unknown, s: string) => setAvatarState(s as CompanionState)),
       window.buildy.onCompanionAudio(async (_: unknown, d: { audioBase64: string; text: string; type: string }) => {
@@ -73,11 +74,13 @@ export function CompanionApp(): React.ReactElement {
       }),
       window.buildy.onWatchedSourceChanged((_: unknown, d: { windowName: string | null; message: string | null }) => {
         setWatchedSource(d.windowName, d.message)
-        if (!d.windowName) clearAnalysis()
+        if (!d.windowName) { clearAnalysis(); window.buildy.hideGuidance() }
       }),
       window.buildy.onCompanionAnswer((_: unknown, d: { question: string; answer: string }) => {
         setLastAnswer(d)
         setMicState('idle')
+        // Show the spoken-question answer in the guidance window.
+        window.buildy.showGuidanceAnswer(d)
       }),
       window.buildy.onCompanionShutdown(() => stopAllAudio()),
     ]
@@ -98,6 +101,7 @@ export function CompanionApp(): React.ReactElement {
   async function pickWindow(id: string, name: string): Promise<void> {
     setShowWindowPicker(false)
     clearAnalysis()
+    window.buildy.hideGuidance()  // drop any stale guidance from the previous window
     resetSpeechDedup()  // fresh watching session can speak anything
     setWatchedSource(name, null)
     await window.buildy.selectWatchSource(id, name)
@@ -184,12 +188,16 @@ export function CompanionApp(): React.ReactElement {
   function onOrbClick(): void {
     if (needsApiKey) { window.buildy.openPanel(); return }
     if (!watchedWindowName) { openPicker(); return }
-    // Toggle bubble — orb click re-shows the last prompt/answer
-    if (showPromptCard) setShowPromptCard(false)
-    else if (latestAnalysis || lastAnswer) setShowPromptCard(true)
+    // Re-show the latest guidance/answer in the guidance window.
+    if (latestAnalysis) window.buildy.showGuidance(latestAnalysis)
+    else if (lastAnswer) window.buildy.showGuidanceAnswer(lastAnswer)
     else openPicker()
   }
-  function onStop(): void { stopAllAudio(); resetSpeechDedup(); stopRecording(); setMicState('idle'); setAvatarState('idle') }
+  function onStop(): void {
+    stopAllAudio(); resetSpeechDedup(); stopRecording()
+    setMicState('idle'); setAvatarState('idle')
+    window.buildy.hideGuidance()
+  }
   function onMute(): void { const m = !isMuted; setMuted(m); if (m) stopAllAudio() }
   function onPause(): void {
     const p = !isPaused; setPaused(p)
@@ -238,7 +246,7 @@ export function CompanionApp(): React.ReactElement {
         onContextMenu={(e) => { e.preventDefault(); openPicker() }}
         title="Click to interact — right-click to pick a window"
       >
-        <Mascot state={mascotState} size={150} />
+        <Mascot state={mascotState} size={120} />
       </div>
 
       <div style={S.watchLabel}>{watchLabel}</div>
@@ -270,7 +278,7 @@ export function CompanionApp(): React.ReactElement {
         </div>
       )}
 
-      {/* Window picker overlay */}
+      {/* Window picker — full-window overlay (guidance lives in its own window now) */}
       {showWindowPicker && (
         <div style={S.picker}>
           <div style={S.pickerHead}>Pick a window to watch</div>
@@ -284,16 +292,6 @@ export function CompanionApp(): React.ReactElement {
           </div>
           <button onClick={() => setShowWindowPicker(false)} style={S.pickerCancel}>Cancel</button>
         </div>
-      )}
-
-      {/* Prompt / answer bubble */}
-      {!showWindowPicker && (lastAnswer || latestAnalysis) && (
-        <PromptPopup
-          analysis={latestAnalysis}
-          answer={lastAnswer}
-          visible={showPromptCard}
-          onDismiss={() => setShowPromptCard(false)}
-        />
       )}
     </div>
   )
@@ -384,12 +382,12 @@ const S = {
   },
   watchLabel: {
     marginTop: 4,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 500,
     color: 'rgba(255,255,255,0.7)',
     letterSpacing: '0.02em',
     textAlign: 'center' as const,
-    maxWidth: 200,
+    maxWidth: 240,
     lineHeight: 1.3,
     flexShrink: 0,
     textShadow: '0 2px 10px rgba(0,0,0,0.9)',
@@ -404,13 +402,13 @@ const S = {
   pill: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
     marginTop: 8,
     background: 'rgba(0,0,0,0.5)',
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
     borderRadius: 999,
-    padding: '10px 16px',
+    padding: '7px 10px',
     boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
     flexShrink: 0,
     // Keep buttons clickable — exclude the pill from the window drag region.
@@ -427,9 +425,9 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     background: 'transparent',
     color: 'rgba(255,255,255,0.35)',
     border: 'none',
@@ -458,17 +456,21 @@ const S = {
     maxWidth: 260,
   },
   picker: {
-    marginTop: 8,
-    background: 'linear-gradient(180deg, rgba(38,38,40,0.97) 0%, rgba(28,28,30,0.97) 100%)',
-    borderRadius: 12,
+    // Full-window overlay — the compact mascot window has no room to stack it.
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(20,20,22,0.97)',
     border: '1px solid rgba(255,255,255,0.08)',
-    padding: '8px 8px 6px',
-    width: '100%',
-    maxWidth: 284,
+    borderRadius: 14,
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column' as const,
     backdropFilter: 'blur(24px)',
+    WebkitBackdropFilter: 'blur(24px)',
     boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
     animation: 'bubbleIn 0.2s ease-out',
-    flexShrink: 0,
+    zIndex: 50,
+    WebkitAppRegion: 'no-drag' as unknown as string,
   },
   pickerHead: {
     fontSize: 10,
@@ -481,7 +483,8 @@ const S = {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 2,
-    maxHeight: 180,
+    flex: 1,
+    minHeight: 0,
     overflowY: 'auto' as const,
   },
   pickerRow: {

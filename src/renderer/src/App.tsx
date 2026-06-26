@@ -14,19 +14,31 @@ import { GuidanceWorkspace } from './screens/GuidanceWorkspace'
 import { MemoryScreen } from './screens/MemoryScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { CompanionApp } from './companion/CompanionApp'
+import { GuidancePanel } from './guidance/GuidancePanel'
 
-// Check if this renderer instance is the companion window
-const isCompanionMode = new URLSearchParams(window.location.search).get('companion') === 'true'
+// Which window is this renderer instance? Routed via query parameter.
+const params = new URLSearchParams(window.location.search)
+const isCompanionMode = params.get('companion') === 'true'
+const isGuidanceMode = params.get('guidance') === 'true'
 
-// Apply companion-mode class to body so CSS can make it transparent
+// Both floating windows are fully transparent — flag the document so CSS strips
+// the background.
 if (isCompanionMode) {
   document.documentElement.classList.add('companion-mode')
   document.body.classList.add('companion-mode')
+}
+if (isGuidanceMode) {
+  document.documentElement.classList.add('guidance-mode')
+  document.body.classList.add('guidance-mode')
 }
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export function App(): React.ReactElement {
+  if (isGuidanceMode) {
+    return <GuidancePanel />
+  }
+
   if (isCompanionMode) {
     return <CompanionApp />
   }

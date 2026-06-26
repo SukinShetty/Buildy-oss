@@ -89,12 +89,25 @@ body {
 /* The floating companion is fully transparent so the Buildy mascot appears to
    float freely on the desktop — no visible container box. */
 html.companion-mode,
-body.companion-mode {
+body.companion-mode,
+html.guidance-mode,
+body.guidance-mode {
   background-color: transparent !important;
   background: transparent !important;
 }
-body.companion-mode #root {
+body.companion-mode #root,
+body.guidance-mode #root {
   background: transparent;
+}
+
+/* Companion animations (previously inlined in the old PromptPopup). */
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
 }
 
 /* Allow text selection in inputs and guidance text */
