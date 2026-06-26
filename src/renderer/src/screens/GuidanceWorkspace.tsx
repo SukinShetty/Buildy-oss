@@ -187,6 +187,12 @@ export function GuidanceWorkspace(): React.ReactElement {
         />
       )}
 
+      {/* Current goal — always visible during the build session */}
+      <CurrentGoalCard
+        goalPurpose={project.goal?.purpose ?? null}
+        onEdit={() => setCurrentScreen('goal')}
+      />
+
       {/* Controls */}
       <div style={styles.controls}>
         <button
@@ -278,6 +284,36 @@ export function GuidanceWorkspace(): React.ReactElement {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function CurrentGoalCard({
+  goalPurpose,
+  onEdit,
+}: {
+  goalPurpose: string | null
+  onEdit: () => void
+}): React.ReactElement {
+  const hasGoal = !!(goalPurpose && goalPurpose.trim())
+  return (
+    <div style={styles.goalCard}>
+      <div style={styles.goalCardMain}>
+        <div style={styles.goalCardLabel}>🎯 Current goal</div>
+        {hasGoal ? (
+          <div style={styles.goalCardText}>{goalPurpose}</div>
+        ) : (
+          <div style={styles.goalCardEmpty}>No goal set yet — set one so Buildy can keep you on track.</div>
+        )}
+      </div>
+      <button
+        onClick={onEdit}
+        style={styles.goalEditBtn}
+        title={hasGoal ? 'Edit your goal' : 'Set your goal'}
+        aria-label={hasGoal ? 'Edit goal' : 'Set goal'}
+      >
+        ✏️
+      </button>
+    </div>
+  )
+}
+
 function EmptyState({
   onAnalyze,
   apiConfigured,
@@ -358,6 +394,51 @@ const styles = {
     flexDirection: 'column' as const,
     height: '100%',
     overflow: 'hidden',
+  },
+  goalCard: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: '10px 16px',
+    background: 'var(--color-surface)',
+    borderBottom: '1px solid var(--color-border)',
+    flexShrink: 0,
+  },
+  goalCardMain: {
+    flex: 1,
+    minWidth: 0,
+  },
+  goalCardLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    color: 'var(--color-text-muted)',
+    marginBottom: 2,
+  },
+  goalCardText: {
+    fontSize: 13,
+    color: 'var(--color-text)',
+    lineHeight: 1.4,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
+  },
+  goalCardEmpty: {
+    fontSize: 12,
+    color: 'var(--color-text-dim)',
+    lineHeight: 1.4,
+    fontStyle: 'italic' as const,
+  },
+  goalEditBtn: {
+    flexShrink: 0,
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: 14,
+    padding: 2,
+    lineHeight: 1,
   },
   controls: {
     display: 'flex',

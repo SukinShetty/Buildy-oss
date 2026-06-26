@@ -13,7 +13,8 @@ interface ModelOption {
   id: string
   label: string
   supportsVision: boolean
-  qualityTier: 'recommended' | 'capable' | 'experimental'
+  qualityTier: 'recommended' | 'best-for-vision' | 'capable' | 'experimental'
+  description?: string  // Short capability blurb shown under the model name
 }
 
 interface ProviderMeta {
@@ -35,11 +36,13 @@ const PROVIDERS: ProviderMeta[] = [
     requiresApiKey: true,
     requiresBaseUrl: false,
     defaultBaseUrl: 'https://api.anthropic.com',
-    defaultModel: 'claude-sonnet-4-6',
+    defaultModel: 'claude-opus-4-7',
     models: [
-      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', supportsVision: true, qualityTier: 'capable' },
+      { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', supportsVision: true, qualityTier: 'recommended', description: 'Latest and most capable model.' },
+      { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', supportsVision: true, qualityTier: 'best-for-vision', description: '3x higher image resolution than Opus 4.6, 98.5% visual acuity — ideal for dense terminal screenshots.' },
+      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', supportsVision: true, qualityTier: 'recommended', description: 'Previous flagship. Strong all-round quality.' },
+      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended', description: 'Fast and balanced quality for the cost.' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', supportsVision: true, qualityTier: 'capable', description: 'Fastest and most affordable.' },
     ],
   },
   {
@@ -145,13 +148,15 @@ function getProviderMeta(type: ProviderType): ProviderMeta {
 function tierBadge(tier: string): { label: string; color: string } {
   switch (tier) {
     case 'recommended':
-      return { label: 'Recommended', color: 'var(--color-success)' }
+      return { label: 'RECOMMENDED', color: 'var(--color-success)' }
+    case 'best-for-vision':
+      return { label: 'BEST FOR VISION', color: 'var(--color-success)' }
     case 'capable':
-      return { label: 'Capable', color: 'var(--color-accent)' }
+      return { label: 'CAPABLE', color: 'var(--color-accent)' }
     case 'experimental':
-      return { label: 'Experimental', color: 'var(--color-warning)' }
+      return { label: 'EXPERIMENTAL', color: 'var(--color-warning)' }
     default:
-      return { label: tier, color: 'var(--color-text-muted)' }
+      return { label: tier.toUpperCase(), color: 'var(--color-text-muted)' }
   }
 }
 
@@ -307,18 +312,21 @@ export function SettingsScreen(): React.ReactElement {
                     ...(modelId === m.id && !customModelId.trim() ? styles.modelRowActive : styles.modelRowInactive),
                   }}
                 >
-                  <div style={styles.modelRowLeft}>
-                    <span style={styles.modelLabel}>{m.label}</span>
-                    <span style={{ ...styles.badge, borderColor: badge.color, color: badge.color }}>
-                      {badge.label}
-                    </span>
-                    {m.supportsVision && (
-                      <span style={{ ...styles.badge, borderColor: 'var(--color-accent)', color: 'var(--color-accent)' }}>
-                        Vision
+                  <div style={styles.modelTopRow}>
+                    <div style={styles.modelRowLeft}>
+                      <span style={styles.modelLabel}>{m.label}</span>
+                      <span style={{ ...styles.badge, borderColor: badge.color, color: badge.color }}>
+                        {badge.label}
                       </span>
-                    )}
+                      {m.supportsVision && (
+                        <span style={{ ...styles.badge, borderColor: 'var(--color-accent)', color: 'var(--color-accent)' }}>
+                          Vision
+                        </span>
+                      )}
+                    </div>
+                    <span style={styles.modelId}>{m.id}</span>
                   </div>
-                  <span style={styles.modelId}>{m.id}</span>
+                  {m.description && <div style={styles.modelDescription}>{m.description}</div>}
                 </button>
               )
             })}
@@ -615,8 +623,8 @@ const styles = {
   },
   modelRow: {
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column' as const,
+    gap: 3,
     padding: '7px 10px',
     borderRadius: 'var(--radius-sm)',
     border: '1px solid transparent',
@@ -624,6 +632,17 @@ const styles = {
     textAlign: 'left' as const,
     width: '100%',
     transition: 'background 0.1s',
+  },
+  modelTopRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  modelDescription: {
+    fontSize: 10.5,
+    color: 'var(--color-text-muted)',
+    lineHeight: 1.35,
   },
   modelRowActive: {
     background: 'var(--color-accent-muted)',

@@ -5,9 +5,9 @@
 import { ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
-import type { ProjectMemory, AppSettings, CaptureResult } from '../renderer/src/types'
+import type { ProjectMemory, AppSettings, CaptureResult, Goal } from '../renderer/src/types'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
-import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings } from './memory'
+import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings, loadGoal, setGoal, updateGoal } from './memory'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
@@ -117,6 +117,35 @@ export function registerIpcHandlers(
     }
   })
 
+  // ─── Goal persistence (stored on the local project memory file) ──────────────
+
+  ipcMain.handle(IPC.GOAL_GET, async () => {
+    try {
+      return await loadGoal()
+    } catch (error) {
+      console.error('[IPC] GOAL_GET error:', error)
+      return null
+    }
+  })
+
+  ipcMain.handle(IPC.GOAL_SET, async (_event, goal: Partial<Goal>) => {
+    try {
+      return await setGoal(goal)
+    } catch (error) {
+      console.error('[IPC] GOAL_SET error:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle(IPC.GOAL_UPDATE, async (_event, partial: Partial<Goal>) => {
+    try {
+      return await updateGoal(partial)
+    } catch (error) {
+      console.error('[IPC] GOAL_UPDATE error:', error)
+      throw error
+    }
+  })
+
   // ─── Settings persistence ────────────────────────────────────────────────────
 
   ipcMain.handle(IPC.LOAD_SETTINGS, async () => {
@@ -166,11 +195,14 @@ export function registerIpcHandlers(
       try {
         cachedSettings = await loadSettings()
         lastSettingsLoad = Date.now()
+        // Load the user's goal (if any) so the analysis loop can inject it into prompts
+        const goal = await loadGoal()
         startWatching(
           companionWindow,
           sourceId,
           windowName,
-          () => { getFreshSettings(); return cachedSettings! }
+          () => { getFreshSettings(); return cachedSettings! },
+          goal
         )
       } catch (error) {
         console.error('[IPC] SELECT_WATCH_SOURCE error:', error)

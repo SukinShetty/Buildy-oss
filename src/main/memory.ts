@@ -8,7 +8,7 @@
 import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { ProjectMemory, AppSettings } from '../renderer/src/types'
+import type { ProjectMemory, AppSettings, Goal } from '../renderer/src/types'
 import { emptyProjectMemory, defaultSettings } from '../renderer/src/types'
 
 const userDataDirectory = app.getPath('userData')
@@ -20,7 +20,10 @@ const settingsFilePath = join(userDataDirectory, 'settings.json')
 export async function loadProjectMemory(): Promise<ProjectMemory> {
   try {
     const fileContent = await fs.readFile(projectMemoryFilePath, 'utf-8')
-    return JSON.parse(fileContent) as ProjectMemory
+    const raw = JSON.parse(fileContent) as Partial<ProjectMemory>
+    // Merge over defaults so files written by older versions gain new fields
+    // (goal, goalPromptSeen) without breaking.
+    return { ...emptyProjectMemory(), ...raw }
   } catch {
     // File doesn't exist yet or is corrupt — return a blank project
     return emptyProjectMemory()
@@ -38,6 +41,45 @@ export async function saveProjectMemory(projectMemory: ProjectMemory): Promise<v
     JSON.stringify(updatedMemory, null, 2),
     'utf-8'
   )
+}
+
+// ─── Goal ───────────────────────────────────────────────────────────────────
+// The goal lives on the project memory file (same local JSON, nothing leaves the device).
+
+export async function loadGoal(): Promise<Goal | null> {
+  const project = await loadProjectMemory()
+  return project.goal ?? null
+}
+
+/**
+ * Create or replace the goal. Stamps createdAt + lastReviewedAt and marks the
+ * goal prompt as seen so the first-launch screen won't reappear.
+ */
+export async function setGoal(input: Partial<Goal>): Promise<Goal> {
+  const project = await loadProjectMemory()
+  const now = new Date().toISOString()
+  const goal: Goal = {
+    purpose: (input.purpose ?? '').trim(),
+    audience: input.audience?.trim() || undefined,
+    mostImportant: input.mostImportant?.trim() || undefined,
+    successCriteria: input.successCriteria?.trim() || undefined,
+    createdAt: project.goal?.createdAt ?? now,
+    lastReviewedAt: now,
+  }
+  await saveProjectMemory({ ...project, goal, goalPromptSeen: true })
+  return goal
+}
+
+/**
+ * Merge a partial update into the existing goal (e.g. bumping lastReviewedAt).
+ * No-op (returns null) if no goal exists yet.
+ */
+export async function updateGoal(partial: Partial<Goal>): Promise<Goal | null> {
+  const project = await loadProjectMemory()
+  if (!project.goal) return null
+  const goal: Goal = { ...project.goal, ...partial }
+  await saveProjectMemory({ ...project, goal })
+  return goal
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
@@ -64,7 +106,7 @@ function migrateSettings(raw: Record<string, unknown>): AppSettings {
   if ('anthropicApiKey' in raw && !('provider' in raw)) {
     return {
       provider: 'anthropic',
-      modelId: 'claude-sonnet-4-6',
+      modelId: 'claude-opus-4-7',
       apiKey: String(raw.anthropicApiKey ?? ''),
       baseUrl: '',
       useProxy: Boolean(raw.useProxy ?? false),

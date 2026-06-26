@@ -15,6 +15,7 @@ import type {
   AppSettings,
   ChatMessage,
   ExtractedProjectData,
+  Goal,
 } from '../renderer/src/types'
 
 // The API exposed to window.buildy in the renderer
@@ -76,6 +77,16 @@ const buildyAPI = {
 
   saveProject: (project: ProjectMemory): Promise<void> =>
     ipcRenderer.invoke(IPC.SAVE_PROJECT, project),
+
+  // ─── Goal (local only — stored alongside project memory) ───────────────────
+  goal: {
+    get: (): Promise<Goal | null> =>
+      ipcRenderer.invoke(IPC.GOAL_GET),
+    set: (goal: Partial<Goal>): Promise<Goal> =>
+      ipcRenderer.invoke(IPC.GOAL_SET, goal),
+    update: (partial: Partial<Goal>): Promise<Goal | null> =>
+      ipcRenderer.invoke(IPC.GOAL_UPDATE, partial),
+  },
 
   // ─── Provider info ────────────────────────────────────────────────────────
   getProviderInfos: (): Promise<unknown[]> =>
