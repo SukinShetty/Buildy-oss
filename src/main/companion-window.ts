@@ -10,9 +10,14 @@
 
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
+import { repositionGuidanceWindow, hideGuidanceWindow } from './guidance-window'
 
-const COMPANION_WIDTH = 380
-const COMPANION_HEIGHT = 380
+// Compact mascot window: holds ONLY the mascot, status label, and control pill.
+// Guidance renders in a separate window (see guidance-window.ts), so this window
+// never grows and the mascot is always visible. Width is sized to fit the
+// 7-control pill (a strict 200px would clip it).
+const COMPANION_WIDTH = 280
+const COMPANION_HEIGHT = 300
 
 let companionRef: BrowserWindow | null = null
 
@@ -85,6 +90,11 @@ export function createCompanionWindow(): BrowserWindow {
   }
 
   window.setIgnoreMouseEvents(false)
+
+  // Keep the guidance window anchored to the mascot as it's dragged around,
+  // and hide guidance whenever the mascot itself is hidden.
+  window.on('move', () => repositionGuidanceWindow())
+  window.on('hide', () => hideGuidanceWindow())
 
   // Guaranteed show after content is ready
   window.once('ready-to-show', () => {

@@ -2,10 +2,11 @@
 // All IPC channels registered in one place.
 // Every channel name is defined in types.ts (IPC constant) to prevent typos.
 
-import { ipcMain } from 'electron'
+import { ipcMain, clipboard } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
-import type { ProjectMemory, AppSettings, CaptureResult, Goal } from '../renderer/src/types'
+import type { ProjectMemory, AppSettings, CaptureResult, Goal, GuidancePayload } from '../renderer/src/types'
+import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow } from './guidance-window'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings, loadGoal, setGoal, updateGoal } from './memory'
 import { getProvider } from './ai/provider-registry'
@@ -263,6 +264,26 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SHOW_COMPANION, async () => {
     const { showCompanion } = require('./companion-window')
     showCompanion()
+  })
+
+  // ─── Guidance panel (secondary window) ───────────────────────────────────────
+
+  ipcMain.on(IPC.GUIDANCE_SHOW, (_event, payload: GuidancePayload) => {
+    showGuidanceWindow(payload)
+  })
+
+  ipcMain.on(IPC.GUIDANCE_HIDE, () => {
+    hideGuidanceWindow()
+  })
+
+  ipcMain.on(IPC.GUIDANCE_RESIZE, (_event, height: number) => {
+    resizeGuidanceWindow(height)
+  })
+
+  // Clipboard via main — reliable even from the non-focusable guidance window,
+  // where navigator.clipboard would throw "Document is not focused".
+  ipcMain.handle(IPC.COPY_TEXT, async (_event, text: string) => {
+    clipboard.writeText(text)
   })
 }
 

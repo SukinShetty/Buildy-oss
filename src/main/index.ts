@@ -13,10 +13,12 @@ import { join } from 'path'
 import { IPC } from '../renderer/src/types'
 import { registerIpcHandlers } from './ipc-handlers'
 import { createCompanionWindow, showCompanion, resetCompanionPosition } from './companion-window'
+import { createGuidanceWindow, destroyGuidanceWindow } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
 
 let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
+let guidanceWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
 // App / tray icon — Buildy mascot logo. Resolved relative to the built main
@@ -44,11 +46,14 @@ function shutdownApp(): void {
     }
   }
 
-  // 3. Destroy companion window
+  // 3. Destroy companion + guidance windows
   if (companionWindow && !companionWindow.isDestroyed()) {
     companionWindow.destroy()
   }
   companionWindow = null
+
+  destroyGuidanceWindow()
+  guidanceWindow = null
 
   // 4. Destroy main window (allow it to close for real)
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -174,6 +179,7 @@ function createSystemTray(): Tray {
 app.whenReady().then(() => {
   mainWindow = createMainWindow()
   companionWindow = createCompanionWindow()
+  guidanceWindow = createGuidanceWindow(companionWindow)
   tray = createSystemTray()
 
   registerIpcHandlers(mainWindow, companionWindow)
@@ -186,6 +192,7 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     mainWindow = createMainWindow()
     companionWindow = createCompanionWindow()
+    guidanceWindow = createGuidanceWindow(companionWindow)
     registerIpcHandlers(mainWindow, companionWindow)
   } else {
     showCompanion()
