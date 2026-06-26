@@ -144,6 +144,20 @@ export interface AnalysisResult {
   analysisDurationMs: number
 }
 
+// ─── Guidance panel ───────────────────────────────────────────────────────────
+// The guidance panel lives in its own floating window (separate from the mascot
+// window) so guidance content can never overflow or push the mascot out of view.
+// The companion forwards either an analysis result or a spoken-question answer.
+
+export interface QuestionAnswer {
+  question: string
+  answer: string
+}
+
+export type GuidancePayload =
+  | { kind: 'analysis'; analysis: AnalysisResult }
+  | { kind: 'answer'; answer: QuestionAnswer }
+
 // ─── Brainstorm Chat ──────────────────────────────────────────────────────────
 
 export interface ChatMessage {
@@ -193,6 +207,11 @@ export const IPC = {
   COMPANION_ANSWER:    'buildy:companion-answer',   // main → companion (answer to spoken question)
   SELECT_WATCH_SOURCE: 'buildy:select-watch-source', // companion → main (user picks a window)
   COMPANION_WATCHED_SOURCE: 'buildy:companion-watched-source', // main → companion (what's being watched)
+  GUIDANCE_SHOW:       'guidance:show',             // companion → main (show guidance panel with payload)
+  GUIDANCE_HIDE:       'guidance:hide',             // companion → main (hide guidance panel)
+  GUIDANCE_DATA:       'guidance:data',             // main → guidance window (payload to render)
+  GUIDANCE_RESIZE:     'guidance:resize',           // guidance window → main (report content height)
+  COPY_TEXT:           'buildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
   LOAD_PROJECT:        'buildy:load-project',
   SAVE_PROJECT:        'buildy:save-project',
   LOAD_SETTINGS:       'buildy:load-settings',

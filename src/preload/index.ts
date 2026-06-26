@@ -16,6 +16,8 @@ import type {
   ChatMessage,
   ExtractedProjectData,
   Goal,
+  GuidancePayload,
+  QuestionAnswer,
 } from '../renderer/src/types'
 
 // The API exposed to window.buildy in the renderer
@@ -191,6 +193,31 @@ const buildyAPI = {
     const listener = () => handler()
     ipcRenderer.on(IPC.COMPANION_SHUTDOWN, listener)
     return () => ipcRenderer.removeListener(IPC.COMPANION_SHUTDOWN, listener)
+  },
+
+  // ─── Guidance panel (secondary floating window) ────────────────────────────
+  // The companion forwards guidance here so it renders in its own window instead
+  // of overflowing the mascot window.
+  showGuidance: (analysis: AnalysisResult): void =>
+    ipcRenderer.send(IPC.GUIDANCE_SHOW, { kind: 'analysis', analysis } as GuidancePayload),
+
+  showGuidanceAnswer: (answer: QuestionAnswer): void =>
+    ipcRenderer.send(IPC.GUIDANCE_SHOW, { kind: 'answer', answer } as GuidancePayload),
+
+  hideGuidance: (): void =>
+    ipcRenderer.send(IPC.GUIDANCE_HIDE),
+
+  resizeGuidance: (height: number): void =>
+    ipcRenderer.send(IPC.GUIDANCE_RESIZE, height),
+
+  copyText: (text: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.COPY_TEXT, text),
+
+  onGuidanceData: (handler: (event: unknown, payload: GuidancePayload) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: GuidancePayload) =>
+      handler(_event, payload)
+    ipcRenderer.on(IPC.GUIDANCE_DATA, listener)
+    return () => ipcRenderer.removeListener(IPC.GUIDANCE_DATA, listener)
   },
 }
 
