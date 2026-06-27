@@ -15,6 +15,7 @@ import {
   loadSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
 } from './memory'
 import { setSecret } from './secure-store'
+import { debugLog, debugError } from './debug-log'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
@@ -26,12 +27,15 @@ import {
   confidenceEnum, chatHistorySchema,
 } from './ipc-schemas'
 
+// Registered ONCE at startup. Window references are GETTERS so handlers always
+// target the current window even if a window is recreated (no re-registration,
+// no duplicate-handler throws, no stacked listeners).
 export function registerIpcHandlers(
-  mainWindow: BrowserWindow,
-  companionWindow: BrowserWindow | null
+  getMainWindow: () => BrowserWindow,
+  getCompanionWindow: () => BrowserWindow | null
 ): void {
 
-  const mainWcId = mainWindow.webContents.id
+  const mainWcId = (): number => getMainWindow().webContents.id
 
   // Companion settings cache (resolved AppSettings, secrets injected). Invalidated
   // whenever settings/secrets change so API calls use the latest key.
@@ -105,10 +109,10 @@ export function registerIpcHandlers(
       const history = parseInput(chatHistorySchema, 'BRAINSTORM_START', historyRaw)
       const settings = resolveValidatedSettings('BRAINSTORM_START', settingsRaw)
       const provider = getProvider(settings.provider)
-      await provider.streamBrainstorm(mainWindow.webContents, userMessage, history as never, settings)
+      await provider.streamBrainstorm(getMainWindow().webContents, userMessage, history as never, settings)
     } catch (error) {
       console.error('[IPC] BRAINSTORM_START error:', error)
-      mainWindow.webContents.send(IPC.BRAINSTORM_ERROR, String(error))
+      getMainWindow().webContents.send(IPC.BRAINSTORM_ERROR, String(error))
     }
   })
 
@@ -196,7 +200,7 @@ export function registerIpcHandlers(
   // Save NON-SECRET settings only. Any stray key fields are stripped by the schema.
   ipcMain.handle(IPC.SAVE_SETTINGS, async (event, settingsRaw: unknown) => {
     try {
-      assertFromMainWindow(event, mainWcId, 'SAVE_SETTINGS')
+      assertFromMainWindow(event, mainWcId(), 'SAVE_SETTINGS')
       const nonSecret = parseInput(nonSecretSettingsSchema, 'SAVE_SETTINGS', settingsRaw)
       if (!isAllowedBaseUrl(nonSecret.provider, nonSecret.baseUrl)) {
         console.warn(`[IPC] rejected invalid input on channel SAVE_SETTINGS: baseUrl not allowed for provider ${nonSecret.provider}`)
@@ -213,7 +217,7 @@ export function registerIpcHandlers(
   // Store an API key (one-way renderer→main). Only the main settings window may do this.
   ipcMain.handle(IPC.SET_SECRET, async (event, raw: unknown) => {
     try {
-      assertFromMainWindow(event, mainWcId, 'SET_SECRET')
+      assertFromMainWindow(event, mainWcId(), 'SET_SECRET')
       const { name, value } = parseInput(setSecretSchema, 'SET_SECRET', raw)
       setSecret(name, value) // never logged
       invalidateSettingsCache()
@@ -235,21 +239,14 @@ export function registerIpcHandlers(
   ipcMain.handle(
     IPC.SELECT_WATCH_SOURCE,
     async (_event, sourceIdRaw: unknown, windowNameRaw: unknown) => {
-      if (!companionWindow) return
+      const companion = getCompanionWindow()
+      if (!companion) return
       try {
         const sid = parseInput(sourceIdSchema, 'SELECT_WATCH_SOURCE', sourceIdRaw)
         const wname = parseInput(windowNameSchema, 'SELECT_WATCH_SOURCE', windowNameRaw)
-        cachedSettings = await loadSettings()
-        lastSettingsLoad = Date.now()
-        // Load the user's goal (if any) so the analysis loop can inject it into prompts
-        const goal = await loadGoal()
-        startWatching(
-          companionWindow,
-          sid,
-          wname,
-          () => { void getFreshSettings(); return cachedSettings! },
-          goal
-        )
+        // The loop reloads settings + goal at the START of each cycle (async getters),
+        // so editing the goal or settings mid-watch takes effect without restarting.
+        startWatching(companion, sid, wname, () => loadSettings(), () => loadGoal())
       } catch (error) {
         console.error('[IPC] SELECT_WATCH_SOURCE error:', error)
       }
@@ -274,11 +271,12 @@ export function registerIpcHandlers(
 
   // User asks a spoken question — answer using current watched window context
   ipcMain.handle(IPC.ASK_QUESTION, async (_event, questionRaw: unknown) => {
-    if (!companionWindow) return
+    const companion = getCompanionWindow()
+    if (!companion) return
     try {
       const question = parseInput(shortText, 'ASK_QUESTION', questionRaw)
       const settings = await getFreshSettings()
-      await handleQuestion(companionWindow, question, settings)
+      await handleQuestion(companion, question, settings)
     } catch (error) {
       console.error('[IPC] ASK_QUESTION error:', error)
     }
@@ -296,9 +294,10 @@ export function registerIpcHandlers(
   })
 
   ipcMain.on(IPC.OPEN_PANEL, () => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.show()
-      mainWindow.focus()
+    const mw = getMainWindow()
+    if (!mw.isDestroyed()) {
+      mw.show()
+      mw.focus()
     }
   })
 
@@ -356,7 +355,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.MEMORY_ADD_PATTERN, async (_e, observation: unknown, confidence: unknown) =>
     nemp.recordPattern(parseInput(shortText, 'MEMORY_ADD_PATTERN', observation), parseInput(confidenceEnum, 'MEMORY_ADD_PATTERN', confidence)))
   ipcMain.handle(IPC.MEMORY_EXPORT_BUILDYMD, async () => {
-    const result = await dialog.showSaveDialog(mainWindow, {
+    const result = await dialog.showSaveDialog(getMainWindow(), {
       title: 'Export BUILDY.md',
       defaultPath: 'BUILDY.md',
       filters: [{ name: 'Markdown', extensions: ['md'] }],
@@ -428,12 +427,13 @@ async function transcribeWithElevenLabs(
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '')
-      console.error(`[ElevenLabs STT] API error ${response.status}: ${errText.slice(0, 300)}`)
+      console.error(`[ElevenLabs STT] API error ${response.status}`)
+      debugError(`[ElevenLabs STT] error body: ${errText.slice(0, 300)}`)
       return { success: false, text: '', error: `ElevenLabs STT error ${response.status}: ${errText.slice(0, 120)}` }
     }
 
     const json = await response.json()
-    console.log('[ElevenLabs STT] Response body:', JSON.stringify(json).slice(0, 300))
+    debugLog('[ElevenLabs STT] Response body:', JSON.stringify(json).slice(0, 300))
 
     const text = json.text?.trim() || ''
 
@@ -442,11 +442,12 @@ async function transcribeWithElevenLabs(
       return { success: false, text: '', error: 'No speech detected. Try speaking louder or longer.' }
     }
 
-    console.log(`[ElevenLabs STT] Transcribed: "${text}"`)
+    // Transcribed user speech — content-bearing, gated.
+    debugLog(`[ElevenLabs STT] Transcribed: "${text}"`)
     return { success: true, text }
   } catch (error: any) {
     const msg = String(error?.message || error)
-    console.error(`[ElevenLabs STT] Exception: ${msg}`)
+    debugError(`[ElevenLabs STT] Exception: ${msg}`)
 
     if (msg.includes('abort') || msg.includes('TIMEOUT')) {
       return { success: false, text: '', error: 'ElevenLabs STT timed out (30s). Check your internet connection.' }

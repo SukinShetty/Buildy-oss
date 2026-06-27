@@ -19,6 +19,17 @@ import { init as initNempMemory } from './nemp-bridge'
 import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
 import { migratePlaintextSecrets } from './secure-store'
 import { settingsFilePath } from './memory'
+import { debugLog } from './debug-log'
+
+// openExternal allowlist: only open safe protocols in the user's browser.
+function isSafeExternalUrl(url: string): boolean {
+  try {
+    const p = new URL(url).protocol
+    return p === 'https:' || p === 'mailto:'
+  } catch {
+    return false
+  }
+}
 
 let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
@@ -113,7 +124,13 @@ function createMainWindow(): BrowserWindow {
   // User opens it from companion gear icon or system tray.
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    // Only forward https: / mailto: to the OS browser. Deny file:, custom
+    // protocols, and malformed URLs (which could trigger unsafe handlers).
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url)
+    } else {
+      debugLog('[Security] blocked openExternal for disallowed URL protocol')
+    }
     return { action: 'deny' }
   })
 
@@ -222,7 +239,9 @@ app.whenReady().then(() => {
   voicePlayerWindow = createVoicePlayerWindow()
   tray = createSystemTray()
 
-  registerIpcHandlers(mainWindow, companionWindow)
+  // Register IPC handlers ONCE, with getters so they always target the current
+  // window even if a window is recreated (see app.on('activate')).
+  registerIpcHandlers(() => mainWindow!, () => companionWindow)
 
   // Initialise the Nemp memory layer (local-only). Non-fatal if it can't load.
   initNempMemory('default').catch((e) => console.error('[Nemp] init failed:', e))
@@ -233,11 +252,12 @@ app.whenReady().then(() => {
 // macOS: re-open when dock icon is clicked — show the companion, not the panel
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
+    // Recreate windows; IPC handlers are NOT re-registered (they were registered
+    // once at startup with getters that read these mutable refs).
     mainWindow = createMainWindow()
     companionWindow = createCompanionWindow()
     guidanceWindow = createGuidanceWindow(companionWindow)
     voicePlayerWindow = createVoicePlayerWindow()
-    registerIpcHandlers(mainWindow, companionWindow)
   } else {
     showCompanion()
   }
