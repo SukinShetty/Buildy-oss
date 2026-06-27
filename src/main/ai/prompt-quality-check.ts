@@ -13,6 +13,7 @@
 
 import type { AnalysisResult, AppSettings, Goal } from '../../renderer/src/types'
 import { fetchWithTimeout } from './fetch-with-timeout'
+import { debugLog } from '../debug-log'
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 
@@ -54,7 +55,7 @@ export async function checkPromptQuality(
 
     const valid = json.valid !== false
     const improved = typeof json.improvedPrompt === 'string' ? json.improvedPrompt.trim() : ''
-    console.log(`[PromptQuality] valid=${valid} reason="${json.reason || ''}" improved=${improved ? 'yes' : 'no'}`)
+    debugLog(`[PromptQuality] valid=${valid} reason="${json.reason || ''}" improved=${improved ? 'yes' : 'no'}`)
     return {
       valid,
       reason: typeof json.reason === 'string' ? json.reason : undefined,

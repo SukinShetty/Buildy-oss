@@ -12,6 +12,7 @@
 //   - use_speaker_boost: true
 
 import { fetchWithTimeout } from './fetch-with-timeout'
+import { debugLog, debugError } from '../debug-log'
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1'
 // Hard cap so a long answer/explanation is read fully but extreme TTS calls are
@@ -66,7 +67,8 @@ export async function synthesizeSpeech(
     return { success: false, audioBase64: null, error: 'Empty text' }
   }
 
-  console.log(`[ElevenLabs] TTS request: "${cleanText.slice(0, 60)}..." (${cleanText.length} chars) voice=${voiceId}`)
+  // Spoken text is screen-derived content — gate it.
+  debugLog(`[ElevenLabs] TTS request: "${cleanText.slice(0, 60)}..." (${cleanText.length} chars) voice=${voiceId}`)
 
   try {
     const response = await fetchWithTimeout(
@@ -93,7 +95,8 @@ export async function synthesizeSpeech(
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '')
-      console.error(`[ElevenLabs] TTS failed: ${response.status} ${errorBody.slice(0, 200)}`)
+      console.error(`[ElevenLabs] TTS failed: ${response.status}`)
+      debugError(`[ElevenLabs] error body: ${errorBody.slice(0, 200)}`)
       return {
         success: false,
         audioBase64: null,
@@ -107,7 +110,7 @@ export async function synthesizeSpeech(
 
     return { success: true, audioBase64, error: null }
   } catch (error) {
-    console.error(`[ElevenLabs] TTS exception: ${error}`)
+    debugError(`[ElevenLabs] TTS exception: ${error}`)
     return {
       success: false,
       audioBase64: null,
