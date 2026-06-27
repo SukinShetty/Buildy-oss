@@ -1,386 +1,260 @@
 // MemoryScreen.tsx
-// Shows the current project memory and lets the user edit it.
-// The memory feeds into every Claude analysis — better context = better guidance.
+// Buildy's project memory, backed by the Nemp memory layer (loop engineering
+// Block 2). Shows what Buildy knows — completed work, blockers, decisions,
+// patterns, and recent activity — plus export + reset.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../store/useAppStore'
-import type { ExplanationStyle } from '../types'
+import type { MemorySnapshot, MemoryEntry } from '../types'
+
+const EMPTY_SNAPSHOT: MemorySnapshot = {
+  goal: null,
+  completed: [],
+  inProgress: [],
+  blockersOpen: [],
+  blockersResolved: [],
+  decisions: [],
+  patterns: [],
+  recent: [],
+}
 
 export function MemoryScreen(): React.ReactElement {
-  const { project, patchProject, setCurrentScreen } = useAppStore()
+  const { setCurrentScreen } = useAppStore()
+  const [snap, setSnap] = useState<MemorySnapshot>(EMPTY_SNAPSHOT)
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState<string | null>(null)
+  const [confirmReset, setConfirmReset] = useState(false)
 
-  // Local form state — synced from store on mount, saved on change
-  const [projectName, setProjectName] = useState(project.projectName)
-  const [productSummary, setProductSummary] = useState(project.productSummary)
-  const [targetUser, setTargetUser] = useState(project.targetUser)
-  const [coreProblem, setCoreProblem] = useState(project.coreProblem)
-  const [explanationStyle, setExplanationStyle] = useState<ExplanationStyle>(
-    project.explanationStyle
-  )
-  const [savedAt, setSavedAt] = useState<string | null>(null)
-
-  // Sync form if the project changes externally (e.g. after brainstorm)
-  useEffect(() => {
-    setProjectName(project.projectName)
-    setProductSummary(project.productSummary)
-    setTargetUser(project.targetUser)
-    setCoreProblem(project.coreProblem)
-    setExplanationStyle(project.explanationStyle)
-  }, [project.updatedAt])
-
-  function handleSave(): void {
-    const updatedProject = {
-      ...project,
-      projectName,
-      productSummary,
-      targetUser,
-      coreProblem,
-      explanationStyle,
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const s = await window.buildy.memory.get()
+      setSnap(s)
+    } catch (e) {
+      console.warn('[MemoryScreen] load failed:', e)
+    } finally {
+      setLoading(false)
     }
-    patchProject(updatedProject)
-    window.buildy.saveProject(updatedProject)
-    setSavedAt(new Date().toLocaleTimeString())
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  function flash(msg: string): void {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2500)
   }
 
+  async function onExport(): Promise<void> {
+    try {
+      const res = await window.buildy.memory.exportBuildyMd()
+      flash(res.saved ? `Exported to ${res.path}` : 'Export cancelled')
+    } catch (e) {
+      console.warn('[MemoryScreen] export failed:', e)
+      flash('Export failed')
+    }
+  }
+
+  async function onReset(): Promise<void> {
+    setConfirmReset(false)
+    try {
+      await window.buildy.memory.reset()
+      flash('Memory cleared')
+      load()
+    } catch (e) {
+      console.warn('[MemoryScreen] reset failed:', e)
+    }
+  }
+
+  const totalCount =
+    snap.completed.length + snap.inProgress.length + snap.blockersOpen.length +
+    snap.blockersResolved.length + snap.decisions.length + snap.patterns.length
+
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div style={styles.headerRow}>
-          <div style={styles.headerTitle}>📋 Project Memory</div>
-          <button
-            className="btn-ghost"
-            onClick={() => setCurrentScreen('goal')}
-            style={styles.newProjectBtn}
-            title="State a fresh goal for a new project"
-          >
-            🎯 New project
-          </button>
+    <div style={S.container}>
+      <div style={S.header}>
+        <div style={S.headerRow}>
+          <div style={S.headerTitle}>🧠 Project Memory</div>
+          <button className="btn-ghost" onClick={load} style={S.smallBtn} title="Refresh">↻</button>
         </div>
-        <div style={styles.headerSub}>
-          This is what Buildy knows about your product. Better context = better guidance.
+        <div style={S.headerSub}>
+          What Buildy remembers about your project. 100% local — nothing leaves your device.
         </div>
       </div>
 
-      <div style={styles.form}>
-        {/* Product name */}
-        <FormField
-          label="Product name"
-          hint="What's it called?"
-        >
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="e.g. TaskFlow, ShopBot, FitTracker…"
-          />
-        </FormField>
+      <div style={S.body}>
+        {/* Goal */}
+        <div style={S.goalCard}>
+          <div style={S.goalLabel}>GOAL</div>
+          <div style={S.goalText}>
+            {snap.goal?.purpose || 'No goal set yet.'}
+          </div>
+          <button style={S.goalEdit} onClick={() => setCurrentScreen('goal')}>
+            {snap.goal?.purpose ? 'Edit goal →' : 'Set a goal →'}
+          </button>
+        </div>
 
-        {/* Product summary */}
-        <FormField
-          label="What it does"
-          hint="1–2 sentences"
-        >
-          <textarea
-            value={productSummary}
-            onChange={(e) => setProductSummary(e.target.value)}
-            placeholder="e.g. A web app that helps freelancers track their invoices and get paid faster."
-            rows={3}
-          />
-        </FormField>
+        {loading && <div style={S.muted}>Loading memory…</div>}
 
-        {/* Target user */}
-        <FormField
-          label="Who it's for"
-          hint="Your target user"
-        >
-          <input
-            type="text"
-            value={targetUser}
-            onChange={(e) => setTargetUser(e.target.value)}
-            placeholder="e.g. Freelancers, small business owners, parents…"
-          />
-        </FormField>
+        {!loading && totalCount === 0 && snap.recent.length === 0 && (
+          <div style={S.empty}>
+            Buildy hasn't learned anything yet. Start a watching session and it will
+            remember what you build.
+          </div>
+        )}
 
-        {/* Core problem */}
-        <FormField
-          label="Problem it solves"
-          hint="The main pain point"
-        >
-          <textarea
-            value={coreProblem}
-            onChange={(e) => setCoreProblem(e.target.value)}
-            placeholder="e.g. Freelancers forget to follow up on invoices and lose money."
-            rows={2}
-          />
-        </FormField>
+        <Section title="Completed features" count={snap.completed.length} color="var(--color-success)">
+          <EntryList items={snap.completed} color="var(--color-success)" />
+        </Section>
 
-        {/* Explanation style */}
-        <FormField
-          label="How technical are you?"
-          hint="Affects how Buildy explains things"
-        >
-          <div style={styles.styleOptions}>
-            {EXPLANATION_STYLES.map(({ value, label, description }) => (
-              <button
-                key={value}
-                onClick={() => setExplanationStyle(value)}
-                style={{
-                  ...styles.styleOption,
-                  ...(explanationStyle === value
-                    ? styles.styleOptionSelected
-                    : styles.styleOptionDefault),
-                }}
-              >
-                <div style={styles.styleOptionLabel}>{label}</div>
-                <div style={styles.styleOptionDesc}>{description}</div>
+        <Section title="In progress" count={snap.inProgress.length} color="var(--color-accent)">
+          <EntryList items={snap.inProgress} color="var(--color-accent)" />
+        </Section>
+
+        <Section title="Open blockers" count={snap.blockersOpen.length} color="var(--color-danger)">
+          <EntryList items={snap.blockersOpen} color="var(--color-danger)" />
+        </Section>
+
+        <Section title="Resolved blockers" count={snap.blockersResolved.length} color="var(--color-text-dim)">
+          <EntryList items={snap.blockersResolved} color="var(--color-text-dim)" />
+        </Section>
+
+        <Section title="Key decisions" count={snap.decisions.length} color="var(--color-accent)">
+          <EntryList items={snap.decisions} color="var(--color-accent)" />
+        </Section>
+
+        <Section title="Patterns Buildy noticed" count={snap.patterns.length} color="var(--color-warning)">
+          <EntryList items={snap.patterns} color="var(--color-warning)" />
+        </Section>
+
+        <Section title="Recent activity" count={snap.recent.length} color="var(--color-text-muted)" defaultOpen={false}>
+          <EntryList items={snap.recent} color="var(--color-text-muted)" />
+        </Section>
+
+        {/* Actions */}
+        <div style={S.actions}>
+          <button className="btn-primary" onClick={onExport} style={{ flex: 1, justifyContent: 'center' }}>
+            Export BUILDY.md
+          </button>
+          <button className="btn-ghost" onClick={() => setConfirmReset(true)} style={S.resetBtn}>
+            Reset memory
+          </button>
+        </div>
+      </div>
+
+      {toast && <div style={S.toast}>{toast}</div>}
+
+      {confirmReset && (
+        <div style={S.modalOverlay}>
+          <div style={S.modalCard}>
+            <div style={S.modalTitle}>Reset all memory?</div>
+            <div style={S.modalText}>
+              This permanently deletes everything Buildy has learned about this
+              project (completed work, blockers, decisions, patterns). Your goal is
+              kept. This cannot be undone.
+            </div>
+            <div style={S.modalButtons}>
+              <button className="btn-ghost" onClick={() => setConfirmReset(false)} style={{ flex: 1, justifyContent: 'center' }}>
+                Cancel
               </button>
-            ))}
+              <button onClick={onReset} style={S.dangerBtn}>Reset memory</button>
+            </div>
           </div>
-        </FormField>
-
-        {/* What's built (read-only — populated by analysis) */}
-        {project.completedFeatures.length > 0 && (
-          <FormField label="What Buildy thinks is built" hint="Auto-detected from analysis">
-            <FeatureList items={project.completedFeatures} color="var(--color-success)" />
-          </FormField>
-        )}
-
-        {/* What's missing (read-only) */}
-        {project.missingFeatures.length > 0 && (
-          <FormField label="What Buildy thinks is still missing" hint="Auto-detected from analysis">
-            <FeatureList items={project.missingFeatures} color="var(--color-warning)" />
-          </FormField>
-        )}
-
-        {/* Save button */}
-        <div style={styles.saveRow}>
-          <button className="btn-primary" onClick={handleSave} style={{ flex: 1, justifyContent: 'center' }}>
-            Save Memory
-          </button>
-          {savedAt && (
-            <span style={styles.savedAt}>✓ Saved at {savedAt}</span>
-          )}
         </div>
-
-        {/* Brainstorm nudge if no project */}
-        {!project.projectName && (
-          <div style={styles.brainstormNudge}>
-            No project yet.{' '}
-            <button
-              style={styles.nudgeLink}
-              onClick={() => setCurrentScreen('brainstorm')}
-            >
-              Chat with Buildy in Brainstorm →
-            </button>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Collapsible section ────────────────────────────────────────────────────────
 
-function FormField({
-  label,
-  hint,
+function Section({
+  title,
+  count,
+  color,
+  defaultOpen = true,
   children,
 }: {
-  label: string
-  hint?: string
+  title: string
+  count: number
+  color: string
+  defaultOpen?: boolean
   children: React.ReactNode
-}): React.ReactElement {
+}): React.ReactElement | null {
+  const [open, setOpen] = useState(defaultOpen)
+  if (count === 0) return null
   return (
-    <div style={styles.field}>
-      <div style={styles.fieldHeader}>
-        <span style={styles.fieldLabel}>{label}</span>
-        {hint && <span style={styles.fieldHint}>{hint}</span>}
-      </div>
-      {children}
+    <div style={S.section}>
+      <button style={S.sectionHead} onClick={() => setOpen((o) => !o)}>
+        <span style={{ ...S.sectionDot, background: color }} />
+        <span style={S.sectionTitle}>{title}</span>
+        <span style={S.sectionCount}>{count}</span>
+        <span style={S.chevron}>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && <div style={S.sectionBody}>{children}</div>}
     </div>
   )
 }
 
-function FeatureList({ items, color }: { items: string[]; color: string }): React.ReactElement {
+function EntryList({ items, color }: { items: MemoryEntry[]; color: string }): React.ReactElement {
   return (
-    <div style={styles.featureList}>
-      {items.map((item, i) => (
-        <div key={i} style={styles.featureItem}>
-          <span style={{ ...styles.featureDot, background: color }} />
-          <span style={styles.featureText}>{item}</span>
+    <div style={S.list}>
+      {items.map((m) => (
+        <div key={m.key} style={S.entry}>
+          <span style={{ ...S.entryDot, background: color }} />
+          <div style={S.entryMain}>
+            <div style={S.entryText}>{m.value}</div>
+            <div style={S.entryTime}>{formatTime(m.timestamp)}</div>
+          </div>
         </div>
       ))}
     </div>
   )
 }
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  } catch {
+    return iso.slice(0, 16)
+  }
+}
 
-const EXPLANATION_STYLES: Array<{
-  value: ExplanationStyle
-  label: string
-  description: string
-}> = [
-  {
-    value: 'very_simple',
-    label: '🟢 Keep it simple',
-    description: 'No tech words. Use everyday language.',
-  },
-  {
-    value: 'balanced',
-    label: '🟡 Middle ground',
-    description: 'Mostly plain, some tech terms explained.',
-  },
-  {
-    value: 'technical',
-    label: '🔵 I know some tech',
-    description: 'Tech terms are fine. Assume basic coding literacy.',
-  },
-]
+// ─── Styles ─────────────────────────────────────────────────────────────────────
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    height: '100%',
-    overflow: 'hidden',
-  },
-  header: {
-    padding: '12px 16px 8px',
-    borderBottom: '1px solid var(--color-border)',
-    flexShrink: 0,
-  },
-  headerRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  newProjectBtn: {
-    fontSize: 12,
-    padding: '4px 10px',
-    whiteSpace: 'nowrap' as const,
-  },
-  headerTitle: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: 'var(--color-text)',
-  },
-  headerSub: {
-    fontSize: 12,
-    color: 'var(--color-text-muted)',
-    marginTop: 2,
-  },
-  form: {
-    flex: 1,
-    overflowY: 'auto' as const,
-    padding: '12px 16px',
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 14,
-  },
-  field: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 5,
-  },
-  fieldHeader: {
-    display: 'flex',
-    alignItems: 'baseline',
-    gap: 6,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: 600,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
-    color: 'var(--color-text-muted)',
-  },
-  fieldHint: {
-    fontSize: 11,
-    color: 'var(--color-text-dim)',
-  },
-  styleOptions: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 4,
-  },
-  styleOption: {
-    padding: '8px 10px',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid transparent',
-    cursor: 'pointer',
-    textAlign: 'left' as const,
-    width: '100%',
-  },
-  styleOptionDefault: {
-    background: 'var(--color-surface)',
-    borderColor: 'var(--color-border)',
-    color: 'var(--color-text-muted)',
-  },
-  styleOptionSelected: {
-    background: 'var(--color-accent-muted)',
-    borderColor: 'var(--color-accent)',
-    color: 'var(--color-text)',
-  },
-  styleOptionLabel: {
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  styleOptionDesc: {
-    fontSize: 11,
-    color: 'var(--color-text-dim)',
-    marginTop: 1,
-  },
-  featureList: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: 4,
-    padding: '8px 10px',
-    background: 'var(--color-surface)',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--color-border)',
-  },
-  featureItem: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  featureDot: {
-    width: 6,
-    height: 6,
-    borderRadius: '50%',
-    marginTop: 5,
-    flexShrink: 0,
-  },
-  featureText: {
-    fontSize: 12,
-    color: 'var(--color-text)',
-    lineHeight: 1.4,
-  },
-  saveRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-  },
-  savedAt: {
-    fontSize: 11,
-    color: 'var(--color-success)',
-  },
-  brainstormNudge: {
-    fontSize: 12,
-    color: 'var(--color-text-muted)',
-    textAlign: 'center' as const,
-    padding: '8px 0',
-  },
-  nudgeLink: {
-    background: 'none',
-    border: 'none',
-    color: 'var(--color-accent)',
-    cursor: 'pointer',
-    fontSize: 12,
-    textDecoration: 'underline',
-  },
+const S = {
+  container: { display: 'flex', flexDirection: 'column' as const, height: '100%', overflow: 'hidden', position: 'relative' as const },
+  header: { padding: '12px 16px 8px', borderBottom: '1px solid var(--color-border)', flexShrink: 0 },
+  headerRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  headerTitle: { fontSize: 14, fontWeight: 700, color: 'var(--color-text)' },
+  headerSub: { fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 },
+  smallBtn: { fontSize: 14, padding: '2px 8px' },
+  body: { flex: 1, overflowY: 'auto' as const, padding: '12px 16px', display: 'flex', flexDirection: 'column' as const, gap: 10 },
+  goalCard: { background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', padding: 12 },
+  goalLabel: { fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--color-text-muted)' },
+  goalText: { fontSize: 13, color: 'var(--color-text)', marginTop: 4, lineHeight: 1.4 },
+  goalEdit: { marginTop: 6, background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontSize: 12, padding: 0 },
+  muted: { fontSize: 12, color: 'var(--color-text-muted)', padding: '8px 0' },
+  empty: { fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5, padding: '12px', background: 'var(--color-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' },
+  section: { border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' },
+  sectionHead: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 10px', background: 'var(--color-surface)', border: 'none', cursor: 'pointer', textAlign: 'left' as const },
+  sectionDot: { width: 7, height: 7, borderRadius: '50%', flexShrink: 0 },
+  sectionTitle: { fontSize: 12, fontWeight: 600, color: 'var(--color-text)', flex: 1 },
+  sectionCount: { fontSize: 11, color: 'var(--color-text-muted)', background: 'var(--color-bg)', borderRadius: 999, padding: '1px 7px' },
+  chevron: { fontSize: 10, color: 'var(--color-text-dim)' },
+  sectionBody: { padding: '6px 10px 10px' },
+  list: { display: 'flex', flexDirection: 'column' as const, gap: 6 },
+  entry: { display: 'flex', alignItems: 'flex-start', gap: 8 },
+  entryDot: { width: 6, height: 6, borderRadius: '50%', marginTop: 5, flexShrink: 0 },
+  entryMain: { flex: 1, minWidth: 0 },
+  entryText: { fontSize: 12, color: 'var(--color-text)', lineHeight: 1.4, whiteSpace: 'pre-wrap' as const },
+  entryTime: { fontSize: 10, color: 'var(--color-text-dim)', marginTop: 1 },
+  actions: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 },
+  resetBtn: { fontSize: 12, padding: '6px 12px', color: 'var(--color-danger)', whiteSpace: 'nowrap' as const },
+  toast: { position: 'absolute' as const, bottom: 16, left: '50%', transform: 'translateX(-50%)', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '8px 14px', fontSize: 12, color: 'var(--color-text)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)', maxWidth: '90%' },
+  modalOverlay: { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 },
+  modalCard: { background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: 20, maxWidth: 360, width: '100%', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' },
+  modalTitle: { fontSize: 15, fontWeight: 700, color: 'var(--color-text)', marginBottom: 8 },
+  modalText: { fontSize: 13, color: 'var(--color-text-muted)', lineHeight: 1.5, marginBottom: 16 },
+  modalButtons: { display: 'flex', gap: 8 },
+  dangerBtn: { flex: 1, justifyContent: 'center', display: 'flex', alignItems: 'center', background: 'var(--color-danger)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '8px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
 }
