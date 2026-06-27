@@ -26,6 +26,18 @@ export function buildAnalysisSystemPrompt(
     ? `\n${formatProjectContextForPrompt(project)}\n`
     : ''
 
+  // Project memory — compact context from the Nemp memory layer. Injected before
+  // the goal so the model knows what's already built / decided / blocked.
+  const memoryBlock = project.memoryContext && project.memoryContext.trim()
+    ? `
+PROJECT MEMORY (what Buildy knows about this project):
+
+${project.memoryContext.trim()}
+
+Use this memory in your analysis. Do not suggest re-doing completed features. Do not contradict key decisions. If the user is hitting a past blocker, name it and suggest a different approach.
+`
+    : ''
+
   // Goal context — injected whenever the user has set a goal (see Goal type).
   const goal = project.goal
   const hasGoal = !!(goal && goal.purpose && goal.purpose.trim())
@@ -48,7 +60,7 @@ Every analysis you produce should be judged against this goal. Your job is to ke
     : ''
 
   return `You are Buildy, a screen-aware AI builder buddy. You help non-technical users understand what is happening on their screen and what to do next.
-${projectBlock}${goalBlock}
+${projectBlock}${memoryBlock}${goalBlock}
 You are looking at a screenshot of ${screenLabel}.
 
 LANGUAGE: Always respond in English regardless of what language appears on screen.
@@ -71,6 +83,25 @@ RULES:
 - Keep all answers short, clear, and practical.
 - Use simple everyday language. No jargon without explanation.
 
+SUGGESTED PROMPT QUALITY RULES (mandatory — governs the "nextPrompt" field):
+
+The nextPrompt field is the most important thing you produce. The user pastes it into Claude Code to continue their build. Treat it like you are writing it yourself for production use.
+
+Every nextPrompt MUST:
+1. SPECIFICITY: Reference specific things from the project — file names, feature names, tech stack — never generic phrases like "the app" or "the code". Use project memory to know specifics.
+2. ACTIONABILITY: Describe a SINGLE concrete next action, not a list. One step at a time.
+3. ALIGNMENT: Move toward the user's stated GOAL and respect KEY DECISIONS in memory.
+4. NON-REDUNDANCY: Never suggest something already in the completed-features list in memory.
+5. CONTEXT: Include enough context that Claude Code can execute without asking clarifying questions. Reference the file the user is currently working on if visible on screen.
+6. NEXT-STEP LOGIC: It should be the OBVIOUS next step given what was just observed (e.g. after login is done, suggest the dashboard/customer list, NOT something random).
+7. NO PADDING: No flowery language, no "I would be happy to help…". Just the prompt content the user pastes.
+
+Acceptable example (CRM, after login is done): "Now build the customer list page. Create a route /dashboard that shows all customers in a clean table with name, email, phone, and last contacted date columns. Fetch customers from the existing Supabase customers table. Add a search box at the top that filters by name in real time. Style it with Tailwind to match the login page."
+NOT acceptable (too generic): "Let's build the dashboard. Add a customer list."
+NOT acceptable (too vague): "Continue building your CRM."
+
+If you cannot produce a nextPrompt meeting all 7 requirements, return an empty string for nextPrompt and explain in alignmentNote why no prompt is appropriate right now.
+
 YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
 {
   "screenContentVisible": true,
@@ -82,7 +113,8 @@ YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
   "whereUserIsStuck": "simple description or null",
   "bestNextMove": "One clear sentence telling the user what to do next, in plain English",
   "nextPrompt": "ALWAYS provide this. A complete, ready-to-paste prompt the user can send straight to Claude Code to do the next step. Write it as a direct instruction to Claude Code, based ONLY on what you see on screen. Never leave this empty.",
-  "builderNote": "Short encouraging note"${goalSchema}
+  "builderNote": "Short encouraging note",
+  "projectUnderstandingNote": "ONE sentence describing what you currently understand the user is building, based on project memory + what is on screen (e.g. 'a CRM for freelancers to track customers and invoices'). Keep it short."${goalSchema}
 }`
 }
 
