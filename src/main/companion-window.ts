@@ -16,7 +16,7 @@ import { repositionGuidanceWindow, hideGuidanceWindow } from './guidance-window'
 // Guidance renders in a separate window (see guidance-window.ts), so this window
 // never grows and the mascot is always visible. Width is sized to fit the
 // 7-control pill (a strict 200px would clip it).
-const COMPANION_WIDTH = 280
+const COMPANION_WIDTH = 300
 const COMPANION_HEIGHT = 300
 
 let companionRef: BrowserWindow | null = null
@@ -66,9 +66,13 @@ export function createCompanionWindow(): BrowserWindow {
     transparent: true,
     backgroundColor: '#00000000',
     resizable: false,
-    skipTaskbar: false,
+    skipTaskbar: false,        // keep it in the taskbar so it can be summoned
     hasShadow: false,
     alwaysOnTop: true,
+    // NOTE: intentionally left focusable (default). The mascot hosts the
+    // click-to-talk mic (getUserMedia), which fails in non-focusable windows on
+    // some platforms. Visibility is guaranteed by the 'screen-saver' always-on-top
+    // level + visibleOnAllWorkspaces below, not by focus behaviour.
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -78,7 +82,7 @@ export function createCompanionWindow(): BrowserWindow {
     },
   })
 
-  window.setAlwaysOnTop(true, 'floating')
+  window.setAlwaysOnTop(true, 'screen-saver')
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -111,14 +115,14 @@ export function createCompanionWindow(): BrowserWindow {
     window.show()
     console.log('[Companion] show() called')
 
-    window.setAlwaysOnTop(true, 'floating')
+    window.setAlwaysOnTop(true, 'screen-saver')
     window.focus()
     console.log('[Companion] focus() called')
 
     // Second focus after a short delay — Windows sometimes loses focus to the previous window
     setTimeout(() => {
       if (!window.isDestroyed()) {
-        window.setAlwaysOnTop(true, 'floating')
+        window.setAlwaysOnTop(true, 'screen-saver')
         window.focus()
         const finalBounds = window.getBounds()
         console.log(`[Companion] Visible and focused at x=${finalBounds.x} y=${finalBounds.y}`)
@@ -148,7 +152,7 @@ export function resetCompanionPosition(): void {
   })
 
   companionRef.show()
-  companionRef.setAlwaysOnTop(true, 'floating')
+  companionRef.setAlwaysOnTop(true, 'screen-saver')
   companionRef.focus()
 }
 
@@ -163,8 +167,21 @@ export function showCompanion(): void {
     resetCompanionPosition()
   } else {
     companionRef.show()
-    companionRef.setAlwaysOnTop(true, 'floating')
+    // Re-assert top-most every time we summon — z-order can be lost after the
+    // user interacts with other apps.
+    companionRef.setAlwaysOnTop(true, 'screen-saver')
+    companionRef.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     companionRef.focus()
   }
-  console.log('[Companion] showCompanion() — visible and focused')
+  console.log('[Companion] showCompanion() — visible and re-asserted top-most')
+}
+
+/**
+ * Hide the companion (used by the tray "Hide Buildy" action). The guidance window
+ * follows automatically via the companion's 'hide' event.
+ */
+export function hideCompanion(): void {
+  if (!companionRef || companionRef.isDestroyed()) return
+  companionRef.hide()
+  console.log('[Companion] hideCompanion() — hidden')
 }
