@@ -5,22 +5,59 @@
 import { ipcMain, clipboard, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
-import type { ProjectMemory, AppSettings, CaptureResult, Goal, GuidancePayload } from '../renderer/src/types'
+import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
 import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
-import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings, loadGoal, setGoal, updateGoal } from './memory'
+import {
+  loadProjectMemory, saveProjectMemory, loadGoal, setGoal, updateGoal,
+  loadSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
+} from './memory'
+import { setSecret } from './secure-store'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
 import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion } from './analysis-loop'
-import { fetchWithTimeout } from './ai/fetch-with-timeout'
+import {
+  parseInput, assertFromMainWindow, isAllowedBaseUrl,
+  nonSecretSettingsSchema, setSecretSchema, captureResultSchema, projectMemorySchema,
+  goalPartialSchema, shortText, sourceId as sourceIdSchema, windowName as windowNameSchema,
+  confidenceEnum, chatHistorySchema,
+} from './ipc-schemas'
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   companionWindow: BrowserWindow | null
 ): void {
+
+  const mainWcId = mainWindow.webContents.id
+
+  // Companion settings cache (resolved AppSettings, secrets injected). Invalidated
+  // whenever settings/secrets change so API calls use the latest key.
+  let cachedSettings: AppSettings | null = null
+  let lastSettingsLoad = 0
+  const SETTINGS_REFRESH_MS = 10_000
+
+  async function getFreshSettings(): Promise<AppSettings> {
+    if (!cachedSettings || Date.now() - lastSettingsLoad > SETTINGS_REFRESH_MS) {
+      cachedSettings = await loadSettings()
+      lastSettingsLoad = Date.now()
+    }
+    return cachedSettings
+  }
+  function invalidateSettingsCache(): void { cachedSettings = null; lastSettingsLoad = 0 }
+
+  // Validate renderer-supplied non-secret settings + base-URL allowlist, then
+  // resolve the (main-owned) secrets. Renderer keys are never trusted here.
+  function resolveValidatedSettings(channel: string, input: unknown): AppSettings {
+    const nonSecret = parseInput(nonSecretSettingsSchema, channel, input) as NonSecretSettings
+    if (!isAllowedBaseUrl(nonSecret.provider, nonSecret.baseUrl)) {
+      console.warn(`[IPC] rejected invalid input on channel ${channel}: baseUrl not allowed for provider ${nonSecret.provider}`)
+      throw new Error(`Disallowed base URL on ${channel}`)
+    }
+    return resolveSettings(nonSecret)
+  }
 
   // ─── Window listing ─────────────────────────────────────────────────────────
 
@@ -35,9 +72,10 @@ export function registerIpcHandlers(
 
   // ─── Screen capture ─────────────────────────────────────────────────────────
 
-  ipcMain.handle(IPC.CAPTURE_WINDOW, async (_event, sourceId: string | null) => {
+  ipcMain.handle(IPC.CAPTURE_WINDOW, async (_event, rawSourceId: unknown) => {
     try {
-      return await captureWindowForAnalysis(sourceId)
+      const sid = rawSourceId == null ? null : parseInput(sourceIdSchema, 'CAPTURE_WINDOW', rawSourceId)
+      return await captureWindowForAnalysis(sid)
     } catch (error) {
       console.error('[IPC] CAPTURE_WINDOW error:', error)
       throw error
@@ -46,43 +84,33 @@ export function registerIpcHandlers(
 
   // ─── Screen analysis (provider-agnostic) ────────────────────────────────────
 
-  ipcMain.handle(
-    IPC.ANALYZE,
-    async (_event, capture: CaptureResult, project: ProjectMemory, settings: AppSettings) => {
-      try {
-        const provider = getProvider(settings.provider)
-        return await provider.analyzeScreen(capture, project, settings)
-      } catch (error) {
-        console.error('[IPC] ANALYZE error:', error)
-        throw error
-      }
+  ipcMain.handle(IPC.ANALYZE, async (_event, captureRaw: unknown, projectRaw: unknown, settingsRaw: unknown) => {
+    try {
+      const capture = parseInput(captureResultSchema, 'ANALYZE', captureRaw)
+      const project = parseInput(projectMemorySchema, 'ANALYZE', projectRaw)
+      const settings = resolveValidatedSettings('ANALYZE', settingsRaw)
+      const provider = getProvider(settings.provider)
+      return await provider.analyzeScreen(capture as never, project as never, settings)
+    } catch (error) {
+      console.error('[IPC] ANALYZE error:', error)
+      throw error
     }
-  )
+  })
 
   // ─── Brainstorm streaming (provider-agnostic) ───────────────────────────────
 
-  ipcMain.handle(
-    IPC.BRAINSTORM_START,
-    async (
-      _event,
-      userMessage: string,
-      conversationHistory: Array<{ role: string; content: string; timestamp: string }>,
-      settings: AppSettings
-    ) => {
-      try {
-        const provider = getProvider(settings.provider)
-        await provider.streamBrainstorm(
-          mainWindow.webContents,
-          userMessage,
-          conversationHistory,
-          settings
-        )
-      } catch (error) {
-        console.error('[IPC] BRAINSTORM_START error:', error)
-        mainWindow.webContents.send(IPC.BRAINSTORM_ERROR, String(error))
-      }
+  ipcMain.handle(IPC.BRAINSTORM_START, async (_event, userMessageRaw: unknown, historyRaw: unknown, settingsRaw: unknown) => {
+    try {
+      const userMessage = parseInput(shortText, 'BRAINSTORM_START', userMessageRaw)
+      const history = parseInput(chatHistorySchema, 'BRAINSTORM_START', historyRaw)
+      const settings = resolveValidatedSettings('BRAINSTORM_START', settingsRaw)
+      const provider = getProvider(settings.provider)
+      await provider.streamBrainstorm(mainWindow.webContents, userMessage, history as never, settings)
+    } catch (error) {
+      console.error('[IPC] BRAINSTORM_START error:', error)
+      mainWindow.webContents.send(IPC.BRAINSTORM_ERROR, String(error))
     }
-  )
+  })
 
   // ─── Provider info (for Settings UI) ────────────────────────────────────────
 
@@ -92,8 +120,9 @@ export function registerIpcHandlers(
 
   // ─── Connection test ─────────────────────────────────────────────────────────
 
-  ipcMain.handle(IPC.TEST_CONNECTION, async (_event, settings: AppSettings) => {
+  ipcMain.handle(IPC.TEST_CONNECTION, async (_event, settingsRaw: unknown) => {
     try {
+      const settings = resolveValidatedSettings('TEST_CONNECTION', settingsRaw)
       return await testProviderConnection(settings)
     } catch (error) {
       return { success: false, message: String(error) }
@@ -111,9 +140,10 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle(IPC.SAVE_PROJECT, async (_event, projectMemory: ProjectMemory) => {
+  ipcMain.handle(IPC.SAVE_PROJECT, async (_event, projectRaw: unknown) => {
     try {
-      await saveProjectMemory(projectMemory)
+      const projectMemory = parseInput(projectMemorySchema, 'SAVE_PROJECT', projectRaw)
+      await saveProjectMemory(projectMemory as never)
     } catch (error) {
       console.error('[IPC] SAVE_PROJECT error:', error)
       throw error
@@ -131,8 +161,9 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle(IPC.GOAL_SET, async (_event, goal: Partial<Goal>) => {
+  ipcMain.handle(IPC.GOAL_SET, async (_event, goalRaw: unknown) => {
     try {
+      const goal = parseInput(goalPartialSchema, 'GOAL_SET', goalRaw)
       return await setGoal(goal)
     } catch (error) {
       console.error('[IPC] GOAL_SET error:', error)
@@ -140,8 +171,9 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle(IPC.GOAL_UPDATE, async (_event, partial: Partial<Goal>) => {
+  ipcMain.handle(IPC.GOAL_UPDATE, async (_event, partialRaw: unknown) => {
     try {
+      const partial = parseInput(goalPartialSchema, 'GOAL_UPDATE', partialRaw)
       return await updateGoal(partial)
     } catch (error) {
       console.error('[IPC] GOAL_UPDATE error:', error)
@@ -151,38 +183,47 @@ export function registerIpcHandlers(
 
   // ─── Settings persistence ────────────────────────────────────────────────────
 
+  // Renderer ONLY ever gets the redacted view (no raw keys, just has* booleans).
   ipcMain.handle(IPC.LOAD_SETTINGS, async () => {
     try {
-      return await loadSettings()
+      return await loadRedactedSettings()
     } catch (error) {
       console.error('[IPC] LOAD_SETTINGS error:', error)
       throw error
     }
   })
 
-  ipcMain.handle(IPC.SAVE_SETTINGS, async (_event, settings: AppSettings) => {
+  // Save NON-SECRET settings only. Any stray key fields are stripped by the schema.
+  ipcMain.handle(IPC.SAVE_SETTINGS, async (event, settingsRaw: unknown) => {
     try {
-      await saveSettings(settings)
+      assertFromMainWindow(event, mainWcId, 'SAVE_SETTINGS')
+      const nonSecret = parseInput(nonSecretSettingsSchema, 'SAVE_SETTINGS', settingsRaw)
+      if (!isAllowedBaseUrl(nonSecret.provider, nonSecret.baseUrl)) {
+        console.warn(`[IPC] rejected invalid input on channel SAVE_SETTINGS: baseUrl not allowed for provider ${nonSecret.provider}`)
+        throw new Error('Disallowed base URL on SAVE_SETTINGS')
+      }
+      await saveNonSecretSettings(nonSecret)
+      invalidateSettingsCache()
     } catch (error) {
       console.error('[IPC] SAVE_SETTINGS error:', error)
       throw error
     }
   })
 
-  // ─── Companion mode ─────────────────────────────────────────────────────────
-
-  // Cache settings only — companion does NOT use project memory (demo mode)
-  let cachedSettings: AppSettings | null = null
-  let lastSettingsLoad = 0
-  const SETTINGS_REFRESH_MS = 10_000
-
-  async function getFreshSettings(): Promise<AppSettings> {
-    if (!cachedSettings || Date.now() - lastSettingsLoad > SETTINGS_REFRESH_MS) {
-      cachedSettings = await loadSettings()
-      lastSettingsLoad = Date.now()
+  // Store an API key (one-way renderer→main). Only the main settings window may do this.
+  ipcMain.handle(IPC.SET_SECRET, async (event, raw: unknown) => {
+    try {
+      assertFromMainWindow(event, mainWcId, 'SET_SECRET')
+      const { name, value } = parseInput(setSecretSchema, 'SET_SECRET', raw)
+      setSecret(name, value) // never logged
+      invalidateSettingsCache()
+    } catch (error) {
+      console.error('[IPC] SET_SECRET error:', error)
+      throw error
     }
-    return cachedSettings
-  }
+  })
+
+  // ─── Companion mode ─────────────────────────────────────────────────────────
 
   // COMPANION_START is a no-op — watching only begins when user picks a window
   ipcMain.handle(IPC.COMPANION_START, async () => {
@@ -193,18 +234,20 @@ export function registerIpcHandlers(
   // NOTE: Companion uses NO project memory — it analyzes only what it sees on screen
   ipcMain.handle(
     IPC.SELECT_WATCH_SOURCE,
-    async (_event, sourceId: string, windowName: string) => {
+    async (_event, sourceIdRaw: unknown, windowNameRaw: unknown) => {
       if (!companionWindow) return
       try {
+        const sid = parseInput(sourceIdSchema, 'SELECT_WATCH_SOURCE', sourceIdRaw)
+        const wname = parseInput(windowNameSchema, 'SELECT_WATCH_SOURCE', windowNameRaw)
         cachedSettings = await loadSettings()
         lastSettingsLoad = Date.now()
         // Load the user's goal (if any) so the analysis loop can inject it into prompts
         const goal = await loadGoal()
         startWatching(
           companionWindow,
-          sourceId,
-          windowName,
-          () => { getFreshSettings(); return cachedSettings! },
+          sid,
+          wname,
+          () => { void getFreshSettings(); return cachedSettings! },
           goal
         )
       } catch (error) {
@@ -230,9 +273,10 @@ export function registerIpcHandlers(
   })
 
   // User asks a spoken question — answer using current watched window context
-  ipcMain.handle(IPC.ASK_QUESTION, async (_event, question: string) => {
+  ipcMain.handle(IPC.ASK_QUESTION, async (_event, questionRaw: unknown) => {
     if (!companionWindow) return
     try {
+      const question = parseInput(shortText, 'ASK_QUESTION', questionRaw)
       const settings = await getFreshSettings()
       await handleQuestion(companionWindow, question, settings)
     } catch (error) {
@@ -295,14 +339,22 @@ export function registerIpcHandlers(
   // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────────
 
   ipcMain.handle(IPC.MEMORY_GET, async () => nemp.getSnapshot())
-  ipcMain.handle(IPC.MEMORY_GET_CONTEXT, async (_e, maxTokens?: number) => nemp.getContextSummary(maxTokens))
-  ipcMain.handle(IPC.MEMORY_SEARCH, async (_e, query: string) => nemp.searchMemories(query))
-  ipcMain.handle(IPC.MEMORY_ADD_OBSERVATION, async (_e, text: string, sourceAnalysisId?: string) => nemp.recordObservation(text, sourceAnalysisId))
-  ipcMain.handle(IPC.MEMORY_ADD_COMPLETION, async (_e, feature: string) => nemp.recordCompletion(feature))
-  ipcMain.handle(IPC.MEMORY_ADD_BLOCKER, async (_e, description: string) => nemp.recordBlocker(description))
-  ipcMain.handle(IPC.MEMORY_RESOLVE_BLOCKER, async (_e, blockerId: string, resolution: string) => nemp.resolveBlocker(blockerId, resolution))
-  ipcMain.handle(IPC.MEMORY_ADD_DECISION, async (_e, question: string, choice: string, reasoning?: string) => nemp.recordDecision(question, choice, reasoning))
-  ipcMain.handle(IPC.MEMORY_ADD_PATTERN, async (_e, observation: string, confidence: 'low' | 'medium' | 'high') => nemp.recordPattern(observation, confidence))
+  ipcMain.handle(IPC.MEMORY_GET_CONTEXT, async (_e, maxTokens?: unknown) =>
+    nemp.getContextSummary(typeof maxTokens === 'number' ? maxTokens : undefined))
+  ipcMain.handle(IPC.MEMORY_SEARCH, async (_e, query: unknown) =>
+    nemp.searchMemories(parseInput(shortText, 'MEMORY_SEARCH', query)))
+  ipcMain.handle(IPC.MEMORY_ADD_OBSERVATION, async (_e, text: unknown, sourceAnalysisId?: unknown) =>
+    nemp.recordObservation(parseInput(shortText, 'MEMORY_ADD_OBSERVATION', text), typeof sourceAnalysisId === 'string' ? sourceAnalysisId : undefined))
+  ipcMain.handle(IPC.MEMORY_ADD_COMPLETION, async (_e, feature: unknown) =>
+    nemp.recordCompletion(parseInput(shortText, 'MEMORY_ADD_COMPLETION', feature)))
+  ipcMain.handle(IPC.MEMORY_ADD_BLOCKER, async (_e, description: unknown) =>
+    nemp.recordBlocker(parseInput(shortText, 'MEMORY_ADD_BLOCKER', description)))
+  ipcMain.handle(IPC.MEMORY_RESOLVE_BLOCKER, async (_e, blockerId: unknown, resolution: unknown) =>
+    nemp.resolveBlocker(parseInput(shortText, 'MEMORY_RESOLVE_BLOCKER', blockerId), parseInput(shortText, 'MEMORY_RESOLVE_BLOCKER', resolution)))
+  ipcMain.handle(IPC.MEMORY_ADD_DECISION, async (_e, question: unknown, choice: unknown, reasoning?: unknown) =>
+    nemp.recordDecision(parseInput(shortText, 'MEMORY_ADD_DECISION', question), parseInput(shortText, 'MEMORY_ADD_DECISION', choice), typeof reasoning === 'string' ? reasoning : undefined))
+  ipcMain.handle(IPC.MEMORY_ADD_PATTERN, async (_e, observation: unknown, confidence: unknown) =>
+    nemp.recordPattern(parseInput(shortText, 'MEMORY_ADD_PATTERN', observation), parseInput(confidenceEnum, 'MEMORY_ADD_PATTERN', confidence)))
   ipcMain.handle(IPC.MEMORY_EXPORT_BUILDYMD, async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
       title: 'Export BUILDY.md',
