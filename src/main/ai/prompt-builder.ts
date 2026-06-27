@@ -114,8 +114,11 @@ YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
   "bestNextMove": "One clear sentence telling the user what to do next, in plain English",
   "nextPrompt": "ALWAYS provide this. A complete, ready-to-paste prompt the user can send straight to Claude Code to do the next step. Write it as a direct instruction to Claude Code, based ONLY on what you see on screen. Never leave this empty.",
   "builderNote": "Short encouraging note",
-  "projectUnderstandingNote": "ONE sentence describing what you currently understand the user is building, based on project memory + what is on screen (e.g. 'a CRM for freelancers to track customers and invoices'). Keep it short."${goalSchema}
-}`
+  "projectUnderstandingNote": "ONE sentence describing what you currently understand the user is building, based on project memory + what is on screen (e.g. 'a CRM for freelancers to track customers and invoices'). Keep it short.",
+  "isCriticalOverride": false${goalSchema}
+}
+
+Set "isCriticalOverride" to true ONLY when you detect a NEW, fundamentally different blocker or error (different from anything already in project memory) that the user urgently needs to hear about — e.g. a fresh build failure or a destructive mistake. Otherwise keep it false. When true, Buildy will interrupt lower-priority queued speech to announce it.`
 }
 
 export function buildAnalysisUserPrompt(

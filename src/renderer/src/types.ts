@@ -168,6 +168,9 @@ export interface AnalysisResult {
   alignmentNote?: string            // One-sentence plain-English reason for the alignment judgment
   // One sentence: what Buildy currently understands the user is building (memory + screen).
   projectUnderstandingNote?: string
+  // True only for a NEW, fundamentally different blocker. When true the voice
+  // queue truncates after the current chunk so the alert is spoken next.
+  isCriticalOverride?: boolean
   analyzedAt: string                // ISO date string
   analysisDurationMs: number
 }
@@ -261,4 +264,14 @@ export const IPC = {
   MEMORY_ADD_PATTERN:     'memory:add-pattern',
   MEMORY_EXPORT_BUILDYMD: 'memory:export-buildymd',
   MEMORY_RESET:           'memory:reset',
+  // ─── Voice player (audio owned by a hidden main-process window) ───────────
+  VOICE_PLAY_AUDIO:    'voice:play-audio',     // main → voice window (base64 MP3)
+  VOICE_PLAY_TTS:      'voice:play-tts',       // main → voice window (system TTS text)
+  VOICE_STOP:          'voice:stop',           // main → voice window (stop current)
+  VOICE_ENDED:         'voice:ended',          // voice window → main (clip finished)
+  VOICE_ERROR:         'voice:error',          // voice window → main (clip failed)
+  VOICE_SPEAK_PROGRESS: 'voice:speak-progress', // main → guidance window (current chunk text / null)
+  VOICE_CTL_STOP:      'voice:ctl-stop',       // companion → main (explicit stop)
+  VOICE_CTL_MUTE:      'voice:ctl-mute',       // companion → main (mute on/off)
+  VOICE_CTL_RESET:     'voice:ctl-reset',      // companion → main (reset dedup)
 } as const

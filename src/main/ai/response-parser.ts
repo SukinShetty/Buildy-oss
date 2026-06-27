@@ -196,6 +196,7 @@ function normalizeAnalysisResult(
     goalAlignment: toGoalAlignment(parsed.goalAlignment),
     alignmentNote: parsed.alignmentNote != null ? toStr(parsed.alignmentNote, '') : undefined,
     projectUnderstandingNote: parsed.projectUnderstandingNote != null ? toStr(parsed.projectUnderstandingNote, '') : undefined,
+    isCriticalOverride: toBool(parsed.isCriticalOverride, false),
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }
