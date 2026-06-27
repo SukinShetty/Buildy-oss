@@ -18,6 +18,8 @@ import type {
   Goal,
   GuidancePayload,
   QuestionAnswer,
+  MemoryEntry,
+  MemorySnapshot,
 } from '../renderer/src/types'
 
 // The API exposed to window.buildy in the renderer
@@ -221,6 +223,30 @@ const buildyAPI = {
       handler(_event, payload)
     ipcRenderer.on(IPC.GUIDANCE_DATA, listener)
     return () => ipcRenderer.removeListener(IPC.GUIDANCE_DATA, listener)
+  },
+
+  // ─── Memory layer (Nemp bridge) ────────────────────────────────────────────
+  memory: {
+    get: (): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC.MEMORY_GET),
+    getContextSummary: (maxTokens?: number): Promise<string> =>
+      ipcRenderer.invoke(IPC.MEMORY_GET_CONTEXT, maxTokens),
+    search: (query: string): Promise<MemoryEntry[]> =>
+      ipcRenderer.invoke(IPC.MEMORY_SEARCH, query),
+    addObservation: (text: string, sourceAnalysisId?: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.MEMORY_ADD_OBSERVATION, text, sourceAnalysisId),
+    addCompletion: (feature: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.MEMORY_ADD_COMPLETION, feature),
+    addBlocker: (description: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.MEMORY_ADD_BLOCKER, description),
+    resolveBlocker: (blockerId: string, resolution: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.MEMORY_RESOLVE_BLOCKER, blockerId, resolution),
+    addDecision: (question: string, choice: string, reasoning?: string): Promise<void> =>
+      ipcRenderer.invoke(IPC.MEMORY_ADD_DECISION, question, choice, reasoning),
+    addPattern: (observation: string, confidence: 'low' | 'medium' | 'high'): Promise<void> =>
+      ipcRenderer.invoke(IPC.MEMORY_ADD_PATTERN, observation, confidence),
+    exportBuildyMd: (): Promise<{ saved: boolean; path?: string }> =>
+      ipcRenderer.invoke(IPC.MEMORY_EXPORT_BUILDYMD),
+    reset: (): Promise<void> => ipcRenderer.invoke(IPC.MEMORY_RESET),
   },
 }
 

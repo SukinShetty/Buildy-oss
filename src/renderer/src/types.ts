@@ -39,6 +39,32 @@ export interface ProjectMemory {
   goalPromptSeen: boolean      // true once the user has set OR skipped the goal prompt
   createdAt: string           // ISO date string
   updatedAt: string
+  // Compact project-memory context (from the Nemp bridge) injected into the
+  // analysis system prompt. Optional + transient — not persisted to disk.
+  memoryContext?: string
+}
+
+// ─── Nemp Memory layer (loop engineering Block 2) ─────────────────────────────
+// A single flat memory entry, mirroring Nemp's on-disk Memory shape.
+
+export interface MemoryEntry {
+  key: string
+  value: string
+  tags: string[]
+  timestamp: string  // ISO
+  source: string
+}
+
+// Structured view of memory for the Memory screen.
+export interface MemorySnapshot {
+  goal: Goal | null
+  completed: MemoryEntry[]
+  inProgress: MemoryEntry[]
+  blockersOpen: MemoryEntry[]
+  blockersResolved: MemoryEntry[]
+  decisions: MemoryEntry[]
+  patterns: MemoryEntry[]
+  recent: MemoryEntry[]
 }
 
 export function emptyProjectMemory(): ProjectMemory {
@@ -140,6 +166,8 @@ export interface AnalysisResult {
   // Goal alignment — present only when the user has set a goal (see Goal type).
   goalAlignment?: GoalAlignment | null
   alignmentNote?: string            // One-sentence plain-English reason for the alignment judgment
+  // One sentence: what Buildy currently understands the user is building (memory + screen).
+  projectUnderstandingNote?: string
   analyzedAt: string                // ISO date string
   analysisDurationMs: number
 }
@@ -221,4 +249,16 @@ export const IPC = {
   GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
   GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
   GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)
+  // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────
+  MEMORY_GET:             'memory:get',                  // → MemorySnapshot
+  MEMORY_GET_CONTEXT:     'memory:get-context-summary',  // → string
+  MEMORY_SEARCH:          'memory:search',               // (query) → MemoryEntry[]
+  MEMORY_ADD_OBSERVATION: 'memory:add-observation',
+  MEMORY_ADD_COMPLETION:  'memory:add-completion',
+  MEMORY_ADD_BLOCKER:     'memory:add-blocker',
+  MEMORY_RESOLVE_BLOCKER: 'memory:resolve-blocker',
+  MEMORY_ADD_DECISION:    'memory:add-decision',
+  MEMORY_ADD_PATTERN:     'memory:add-pattern',
+  MEMORY_EXPORT_BUILDYMD: 'memory:export-buildymd',
+  MEMORY_RESET:           'memory:reset',
 } as const

@@ -15,6 +15,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosition } from './companion-window'
 import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
+import { init as initNempMemory } from './nemp-bridge'
 
 let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
@@ -211,6 +212,9 @@ app.whenReady().then(() => {
   tray = createSystemTray()
 
   registerIpcHandlers(mainWindow, companionWindow)
+
+  // Initialise the Nemp memory layer (local-only). Non-fatal if it can't load.
+  initNempMemory('default').catch((e) => console.error('[Nemp] init failed:', e))
 
   console.log('Buildy launched — companion only (panel hidden)')
 })

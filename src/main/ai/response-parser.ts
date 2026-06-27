@@ -195,6 +195,7 @@ function normalizeAnalysisResult(
     builderNote: toStr(parsed.builderNote, ''),
     goalAlignment: toGoalAlignment(parsed.goalAlignment),
     alignmentNote: parsed.alignmentNote != null ? toStr(parsed.alignmentNote, '') : undefined,
+    projectUnderstandingNote: parsed.projectUnderstandingNote != null ? toStr(parsed.projectUnderstandingNote, '') : undefined,
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }

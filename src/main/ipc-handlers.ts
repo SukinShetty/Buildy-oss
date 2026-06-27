@@ -2,11 +2,12 @@
 // All IPC channels registered in one place.
 // Every channel name is defined in types.ts (IPC constant) to prevent typos.
 
-import { ipcMain, clipboard } from 'electron'
+import { ipcMain, clipboard, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
 import type { ProjectMemory, AppSettings, CaptureResult, Goal, GuidancePayload } from '../renderer/src/types'
 import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance } from './guidance-window'
+import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings, loadGoal, setGoal, updateGoal } from './memory'
 import { getProvider } from './ai/provider-registry'
@@ -289,6 +290,29 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.COPY_TEXT, async (_event, text: string) => {
     clipboard.writeText(text)
   })
+
+  // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────────
+
+  ipcMain.handle(IPC.MEMORY_GET, async () => nemp.getSnapshot())
+  ipcMain.handle(IPC.MEMORY_GET_CONTEXT, async (_e, maxTokens?: number) => nemp.getContextSummary(maxTokens))
+  ipcMain.handle(IPC.MEMORY_SEARCH, async (_e, query: string) => nemp.searchMemories(query))
+  ipcMain.handle(IPC.MEMORY_ADD_OBSERVATION, async (_e, text: string, sourceAnalysisId?: string) => nemp.recordObservation(text, sourceAnalysisId))
+  ipcMain.handle(IPC.MEMORY_ADD_COMPLETION, async (_e, feature: string) => nemp.recordCompletion(feature))
+  ipcMain.handle(IPC.MEMORY_ADD_BLOCKER, async (_e, description: string) => nemp.recordBlocker(description))
+  ipcMain.handle(IPC.MEMORY_RESOLVE_BLOCKER, async (_e, blockerId: string, resolution: string) => nemp.resolveBlocker(blockerId, resolution))
+  ipcMain.handle(IPC.MEMORY_ADD_DECISION, async (_e, question: string, choice: string, reasoning?: string) => nemp.recordDecision(question, choice, reasoning))
+  ipcMain.handle(IPC.MEMORY_ADD_PATTERN, async (_e, observation: string, confidence: 'low' | 'medium' | 'high') => nemp.recordPattern(observation, confidence))
+  ipcMain.handle(IPC.MEMORY_EXPORT_BUILDYMD, async () => {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export BUILDY.md',
+      defaultPath: 'BUILDY.md',
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+    if (result.canceled || !result.filePath) return { saved: false }
+    await nemp.exportToBuildyMd(result.filePath)
+    return { saved: true, path: result.filePath }
+  })
+  ipcMain.handle(IPC.MEMORY_RESET, async () => nemp.resetMemory())
 }
 
 // ─── ElevenLabs Speech-to-Text ───────────────────────────────────────────────

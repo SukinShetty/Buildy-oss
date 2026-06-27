@@ -116,6 +116,12 @@ function AnalysisBody({ analysis }: { analysis: AnalysisResult }): React.ReactEl
         <AlignmentPill alignment={analysis.goalAlignment} note={analysis.alignmentNote} />
       )}
 
+      {analysis.projectUnderstandingNote && (
+        <div style={S.understanding}>
+          Buildy thinks you're building: {analysis.projectUnderstandingNote}
+        </div>
+      )}
+
       {analysis.whatIsHappening && (
         <div style={S.context}>{analysis.whatIsHappening}</div>
       )}
@@ -328,6 +334,14 @@ const S = {
     fontStyle: 'italic' as const,
     color: 'rgba(255,255,255,0.65)',
     lineHeight: 1.55,
+  },
+  understanding: {
+    marginTop: 12,
+    fontSize: 12,
+    fontWeight: 400,
+    fontStyle: 'italic' as const,
+    color: 'rgba(255,255,255,0.5)',
+    lineHeight: 1.5,
   },
   context: {
     marginTop: 12,
