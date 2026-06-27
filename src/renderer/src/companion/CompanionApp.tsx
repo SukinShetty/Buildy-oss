@@ -205,6 +205,8 @@ export function CompanionApp(): React.ReactElement {
   }
   function onQuiet(): void { const q = !isQuietMode; setQuietMode(q); window.buildy.setQuietMode(q) }
   function onSettings(): void { window.buildy.openPanel() }
+  // Re-summon the most recent guidance even when no new analysis has arrived.
+  function onShowLast(): void { window.buildy.showLastGuidance() }
 
   function onMicToggle(): void {
     if (micState === 'listening') { stopRecording(); return }
@@ -263,6 +265,7 @@ export function CompanionApp(): React.ReactElement {
           onClick={onMicToggle}
           disabled={!watchedWindowName}
         />
+        <Btn icon={showLastIcon} onClick={onShowLast} active={false} title="Show last guidance" />
         <Btn icon={monitorIcon} onClick={openPicker} active={false} title="Pick window" />
         <Btn icon={gearIcon} onClick={onSettings} active={false} title="Settings" />
       </div>
@@ -346,6 +349,8 @@ const playIcon = '<svg width="18" height="18" viewBox="0 0 8 8" fill="currentCol
 const quietIcon = '<svg width="18" height="18" viewBox="0 0 10 10"><text x="5" y="8" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">Q</text></svg>'
 const micIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="1" width="6" height="12" rx="3"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>'
 const monitorIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
+// Message-square (lucide-style) — re-show the last guidance panel.
+const showLastIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
 const gearIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'
 
 function trunc(t: string, n: number): string { return t.length > n ? t.slice(0, n - 1) + '\u2026' : t }
@@ -402,13 +407,13 @@ const S = {
   pill: {
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
     marginTop: 8,
     background: 'rgba(0,0,0,0.5)',
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
     borderRadius: 999,
-    padding: '7px 10px',
+    padding: '7px 9px',
     boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
     flexShrink: 0,
     // Keep buttons clickable — exclude the pill from the window drag region.
@@ -425,9 +430,9 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     background: 'transparent',
     color: 'rgba(255,255,255,0.35)',
     border: 'none',

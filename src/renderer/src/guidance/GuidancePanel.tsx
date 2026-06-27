@@ -82,9 +82,9 @@ export function GuidancePanel(): React.ReactElement | null {
           </svg>
         </button>
 
-        {payload.kind === 'analysis'
-          ? <AnalysisBody analysis={payload.analysis} />
-          : <AnswerBody answer={payload.answer} />}
+        {payload.kind === 'analysis' && <AnalysisBody analysis={payload.analysis} />}
+        {payload.kind === 'answer' && <AnswerBody answer={payload.answer} />}
+        {payload.kind === 'message' && <div style={S.message}>{payload.message}</div>}
       </div>
 
       <PanelStyle />
@@ -409,5 +409,12 @@ const S = {
     marginTop: 14,
     display: 'flex',
     justifyContent: 'flex-end',
+  },
+  message: {
+    fontSize: 14,
+    fontWeight: 400,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 1.6,
+    paddingRight: 24, // clear the close button
   },
 }
