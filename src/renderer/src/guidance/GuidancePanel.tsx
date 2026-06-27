@@ -20,8 +20,17 @@ const AUTO_HIDE_MS = 60_000
 export function GuidancePanel(): React.ReactElement | null {
   const [payload, setPayload] = useState<GuidancePayload | null>(null)
   const [renderKey, setRenderKey] = useState(0)
+  const [speakingChunk, setSpeakingChunk] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Which sentence is currently being spoken (Invariant 6 — keep voice + text in sync).
+  useEffect(() => {
+    const unsub = window.buildy.onSpeechProgress((_: unknown, chunkText: string | null) => {
+      setSpeakingChunk(chunkText)
+    })
+    return () => unsub()
+  }, [])
 
   // ─── Auto-hide timer (resets on every interaction / new payload) ────────────
 
@@ -85,6 +94,12 @@ export function GuidancePanel(): React.ReactElement | null {
         {payload.kind === 'analysis' && <AnalysisBody analysis={payload.analysis} />}
         {payload.kind === 'answer' && <AnswerBody answer={payload.answer} />}
         {payload.kind === 'message' && <div style={S.message}>{payload.message}</div>}
+
+        {speakingChunk && (
+          <div style={S.speaking}>
+            <span style={S.speakingDot} /> {speakingChunk}
+          </div>
+        )}
       </div>
 
       <PanelStyle />
@@ -242,6 +257,10 @@ function PanelStyle(): React.ReactElement {
       @keyframes guidanceIn {
         from { opacity: 0; transform: translateX(-12px); }
         to   { opacity: 1; transform: translateX(0); }
+      }
+      @keyframes guidancePulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
       }
       .guidance-appear::-webkit-scrollbar { width: 6px; }
       .guidance-appear::-webkit-scrollbar-track { background: transparent; }
@@ -430,5 +449,28 @@ const S = {
     color: 'rgba(255,255,255,0.7)',
     lineHeight: 1.6,
     paddingRight: 24, // clear the close button
+  },
+  speaking: {
+    marginTop: 14,
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 8,
+    fontSize: 12,
+    fontStyle: 'italic' as const,
+    color: '#10B981',
+    lineHeight: 1.5,
+    background: 'rgba(16,185,129,0.08)',
+    border: '1px solid rgba(16,185,129,0.18)',
+    borderRadius: 10,
+    padding: '8px 10px',
+  },
+  speakingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    background: '#10B981',
+    marginTop: 5,
+    flexShrink: 0,
+    animation: 'guidancePulse 1s ease-in-out infinite',
   },
 }

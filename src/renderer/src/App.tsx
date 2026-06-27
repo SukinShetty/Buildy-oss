@@ -15,11 +15,13 @@ import { MemoryScreen } from './screens/MemoryScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 import { CompanionApp } from './companion/CompanionApp'
 import { GuidancePanel } from './guidance/GuidancePanel'
+import { VoicePlayer } from './voice/VoicePlayer'
 
 // Which window is this renderer instance? Routed via query parameter.
 const params = new URLSearchParams(window.location.search)
 const isCompanionMode = params.get('companion') === 'true'
 const isGuidanceMode = params.get('guidance') === 'true'
+const isVoiceMode = params.get('voice') === 'true'
 
 // Both floating windows are fully transparent — flag the document so CSS strips
 // the background.
@@ -34,7 +36,11 @@ if (isGuidanceMode) {
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
-export function App(): React.ReactElement {
+export function App(): React.ReactElement | null {
+  if (isVoiceMode) {
+    return <VoicePlayer />
+  }
+
   if (isGuidanceMode) {
     return <GuidancePanel />
   }

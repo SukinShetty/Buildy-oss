@@ -225,6 +225,39 @@ const buildyAPI = {
     return () => ipcRenderer.removeListener(IPC.GUIDANCE_DATA, listener)
   },
 
+  // ─── Voice player (hidden main-owned window) ───────────────────────────────
+  voice: {
+    // Used by the hidden voice window:
+    onPlayAudio: (handler: (event: unknown, data: { id: string; audioBase64: string }) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, data: { id: string; audioBase64: string }) => handler(_e, data)
+      ipcRenderer.on(IPC.VOICE_PLAY_AUDIO, listener)
+      return () => ipcRenderer.removeListener(IPC.VOICE_PLAY_AUDIO, listener)
+    },
+    onPlayTts: (handler: (event: unknown, data: { id: string; text: string }) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, data: { id: string; text: string }) => handler(_e, data)
+      ipcRenderer.on(IPC.VOICE_PLAY_TTS, listener)
+      return () => ipcRenderer.removeListener(IPC.VOICE_PLAY_TTS, listener)
+    },
+    onStop: (handler: () => void): (() => void) => {
+      const listener = (): void => handler()
+      ipcRenderer.on(IPC.VOICE_STOP, listener)
+      return () => ipcRenderer.removeListener(IPC.VOICE_STOP, listener)
+    },
+    ended: (id: string): void => ipcRenderer.send(IPC.VOICE_ENDED, id),
+    error: (id: string): void => ipcRenderer.send(IPC.VOICE_ERROR, id),
+    // Used by the companion window to control playback (explicit user actions):
+    stop: (): void => ipcRenderer.send(IPC.VOICE_CTL_STOP),
+    setMuted: (muted: boolean): void => ipcRenderer.send(IPC.VOICE_CTL_MUTE, muted),
+    resetDedup: (): void => ipcRenderer.send(IPC.VOICE_CTL_RESET),
+  },
+
+  // Used by the guidance window to highlight the sentence being spoken:
+  onSpeechProgress: (handler: (event: unknown, chunkText: string | null) => void): (() => void) => {
+    const listener = (_e: Electron.IpcRendererEvent, chunkText: string | null) => handler(_e, chunkText)
+    ipcRenderer.on(IPC.VOICE_SPEAK_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IPC.VOICE_SPEAK_PROGRESS, listener)
+  },
+
   // ─── Memory layer (Nemp bridge) ────────────────────────────────────────────
   memory: {
     get: (): Promise<MemorySnapshot> => ipcRenderer.invoke(IPC.MEMORY_GET),

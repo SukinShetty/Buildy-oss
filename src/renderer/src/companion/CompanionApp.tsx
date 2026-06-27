@@ -6,7 +6,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
 import type { MascotState } from '../components/Mascot'
-import { playAudio, speakSystemTTS, stopAllAudio, resetSpeechDedup } from './VoiceGuidance'
 import type { AnalysisResult } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
 
@@ -18,7 +17,7 @@ export function CompanionApp(): React.ReactElement {
     watchedWindowName, watchedSourceMessage, showWindowPicker,
     micState, micError, lastAnswer,
     setAvatarState, setLatestAnalysis, setMuted, setPaused, setQuietMode,
-    setLastSpokenText, setWatchedSource, setShowWindowPicker,
+    setWatchedSource, setShowWindowPicker,
     setMicState, setMicError, setLastAnswer,
     clearAnalysis,
   } = useCompanionStore()
@@ -50,28 +49,8 @@ export function CompanionApp(): React.ReactElement {
         window.buildy.showGuidance(a)
       }),
       window.buildy.onCompanionState((_: unknown, s: string) => setAvatarState(s as CompanionState)),
-      window.buildy.onCompanionAudio(async (_: unknown, d: { audioBase64: string; text: string; type: string }) => {
-        console.log('[CompanionApp] Received audio for playback')
-        setLastSpokenText(d.text); setAvatarState('speaking')
-        if (!isMutedRef.current) {
-          await playAudio(d.audioBase64, d.text)
-        } else {
-          console.log('[CompanionApp] Muted — skipping audio playback')
-        }
-        setAvatarState('idle')
-      }),
-      window.buildy.onCompanionSpeak((_: unknown, d: { text: string; type: string }) => {
-        const text = d.text
-        if (!text) return
-        console.log(`[CompanionApp] System TTS: "${text.slice(0, 60)}..."`)
-        setLastSpokenText(text); setAvatarState('speaking')
-        if (!isMutedRef.current) {
-          speakSystemTTS(text)
-        } else {
-          console.log('[CompanionApp] Muted — skipping TTS')
-        }
-        setTimeout(() => setAvatarState('idle'), 4000)
-      }),
+      // NOTE: audio is no longer played here. Playback lives in the main-process
+      // voice player (hidden window) so it survives this window being backgrounded.
       window.buildy.onWatchedSourceChanged((_: unknown, d: { windowName: string | null; message: string | null }) => {
         setWatchedSource(d.windowName, d.message)
         if (!d.windowName) { clearAnalysis(); window.buildy.hideGuidance() }
@@ -82,9 +61,9 @@ export function CompanionApp(): React.ReactElement {
         // Show the spoken-question answer in the guidance window.
         window.buildy.showGuidanceAnswer(d)
       }),
-      window.buildy.onCompanionShutdown(() => stopAllAudio()),
+      window.buildy.onCompanionShutdown(() => window.buildy.voice.stop()),
     ]
-    return () => { unsubs.forEach((u) => u()); stopAllAudio() }
+    return () => { unsubs.forEach((u) => u()) }
   }, [])
 
   // ─── Window picker ──────────────────────────────────────────────────
@@ -102,7 +81,7 @@ export function CompanionApp(): React.ReactElement {
     setShowWindowPicker(false)
     clearAnalysis()
     window.buildy.hideGuidance()  // drop any stale guidance from the previous window
-    resetSpeechDedup()  // fresh watching session can speak anything
+    window.buildy.voice.resetDedup()  // fresh watching session can speak anything
     setWatchedSource(name, null)
     await window.buildy.selectWatchSource(id, name)
   }
@@ -114,7 +93,8 @@ export function CompanionApp(): React.ReactElement {
     setMicError(null)
 
     try {
-      stopAllAudio()
+      // NOTE: deliberately does NOT stop audio (Invariant 2). Starting the mic
+      // while Buildy is talking lets it finish; recording proceeds in parallel.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
@@ -194,14 +174,14 @@ export function CompanionApp(): React.ReactElement {
     else openPicker()
   }
   function onStop(): void {
-    stopAllAudio(); resetSpeechDedup(); stopRecording()
+    window.buildy.voice.stop(); window.buildy.voice.resetDedup(); stopRecording()
     setMicState('idle'); setAvatarState('idle')
     window.buildy.hideGuidance()
   }
-  function onMute(): void { const m = !isMuted; setMuted(m); if (m) stopAllAudio() }
+  function onMute(): void { const m = !isMuted; setMuted(m); window.buildy.voice.setMuted(m) }
   function onPause(): void {
     const p = !isPaused; setPaused(p)
-    if (p) { window.buildy.pauseCompanion(); stopAllAudio() } else { window.buildy.resumeCompanion() }
+    if (p) { window.buildy.pauseCompanion(); window.buildy.voice.stop() } else { window.buildy.resumeCompanion() }
   }
   function onQuiet(): void { const q = !isQuietMode; setQuietMode(q); window.buildy.setQuietMode(q) }
   function onSettings(): void { window.buildy.openPanel() }
