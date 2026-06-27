@@ -1,7 +1,7 @@
 // WindowPicker.tsx
-// Shows all open windows so the user can select which one is Claude Code.
-// Thumbnails come from desktopCapturer — real screenshots of each window.
-// Windows that Buildy auto-detected as Claude Code are highlighted.
+// Shows all open windows so the user can choose which one to watch.
+// Thumbnails come from desktopCapturer — deliberately low-resolution.
+// (Buildy does NOT auto-detect Claude Code — the user always picks.)
 
 import React from 'react'
 import type { WindowSource } from '../types'
@@ -21,46 +21,22 @@ export function WindowPicker({
   onConfirm,
   onCancel,
 }: Props): React.ReactElement {
-  const suggestedWindows = windows.filter((w) => w.isClaudeCode)
-  const otherWindows = windows.filter((w) => !w.isClaudeCode)
-
   return (
     <div style={styles.overlay}>
       <div style={styles.panel}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Which window is Claude Code?</h2>
+          <h2 style={styles.title}>Which window should Buildy watch?</h2>
           <p style={styles.subtitle}>
-            Pick the window where you have Claude Code running, then hit Confirm.
+            Pick the window you want guidance on (e.g. your AI coding tool), then hit Confirm.
           </p>
         </div>
 
         <div style={styles.windowList}>
-          {/* Suggested (auto-detected) windows first */}
-          {suggestedWindows.length > 0 && (
-            <>
-              <div style={styles.sectionLabel}>Buildy thinks this is Claude Code</div>
-              {suggestedWindows.map((win) => (
-                <WindowItem
-                  key={win.id}
-                  window={win}
-                  isSelected={selectedId === win.id}
-                  isSuggested
-                  onSelect={() => onSelect(win.id)}
-                />
-              ))}
-              {otherWindows.length > 0 && (
-                <div style={styles.sectionLabel}>Other windows</div>
-              )}
-            </>
-          )}
-
-          {/* Remaining windows */}
-          {otherWindows.map((win) => (
+          {windows.map((win) => (
             <WindowItem
               key={win.id}
               window={win}
               isSelected={selectedId === win.id}
-              isSuggested={false}
               onSelect={() => onSelect(win.id)}
             />
           ))}
@@ -92,12 +68,10 @@ export function WindowPicker({
 function WindowItem({
   window: win,
   isSelected,
-  isSuggested,
   onSelect,
 }: {
   window: WindowSource
   isSelected: boolean
-  isSuggested: boolean
   onSelect: () => void
 }): React.ReactElement {
   return (
@@ -124,9 +98,6 @@ function WindowItem({
       {/* Window info */}
       <div style={styles.windowInfo}>
         <div style={styles.windowName}>{win.name}</div>
-        {isSuggested && (
-          <div style={styles.suggestedBadge}>✓ Likely Claude Code</div>
-        )}
       </div>
 
       {isSelected && <div style={styles.selectedCheckmark}>✓</div>}

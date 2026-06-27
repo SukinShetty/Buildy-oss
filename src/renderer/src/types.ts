@@ -161,17 +161,22 @@ export function defaultRedactedSettings(): RedactedSettings {
 export interface WindowSource {
   id: string              // desktopCapturer source ID
   name: string            // Window title / application name
-  thumbnailBase64: string // JPEG thumbnail for the window picker UI
-  isClaudeCode: boolean   // true if Buildy auto-detected this as Claude Code
+  thumbnailBase64: string // low-res JPEG thumbnail for the window picker UI
 }
 
 export interface CaptureResult {
   imageBase64: string          // JPEG screenshot for Claude vision
   windowTitle: string
   sourceId: string
-  wasClaudeCodeAutoDetected: boolean
   capturedAt: string           // ISO date string
 }
+
+// Result of a manual capture request. There is NO full-screen fallback: if the
+// selected window is missing, capture halts with a reason so the app can prompt
+// for reselection instead of sending the whole desktop to a provider.
+export type CaptureOutcome =
+  | { ok: true; capture: CaptureResult }
+  | { ok: false; reason: 'no-source' | 'window-missing' }
 
 // ─── Analysis ─────────────────────────────────────────────────────────────────
 

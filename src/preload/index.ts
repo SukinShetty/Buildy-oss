@@ -10,6 +10,7 @@ import { IPC } from '../renderer/src/types'
 import type {
   WindowSource,
   CaptureResult,
+  CaptureOutcome,
   AnalysisResult,
   ProjectMemory,
   NonSecretSettings,
@@ -32,7 +33,8 @@ const buildyAPI = {
     ipcRenderer.invoke(IPC.LIST_WINDOWS),
 
   // ─── Screen capture ──────────────────────────────────────────────────────
-  captureWindow: (sourceId: string | null): Promise<CaptureResult> =>
+  // Returns a halt outcome (never a full-screen image) when the window is missing.
+  captureWindow: (sourceId: string | null): Promise<CaptureOutcome> =>
     ipcRenderer.invoke(IPC.CAPTURE_WINDOW, sourceId),
 
   // ─── Analysis ────────────────────────────────────────────────────────────
