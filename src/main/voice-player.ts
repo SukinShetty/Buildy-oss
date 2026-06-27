@@ -47,20 +47,39 @@ export function createVoicePlayerWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1,
     height: 1,
+    // Offscreen rather than show:false — a never-shown window can have its audio
+    // suspended by the OS/Chromium media session on a real device. Offscreen-shown
+    // is a real, painted, audible window that's still invisible to the user.
+    x: -10000,
+    y: -10000,
     show: false,
     frame: false,
     transparent: true,
     skipTaskbar: true,
     focusable: false,
-    // This window never participates in the visible UI; keep it offscreen-ish.
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      // ★ THE FIX: never throttle this renderer when it's in the background.
+      // Never throttle this renderer when it's in the background…
       backgroundThrottling: false,
+      // …and never let autoplay policy block audio (the window gets no user gesture).
+      autoplayPolicy: 'no-user-gesture-required',
     },
+  })
+  win.setIgnoreMouseEvents(true)
+
+  // CRITICAL: the voice window is invisible and has no devtools, so for six prior
+  // sessions nobody could see what it actually did. Forward its console to the main
+  // process stdout so `npm run dev` prints [Voice-Window] … lines.
+  win.webContents.on('console-message', (_e, _level, message) => {
+    console.log(`[Voice-Window] ${message}`)
+  })
+
+  // Show OFFSCREEN once ready (not show:false) so its audio is never suspended.
+  win.once('ready-to-show', () => {
+    if (!win.isDestroyed()) win.showInactive()
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
