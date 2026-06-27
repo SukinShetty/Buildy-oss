@@ -503,6 +503,11 @@ async function speakToCompanion(
     console.log('[Speech] Formatter returned empty text — nothing to say')
     return
   }
+  // Side-by-side sync check: the displayed (panel) content vs the spoken text.
+  // These must match in content — TTS may strip markdown but must NOT truncate.
+  const displayText = `${change.whatHappened} ${change.bestNextMove}`.replace(/\s+/g, ' ').trim()
+  console.log(`[Speech] Display text: "${displayText}"`)
+  console.log(`[Speech] TTS text: "${text}"`)
   console.log(`[Speech] Formatted for TTS (${change.whatChanged}): "${text}"`)
   await speakText(companionWindow, text, settings, change.whatChanged, isCritical)
 }

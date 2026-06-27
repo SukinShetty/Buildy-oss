@@ -1,5 +1,5 @@
 // speech-formatter.ts — main process
-// Converts analysis data into short, clear, spoken text for live guidance.
+// Converts analysis data into clear, spoken text for live guidance.
 //
 // Target format:
 //   "Right now, [what is happening]. [Next step]."
@@ -7,21 +7,26 @@
 //   "Heads up. [Problem]. [What to do]."
 //
 // Rules:
-//   - Short: 2 sentences max, under 35 words total
 //   - Plain English: no code, no file paths, no brackets
 //   - Clear pronunciation: no abbreviations, no compressed wording
 //   - Warm and supportive tone
+//   - COMPLETE sentences. This formatter does NOT truncate — the voice player's
+//     sentence-safe chunker (splitIntoChunks) handles length by splitting long
+//     text into chunks played in sequence. Truncating here (the old 60/50-char
+//     caps) cut sentences mid-word and was the real cause of the "voice cutoff"
+//     bug: the audio played its text fully, but the text was already a fragment.
 
 /**
- * Format spoken text for live guidance updates.
+ * Format spoken text for live guidance updates. Sends the FULL cleaned text — no
+ * length capping — so the spoken content matches what the GuidancePanel displays.
  */
 export function formatSpokenGuidance(
   whatHappened: string,
   bestNextMove: string,
   changeType: string | null
 ): string {
-  const happened = cleanForSpeech(whatHappened, 60)
-  const nextMove = cleanForSpeech(bestNextMove, 50)
+  const happened = cleanForSpeech(whatHappened)
+  const nextMove = cleanForSpeech(bestNextMove)
 
   if (!happened && !nextMove) return ''
 
@@ -56,12 +61,13 @@ export function formatSpokenGuidance(
 
 /**
  * Clean raw analysis text so it sounds natural when spoken aloud.
- * Removes code, paths, brackets, and technical clutter.
+ * Removes code, paths, brackets, and technical clutter. Does NOT truncate —
+ * complete sentences are preserved in full.
  */
-function cleanForSpeech(text: string, maxChars: number): string {
+function cleanForSpeech(text: string): string {
   if (!text) return ''
 
-  let cleaned = text
+  const cleaned = text
     // Remove file paths (e.g. src/main/index.ts, ./foo/bar)
     .replace(/[a-zA-Z0-9_./-]+\/[a-zA-Z0-9_./-]+/g, '')
     // Remove backticks and code fences
@@ -81,16 +87,9 @@ function cleanForSpeech(text: string, maxChars: number): string {
     .replace(/\s+/g, ' ')
     .trim()
 
-  // Trim to max length at word boundary
-  if (cleaned.length > maxChars) {
-    const cut = cleaned.lastIndexOf(' ', maxChars)
-    cleaned = cleaned.slice(0, cut > 0 ? cut : maxChars)
-  }
-
-  // Remove trailing period (we add our own)
-  cleaned = cleaned.replace(/\.\s*$/, '').trim()
-
-  return cleaned
+  // Remove a single trailing period (the caller adds its own). NOTE: no length
+  // capping — long text is handled by the voice player's sentence-safe chunker.
+  return cleaned.replace(/\.\s*$/, '').trim()
 }
 
 function lowFirst(t: string): string {
