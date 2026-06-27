@@ -31,6 +31,8 @@ import * as nemp from './nemp-bridge'
 import { checkPromptQuality } from './ai/prompt-quality-check'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
+import { isStaleSession } from './capture-guard'
+import { debugLog, debugError } from './debug-log'
 
 // Recently-spoken completion subjects + next-steps, for semantic (near-duplicate)
 // dedup within a 3-minute window. Cleared on each fresh watch session.
@@ -63,7 +65,7 @@ export function getSessionContext(): SessionContext | null {
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
-let loopTimer: ReturnType<typeof setInterval> | null = null
+let loopTimer: ReturnType<typeof setTimeout> | null = null
 let isRunning = false
 let isPaused = false
 let isQuietMode = false
@@ -75,8 +77,16 @@ let lastSpokenNextMove = ''
 let watchedSourceId: string | null = null
 let watchedWindowName: string | null = null
 let companionRef: BrowserWindow | null = null
-let settingsGetter: (() => AppSettings) | null = null
 let watchedGoal: Goal | null = null   // injected into every analysis prompt so guidance is goal-aware
+
+// Concurrency control: a monotonic session id (bumped on every start/stop/switch)
+// and an in-flight guard so cycles can never overlap and stale-window results are
+// discarded. The async getters are reloaded EVERY cycle so editing the goal or
+// changing settings mid-watch takes effect without restarting.
+let currentSession = 0
+let inFlight = false
+let getSettingsFn: (() => Promise<AppSettings>) | null = null
+let getGoalFn: (() => Promise<Goal | null>) | null = null
 
 const LOOP_INTERVAL_MS = 10_000
 const NORMAL_COOLDOWN_MS = 15_000
@@ -94,16 +104,21 @@ export function startWatching(
   companionWindow: BrowserWindow,
   sourceId: string,
   windowName: string,
-  getSettings: () => AppSettings,
-  goal: Goal | null = null
+  getSettings: () => Promise<AppSettings>,
+  getGoal: () => Promise<Goal | null>
 ): void {
   clearStaleState()
+
+  // New watching session — any in-flight cycle from a previous window is now stale.
+  currentSession++
+  const mySession = currentSession
 
   companionRef = companionWindow
   watchedSourceId = sourceId
   watchedWindowName = windowName
-  settingsGetter = getSettings
-  watchedGoal = goal
+  getSettingsFn = getSettings
+  getGoalFn = getGoal
+  watchedGoal = null
   isRunning = true
   isPaused = false
   isFirstCycle = true
@@ -117,36 +132,51 @@ export function startWatching(
     startedAt: new Date().toISOString(),
   }
 
-  console.log(`[AnalysisLoop] Now watching: "${windowName}" (${sourceId})`)
+  // Structural log only — no window title (it may contain user content).
+  console.log(`[AnalysisLoop] Now watching session ${mySession} (${sourceId})`)
 
   notifyWatchedSource(companionWindow, windowName)
   notifyCompanionState(companionWindow, 'idle')
 
-  // IMMEDIATE first analysis — no delay
-  runOneAnalysisCycle(companionWindow, getSettings()).catch((err) => {
-    console.error('[AnalysisLoop] Initial cycle error:', err)
-    notifyCompanionState(companionWindow, 'idle')
-  })
+  // IMMEDIATE first cycle, then a recursive setTimeout chain (each cycle fully
+  // finishes before the next is scheduled — no overlap).
+  void runCycleAndReschedule(companionWindow, mySession)
+}
 
-  // Continuous loop after first cycle
-  loopTimer = setInterval(async () => {
-    if (isPaused || !watchedSourceId) return
+/** Run one cycle (guarded) then schedule the next, unless the session changed. */
+async function runCycleAndReschedule(companionWindow: BrowserWindow, mySession: number): Promise<void> {
+  if (mySession !== currentSession) return // a newer session superseded this chain
+  if (!isPaused && !inFlight && watchedSourceId) {
+    inFlight = true
     try {
-      await runOneAnalysisCycle(companionWindow, getSettings())
+      await runOneAnalysisCycle(companionWindow, mySession)
     } catch (error) {
-      console.error('[AnalysisLoop] Cycle error:', error)
+      debugError('[AnalysisLoop] Cycle error:', error)
       notifyCompanionState(companionWindow, 'idle')
+    } finally {
+      inFlight = false
     }
-  }, LOOP_INTERVAL_MS)
+  }
+  scheduleNextCycle(companionWindow, mySession)
+}
+
+function scheduleNextCycle(companionWindow: BrowserWindow, mySession: number): void {
+  if (mySession !== currentSession) return
+  loopTimer = setTimeout(() => { void runCycleAndReschedule(companionWindow, mySession) }, LOOP_INTERVAL_MS)
 }
 
 export function stopAnalysisLoop(): void {
-  if (loopTimer) { clearInterval(loopTimer); loopTimer = null }
+  if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
+  // Bump the session so any in-flight cycle discards its result.
+  currentSession++
   clearStaleState()
   isRunning = false
   isPaused = false
+  inFlight = false
   watchedSourceId = null
   watchedWindowName = null
+  getSettingsFn = null
+  getGoalFn = null
   session = null
   console.log('[AnalysisLoop] Stopped')
 }
@@ -169,7 +199,7 @@ export async function handleQuestion(
 ): Promise<void> {
   if (companionWindow.isDestroyed()) return
 
-  console.log(`[AnalysisLoop] Question: "${question}"`)
+  debugLog(`[AnalysisLoop] Question: "${question}"`)
   notifyCompanionState(companionWindow, 'thinking')
 
   // Capture fresh screenshot if we have a watched window
@@ -200,7 +230,7 @@ export async function handleQuestion(
     // Speak the answer
     await speakText(companionWindow, answer, settings)
   } catch (error) {
-    console.error('[AnalysisLoop] Question answer failed:', error)
+    debugError('[AnalysisLoop] Question answer failed:', error)
     if (!companionWindow.isDestroyed()) {
       companionWindow.webContents.send(IPC.COMPANION_ANSWER, {
         question,
@@ -319,20 +349,29 @@ async function callProviderForAnswer(
 
 async function runOneAnalysisCycle(
   companionWindow: BrowserWindow,
-  settings: AppSettings
+  mySession: number
 ): Promise<void> {
   if (companionWindow.isDestroyed() || !watchedSourceId) {
     stopAnalysisLoop()
     return
   }
 
+  // Part 2: reload settings + goal at the START of each cycle so editing the goal
+  // or changing settings mid-watch takes effect without restarting the watch.
+  const settings = getSettingsFn ? await getSettingsFn() : null
+  if (!settings) return
+  watchedGoal = getGoalFn ? await getGoalFn() : watchedGoal
+  if (isStaleSession(mySession, currentSession)) return
+
   const thisIsFirstCycle = isFirstCycle
   isFirstCycle = false
 
-  // Step 1: Capture the watched window
+  // Step 1: Capture the watched window (NEVER the full screen — see capturer.ts)
   const capture = await captureWatchedWindow(watchedSourceId)
+  if (isStaleSession(mySession, currentSession)) return
   if (!capture) {
-    console.log(`[AnalysisLoop] Watched window disappeared: "${watchedWindowName}"`)
+    // Structural log only — no window title (may contain user content).
+    console.log('[AnalysisLoop] watched window disappeared — analysis halted, reselection required')
     isPaused = true
     if (!companionWindow.isDestroyed()) {
       companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
@@ -379,8 +418,16 @@ async function runOneAnalysisCycle(
   try {
     analysis = await provider.analyzeScreen(capture, analysisProject, settings)
   } catch (error) {
-    console.error('[AnalysisLoop] Analysis failed:', error)
+    debugError('[AnalysisLoop] Analysis failed:', error)
     notifyCompanionState(companionWindow, 'idle')
+    return
+  }
+
+  // ★ STALE-SESSION DISCARD: if the user switched/stopped the watched window while
+  // this analysis was in flight, throw the result away — do NOT mutate state, send
+  // guidance, or speak. This kills wrong-window guidance from stale cycles.
+  if (isStaleSession(mySession, currentSession)) {
+    console.log(`[AnalysisLoop] stale cycle discarded (session ${mySession} != ${currentSession})`)
     return
   }
 
@@ -402,14 +449,14 @@ async function runOneAnalysisCycle(
 
   // Second-pass prompt-quality grade — runs in parallel, never blocks. If it
   // improves or blanks the prompt, re-send the corrected analysis so the panel
-  // updates in place.
-  gradePromptQuality(companionWindow, analysis, memoryContext, settings)
+  // updates in place (unless the watch session has since changed).
+  gradePromptQuality(companionWindow, analysis, memoryContext, settings, mySession)
 
   // Step 5: Speak
   // First cycle: ALWAYS speak, no cooldown/quiet/overlap checks
   if (thisIsFirstCycle) {
-    console.log(`[AnalysisLoop] ★ INITIAL analysis — happening: "${analysis.whatIsHappening?.slice(0, 60)}"`)
-    console.log(`[AnalysisLoop] ★ INITIAL analysis — nextMove: "${analysis.bestNextMove?.slice(0, 60)}"`)
+    debugLog(`[AnalysisLoop] ★ INITIAL analysis — happening: "${analysis.whatIsHappening?.slice(0, 60)}"`)
+    debugLog(`[AnalysisLoop] ★ INITIAL analysis — nextMove: "${analysis.bestNextMove?.slice(0, 60)}"`)
     lastSpokeAt = Date.now()
     lastSpokenNextMove = analysis.bestNextMove
     await speakToCompanion(companionWindow, {
@@ -465,7 +512,7 @@ function shouldSpeak(change: AnalysisChangeResult): boolean {
     }
   }
 
-  console.log(`[AnalysisLoop] Will speak: ${change.whatChanged} — "${change.whatHappened?.slice(0, 50)}..."`)
+  debugLog(`[AnalysisLoop] Will speak: ${change.whatChanged} — "${change.whatHappened?.slice(0, 50)}..."`)
   return true
 }
 
@@ -481,7 +528,7 @@ function quickWordOverlap(a: string, b: string): number {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function clearStaleState(): void {
-  if (loopTimer) { clearInterval(loopTimer); loopTimer = null }
+  if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
   previousScreenshot = null
   previousAnalysis = null
   lastSpokeAt = 0
@@ -512,16 +559,16 @@ async function speakToCompanion(
   // FIX 1 — semantic dedup for completions: if the same fact was already spoken in
   // the last ~3 minutes (in slightly different words), don't repeat it.
   if (change.whatChanged === 'completion' && recentSpokenCompletions.isDuplicate(change.whatHappened, now)) {
-    console.log(`[Speech] Skipped (semantic duplicate of recent): ${change.whatHappened}`)
+    debugLog(`[Speech] Skipped (semantic duplicate of recent): ${change.whatHappened}`)
     // FIX 2 — but if the NEXT STEP is genuinely new, speak only that (not the repeat).
     const next = change.bestNextMove
     if (next && !recentSpokenNextMoves.isDuplicate(next, now)) {
       const nextText = formatSpokenGuidance('', next, 'progress')
       if (nextText) {
         recentSpokenNextMoves.record(next, now)
-        console.log(`[Speech] Display text: "${next}"`)
-        console.log(`[Speech] TTS text: "${nextText}"`)
-        console.log(`[Speech] Formatted for TTS (next-only): "${nextText}"`)
+        debugLog(`[Speech] Display text: "${next}"`)
+        debugLog(`[Speech] TTS text: "${nextText}"`)
+        debugLog(`[Speech] Formatted for TTS (next-only): "${nextText}"`)
         await speakText(companionWindow, nextText, settings, 'progress', isCritical)
       }
     }
@@ -541,9 +588,9 @@ async function speakToCompanion(
   // Side-by-side sync check: the displayed (panel) content vs the spoken text.
   // These must match in content — TTS may strip markdown but must NOT truncate.
   const displayText = `${change.whatHappened} ${change.bestNextMove}`.replace(/\s+/g, ' ').trim()
-  console.log(`[Speech] Display text: "${displayText}"`)
-  console.log(`[Speech] TTS text: "${text}"`)
-  console.log(`[Speech] Formatted for TTS (${change.whatChanged}): "${text}"`)
+  debugLog(`[Speech] Display text: "${displayText}"`)
+  debugLog(`[Speech] TTS text: "${text}"`)
+  debugLog(`[Speech] Formatted for TTS (${change.whatChanged}): "${text}"`)
   await speakText(companionWindow, text, settings, change.whatChanged, isCritical)
 }
 
@@ -561,7 +608,7 @@ async function speakText(
   isCritical = false
 ): Promise<void> {
   if (companionWindow.isDestroyed()) return
-  console.log(`[Speech] Enqueue to voice player: "${text.slice(0, 80)}..." (critical=${isCritical})`)
+  debugLog(`[Speech] Enqueue to voice player: "${text.slice(0, 80)}..." (critical=${isCritical})`)
   notifyCompanionState(companionWindow, 'speaking')
   enqueueSpeech({ id: `${changeType || 'answer'}-${Date.now()}`, text, isCritical })
 }
@@ -596,12 +643,15 @@ function gradePromptQuality(
   companionWindow: BrowserWindow,
   analysis: AnalysisResult,
   memoryContext: string,
-  settings: AppSettings
+  settings: AppSettings,
+  mySession: number
 ): void {
   void (async () => {
     try {
       const result = await checkPromptQuality(analysis, memoryContext, watchedGoal, settings)
       if (result.valid) return
+      // Don't re-send guidance for a window the user has since switched away from.
+      if (isStaleSession(mySession, currentSession)) return
 
       const corrected: AnalysisResult = { ...analysis }
       if (result.improvedPrompt) {
@@ -619,7 +669,7 @@ function gradePromptQuality(
         companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, corrected)
       }
     } catch (error) {
-      console.warn('[AnalysisLoop] prompt-quality grading failed:', error)
+      debugError('[AnalysisLoop] prompt-quality grading failed:', error)
     }
   })()
 }
