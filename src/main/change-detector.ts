@@ -146,7 +146,8 @@ export function detectAnalysisChange(
       isSignificant: true,
       isHighPriority: true,
       whatChanged: 'completion',
-      whatHappened: `${newBuilt[0]} is done`,
+      // No " is done" suffix — the formatter announces it ("Good news. <X>.").
+      whatHappened: newBuilt[0],
       bestNextMove: current.bestNextMove,
     }
   }

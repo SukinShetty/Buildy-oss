@@ -30,6 +30,12 @@ import { fetchWithTimeout } from './ai/fetch-with-timeout'
 import * as nemp from './nemp-bridge'
 import { checkPromptQuality } from './ai/prompt-quality-check'
 import { enqueueSpeech } from './voice-player'
+import { RecentTopics } from './semantic-dedup'
+
+// Recently-spoken completion subjects + next-steps, for semantic (near-duplicate)
+// dedup within a 3-minute window. Cleared on each fresh watch session.
+const recentSpokenCompletions = new RecentTopics()
+const recentSpokenNextMoves = new RecentTopics()
 
 // ─── Session context ────────────────────────────────────────────────────────
 
@@ -481,6 +487,8 @@ function clearStaleState(): void {
   lastSpokeAt = 0
   lastSpokenNextMove = ''
   isFirstCycle = true
+  recentSpokenCompletions.clear()
+  recentSpokenNextMoves.clear()
 }
 
 function notifyCompanionState(w: BrowserWindow, state: 'idle' | 'thinking' | 'speaking'): void {
@@ -498,11 +506,38 @@ async function speakToCompanion(
   isCritical = false
 ): Promise<void> {
   if (companionWindow.isDestroyed()) return
+
+  const now = Date.now()
+
+  // FIX 1 — semantic dedup for completions: if the same fact was already spoken in
+  // the last ~3 minutes (in slightly different words), don't repeat it.
+  if (change.whatChanged === 'completion' && recentSpokenCompletions.isDuplicate(change.whatHappened, now)) {
+    console.log(`[Speech] Skipped (semantic duplicate of recent): ${change.whatHappened}`)
+    // FIX 2 — but if the NEXT STEP is genuinely new, speak only that (not the repeat).
+    const next = change.bestNextMove
+    if (next && !recentSpokenNextMoves.isDuplicate(next, now)) {
+      const nextText = formatSpokenGuidance('', next, 'progress')
+      if (nextText) {
+        recentSpokenNextMoves.record(next, now)
+        console.log(`[Speech] Display text: "${next}"`)
+        console.log(`[Speech] TTS text: "${nextText}"`)
+        console.log(`[Speech] Formatted for TTS (next-only): "${nextText}"`)
+        await speakText(companionWindow, nextText, settings, 'progress', isCritical)
+      }
+    }
+    return
+  }
+
   const text = formatSpokenGuidance(change.whatHappened, change.bestNextMove, change.whatChanged)
   if (!text) {
     console.log('[Speech] Formatter returned empty text — nothing to say')
     return
   }
+
+  // Record what we're about to say so future near-duplicates are caught.
+  if (change.whatChanged === 'completion') recentSpokenCompletions.record(change.whatHappened, now)
+  if (change.bestNextMove) recentSpokenNextMoves.record(change.bestNextMove, now)
+
   // Side-by-side sync check: the displayed (panel) content vs the spoken text.
   // These must match in content — TTS may strip markdown but must NOT truncate.
   const displayText = `${change.whatHappened} ${change.bestNextMove}`.replace(/\s+/g, ' ').trim()

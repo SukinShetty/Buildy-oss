@@ -32,8 +32,9 @@ export function formatSpokenGuidance(
 
   switch (changeType) {
     case 'completion':
-      if (happened && nextMove) return `${happened}. Next, ${lowFirst(nextMove)}.`
-      if (happened) return `${happened}.`
+      // Natural completion phrasing — no clunky "<X> is done. Next, just wait".
+      if (happened && nextMove) return `Good news. ${happened}. ${nextMove}.`
+      if (happened) return `Good news. ${happened}.`
       return `Next, ${lowFirst(nextMove)}.`
 
     case 'blocker':

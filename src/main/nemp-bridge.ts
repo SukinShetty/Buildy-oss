@@ -43,6 +43,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import type { ProjectMemory, MemoryEntry, MemorySnapshot, Goal } from '../renderer/src/types'
 import { loadProjectMemory, loadGoal } from './memory'
+import { isSemanticDuplicate, subjectKey } from './semantic-dedup'
 
 // ─── Local typings for Nemp's internal modules (loaded via dynamic import) ─────
 
@@ -256,6 +257,15 @@ export async function searchMemories(query: string): Promise<MemoryEntry[]> {
 
 export async function recordObservation(text: string, sourceAnalysisId?: string): Promise<void> {
   if (!text?.trim()) return
+  // Skip near-duplicate observations (compare against the last 20).
+  const recent = readAll()
+    .filter((m) => hasTag(m, 'observation'))
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, 20)
+  if (recent.some((m) => isSemanticDuplicate(text, m.value))) {
+    console.log(`[Nemp] Skipped duplicate observation: ${subjectKey(text)}`)
+    return
+  }
   const key = `obs:${Date.now()}:${slug(text, 24)}`
   const tags = [TAG, 'observation']
   if (sourceAnalysisId) tags.push(`analysis:${sourceAnalysisId}`)
@@ -264,6 +274,15 @@ export async function recordObservation(text: string, sourceAnalysisId?: string)
 
 export async function recordCompletion(feature: string): Promise<void> {
   if (!feature?.trim()) return
+  // Skip near-duplicate completions; bump the existing one's timestamp instead so
+  // it stays "recent" without creating a second entry.
+  const existing = readAll().filter((m) => hasTag(m, 'completion'))
+  const dup = existing.find((m) => isSemanticDuplicate(feature, m.value))
+  if (dup) {
+    console.log(`[Nemp] Skipped duplicate completion: ${subjectKey(feature)}`)
+    writeOne({ ...dup, timestamp: nowISO() })
+    return
+  }
   writeOne({ key: `completion:${slug(feature)}`, value: feature.trim(), tags: [TAG, 'completion'], timestamp: nowISO(), source: SOURCE, agent_id: AGENT_ID })
 }
 
