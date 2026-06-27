@@ -34,7 +34,7 @@ export function CompanionApp(): React.ReactElement {
 
   useEffect(() => {
     window.buildy.loadSettings().then((s) => {
-      setNeedsApiKey(!s.apiKey)
+      setNeedsApiKey(!s.hasApiKey)
     }).catch(() => {})
   }, [])
 
@@ -70,7 +70,7 @@ export function CompanionApp(): React.ReactElement {
 
   async function openPicker(): Promise<void> {
     const s = await window.buildy.loadSettings()
-    if (!s.apiKey) { setNeedsApiKey(true); return }
+    if (!s.hasApiKey) { setNeedsApiKey(true); return }
     setNeedsApiKey(false)
     const wins = await window.buildy.listWindows()
     setWindowList(wins.map((w) => ({ id: w.id, name: w.name, thumbnailBase64: w.thumbnailBase64 })))

@@ -5,7 +5,21 @@
 
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../store/useAppStore'
-import type { ProviderType } from '../types'
+import type { ProviderType, NonSecretSettings, SecretName } from '../types'
+
+const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
+
+// Which encrypted secret holds the API key for a provider (local providers: none).
+function secretNameForProvider(p: ProviderType): SecretName | null {
+  switch (p) {
+    case 'anthropic': return 'anthropicApiKey'
+    case 'openai': return 'openaiApiKey'
+    case 'gemini': return 'geminiApiKey'
+    case 'openrouter': return 'openrouterApiKey'
+    case 'custom': return 'customApiKey'
+    default: return null
+  }
+}
 
 // ─── Provider metadata (static, matches provider-registry on main side) ──────
 
@@ -171,13 +185,12 @@ export function SettingsScreen(): React.ReactElement {
 
   const [provider, setProvider] = useState<ProviderType>(settings.provider)
   const [modelId, setModelId] = useState(settings.modelId)
-  const [apiKey, setApiKey] = useState(settings.apiKey)
+  // API keys are write-only from the renderer: a blank input keeps the stored key.
+  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [elevenKeyInput, setElevenKeyInput] = useState('')
   const [baseUrl, setBaseUrl] = useState(settings.baseUrl)
-  const [useProxy, setUseProxy] = useState(settings.useProxy)
-  const [proxyUrl, setProxyUrl] = useState(settings.proxyUrl)
   const [customModelId, setCustomModelId] = useState('')
-  const [elevenLabsApiKey, setElevenLabsApiKey] = useState(settings.elevenLabsApiKey ?? '')
-  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState(settings.elevenLabsVoiceId ?? '21m00Tcm4TlvDq8ikWAM')
+  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState(settings.elevenLabsVoiceId ?? DEFAULT_VOICE_ID)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
@@ -187,16 +200,16 @@ export function SettingsScreen(): React.ReactElement {
   const selectedModel = meta.models.find((m) => m.id === modelId)
   const showCustomModelInput = isLocalProvider(provider) || provider === 'openrouter'
 
-  // Sync local state when store settings change
+  // Is a key already stored (encrypted in main) for the selected provider?
+  const providerSecret = secretNameForProvider(provider)
+  const keySaved = providerSecret ? !!settings.secretFlags[providerSecret] : false
+
+  // Sync non-secret local state when store settings change (never the key inputs).
   useEffect(() => {
     setProvider(settings.provider)
     setModelId(settings.modelId)
-    setApiKey(settings.apiKey)
     setBaseUrl(settings.baseUrl)
-    setUseProxy(settings.useProxy)
-    setProxyUrl(settings.proxyUrl)
-    setElevenLabsApiKey(settings.elevenLabsApiKey ?? '')
-    setElevenLabsVoiceId(settings.elevenLabsVoiceId ?? '21m00Tcm4TlvDq8ikWAM')
+    setElevenLabsVoiceId(settings.elevenLabsVoiceId ?? DEFAULT_VOICE_ID)
   }, [settings])
 
   function handleProviderChange(newProvider: ProviderType): void {
@@ -205,25 +218,42 @@ export function SettingsScreen(): React.ReactElement {
     setModelId(newMeta.defaultModel)
     setBaseUrl(newMeta.requiresBaseUrl ? newMeta.defaultBaseUrl : '')
     setCustomModelId('')
+    setApiKeyInput('')
+  }
+
+  function buildNonSecret(): NonSecretSettings {
+    return {
+      provider,
+      modelId: customModelId.trim() || modelId,
+      baseUrl: baseUrl.trim(),
+      autoAnalysisIntervalSeconds: settings.autoAnalysisIntervalSeconds,
+      elevenLabsVoiceId: elevenLabsVoiceId.trim() || DEFAULT_VOICE_ID,
+    }
+  }
+
+  // Persist non-secret settings + any newly-typed keys (one-way to encrypted store).
+  async function handleSave(): Promise<void> {
+    await window.buildy.saveSettings(buildNonSecret())
+    if (providerSecret && apiKeyInput.trim()) {
+      await window.buildy.setSecret(providerSecret, apiKeyInput.trim())
+    }
+    if (elevenKeyInput.trim()) {
+      await window.buildy.setSecret('elevenLabsApiKey', elevenKeyInput.trim())
+    }
+    // Refresh the redacted view into the store, and clear the transient key inputs.
+    const redacted = await window.buildy.loadSettings()
+    setSettings(redacted)
+    setApiKeyInput('')
+    setElevenKeyInput('')
+    setSavedAt(new Date().toLocaleTimeString())
   }
 
   async function handleTestConnection(): Promise<void> {
     setIsTesting(true)
     setTestResult(null)
-    // Save first so the main process has the latest settings
-    handleSave()
+    await handleSave() // persist settings + secrets so the test uses the stored key
     try {
-      const result = await window.buildy.testConnection({
-        ...settings,
-        provider,
-        modelId: customModelId.trim() || modelId,
-        apiKey: apiKey.trim(),
-        baseUrl: baseUrl.trim(),
-        useProxy: provider === 'anthropic' ? useProxy : false,
-        proxyUrl: proxyUrl.trim(),
-        elevenLabsApiKey: elevenLabsApiKey.trim(),
-        elevenLabsVoiceId: elevenLabsVoiceId.trim() || '21m00Tcm4TlvDq8ikWAM',
-      })
+      const result = await window.buildy.testConnection(buildNonSecret())
       setTestResult(result)
     } catch (error) {
       setTestResult({ success: false, message: String(error) })
@@ -232,30 +262,11 @@ export function SettingsScreen(): React.ReactElement {
     }
   }
 
-  function handleSave(): void {
-    const finalModelId = customModelId.trim() || modelId
-    const updatedSettings = {
-      ...settings,
-      provider,
-      modelId: finalModelId,
-      apiKey: apiKey.trim(),
-      baseUrl: baseUrl.trim(),
-      useProxy: provider === 'anthropic' ? useProxy : false,
-      proxyUrl: proxyUrl.trim(),
-      elevenLabsApiKey: elevenLabsApiKey.trim(),
-      elevenLabsVoiceId: elevenLabsVoiceId.trim() || '21m00Tcm4TlvDq8ikWAM',
-    }
-    setSettings(updatedSettings)
-    window.buildy.saveSettings(updatedSettings)
-    setSavedAt(new Date().toLocaleTimeString())
-  }
-
   // ─── Validation ──────────────────────────────────────────────────────────
 
-  const hasApiKey = !meta.requiresApiKey || apiKey.trim().length > 0
+  const hasApiKey = !meta.requiresApiKey || keySaved || apiKeyInput.trim().length > 0
   const hasBaseUrl = !meta.requiresBaseUrl || baseUrl.trim().startsWith('http')
-  const hasProxyIfNeeded = !useProxy || proxyUrl.trim().startsWith('http')
-  const configuredCorrectly = hasApiKey && hasBaseUrl && hasProxyIfNeeded
+  const configuredCorrectly = hasApiKey && hasBaseUrl
 
   // Vision warning — warn when the selected model doesn't support vision,
   // or when a custom model ID is typed (vision support is unknown)
@@ -376,9 +387,9 @@ export function SettingsScreen(): React.ReactElement {
             <div style={styles.inputWrapper}>
               <input
                 type={showApiKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your API key here"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder={keySaved ? '•••••••••••• key saved — type to replace' : 'Paste your API key here'}
                 style={styles.textInput}
               />
               <button
@@ -389,6 +400,11 @@ export function SettingsScreen(): React.ReactElement {
                 {showApiKey ? 'Hide' : 'Show'}
               </button>
             </div>
+            {keySaved && !apiKeyInput && (
+              <div style={styles.sectionHint}>
+                A key is securely stored for {meta.displayName} (encrypted on this device).
+              </div>
+            )}
           </div>
         )}
 
@@ -411,33 +427,6 @@ export function SettingsScreen(): React.ReactElement {
           </div>
         )}
 
-        {/* Anthropic proxy mode */}
-        {provider === 'anthropic' && (
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>Proxy mode (optional)</div>
-            <div style={styles.sectionHint}>
-              Use a Cloudflare Worker proxy instead of sending your API key directly.
-            </div>
-            <label style={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={useProxy}
-                onChange={(e) => setUseProxy(e.target.checked)}
-              />
-              <span style={styles.checkboxLabel}>Use proxy</span>
-            </label>
-            {useProxy && (
-              <input
-                type="url"
-                value={proxyUrl}
-                onChange={(e) => setProxyUrl(e.target.value)}
-                placeholder="https://buildy-proxy.your-subdomain.workers.dev"
-                style={styles.textInput}
-              />
-            )}
-          </div>
-        )}
-
         {/* ElevenLabs voice (optional) */}
         <div style={styles.section}>
           <div style={styles.sectionLabel}>Voice (ElevenLabs)</div>
@@ -446,9 +435,9 @@ export function SettingsScreen(): React.ReactElement {
           </div>
           <input
             type="password"
-            value={elevenLabsApiKey}
-            onChange={(e) => setElevenLabsApiKey(e.target.value)}
-            placeholder="ElevenLabs API key"
+            value={elevenKeyInput}
+            onChange={(e) => setElevenKeyInput(e.target.value)}
+            placeholder={settings.hasElevenLabsKey ? '•••••••••••• key saved — type to replace' : 'ElevenLabs API key'}
             style={styles.textInput}
           />
           <input
@@ -514,7 +503,7 @@ export function SettingsScreen(): React.ReactElement {
           <div style={styles.infoText}>
             {isLocalProvider(provider)
               ? 'Using a local model — your data never leaves your machine.'
-              : 'Your API key is stored locally and never leaves your device.'}
+              : 'Your API key is encrypted on this device (OS keychain) and is never exposed to the app UI.'}
           </div>
         </div>
       </div>

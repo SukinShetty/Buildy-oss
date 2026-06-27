@@ -5,14 +5,14 @@
 import { create } from 'zustand'
 import type {
   ProjectMemory,
-  AppSettings,
+  RedactedSettings,
   WindowSource,
   CaptureResult,
   AnalysisResult,
   ChatMessage,
   ExtractedProjectData,
 } from '../types'
-import { emptyProjectMemory, defaultSettings } from '../types'
+import { emptyProjectMemory, defaultRedactedSettings } from '../types'
 
 // ─── Screen navigation ────────────────────────────────────────────────────────
 
@@ -43,8 +43,8 @@ interface AppState {
   project: ProjectMemory
   projectIsLoaded: boolean
 
-  // ── Settings (persisted via IPC)
-  settings: AppSettings
+  // ── Settings (REDACTED — non-secret fields + has* booleans; never raw keys)
+  settings: RedactedSettings
   settingsAreLoaded: boolean
 
   // ── Analysis
@@ -71,7 +71,7 @@ interface AppState {
   patchProject: (partial: Partial<ProjectMemory>) => void
   setProjectIsLoaded: (loaded: boolean) => void
 
-  setSettings: (settings: AppSettings) => void
+  setSettings: (settings: RedactedSettings) => void
   setSettingsAreLoaded: (loaded: boolean) => void
 
   setAnalysisPhase: (phase: AnalysisPhase) => void
@@ -103,7 +103,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   projectIsLoaded: false,
 
   // ── Settings
-  settings: defaultSettings(),
+  settings: defaultRedactedSettings(),
   settingsAreLoaded: false,
 
   // ── Analysis

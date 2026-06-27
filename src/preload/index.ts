@@ -12,7 +12,9 @@ import type {
   CaptureResult,
   AnalysisResult,
   ProjectMemory,
-  AppSettings,
+  NonSecretSettings,
+  RedactedSettings,
+  SecretName,
   ChatMessage,
   ExtractedProjectData,
   Goal,
@@ -37,7 +39,7 @@ const buildyAPI = {
   analyze: (
     capture: CaptureResult,
     project: ProjectMemory,
-    settings: AppSettings
+    settings: NonSecretSettings
   ): Promise<AnalysisResult> =>
     ipcRenderer.invoke(IPC.ANALYZE, capture, project, settings),
 
@@ -46,7 +48,7 @@ const buildyAPI = {
   startBrainstorm: (
     userMessage: string,
     history: ChatMessage[],
-    settings: AppSettings
+    settings: NonSecretSettings
   ): Promise<void> =>
     ipcRenderer.invoke(IPC.BRAINSTORM_START, userMessage, history, settings),
 
@@ -97,15 +99,21 @@ const buildyAPI = {
     ipcRenderer.invoke(IPC.GET_PROVIDER_INFOS),
 
   // ─── Connection test ────────────────────────────────────────────────────
-  testConnection: (settings: AppSettings): Promise<{ success: boolean; message: string; latencyMs: number | null }> =>
+  testConnection: (settings: NonSecretSettings): Promise<{ success: boolean; message: string; latencyMs: number | null }> =>
     ipcRenderer.invoke(IPC.TEST_CONNECTION, settings),
 
   // ─── Settings ─────────────────────────────────────────────────────────────
-  loadSettings: (): Promise<AppSettings> =>
+  // Returns REDACTED settings only (no raw keys — just has* booleans).
+  loadSettings: (): Promise<RedactedSettings> =>
     ipcRenderer.invoke(IPC.LOAD_SETTINGS),
 
-  saveSettings: (settings: AppSettings): Promise<void> =>
+  // Saves NON-SECRET settings only. API keys go through setSecret (one-way).
+  saveSettings: (settings: NonSecretSettings): Promise<void> =>
     ipcRenderer.invoke(IPC.SAVE_SETTINGS, settings),
+
+  // Store an API key in the encrypted main-process store. The renderer never reads it back.
+  setSecret: (name: SecretName, value: string): Promise<void> =>
+    ipcRenderer.invoke(IPC.SET_SECRET, { name, value }),
 
   // ─── Companion mode ───────────────────────────────────────────────────────
   startCompanion: (): Promise<void> =>
