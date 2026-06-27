@@ -14,7 +14,10 @@
 import { fetchWithTimeout } from './fetch-with-timeout'
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1'
-const TTS_MAX_CHARS = 300
+// Hard cap so a long answer/explanation is read fully but extreme TTS calls are
+// avoided. Short live-guidance lines are well under this; only long spoken
+// answers approach it.
+const TTS_MAX_CHARS = 500
 
 /**
  * Clean text before sending to TTS: strip markdown / control markers that would
@@ -23,10 +26,11 @@ const TTS_MAX_CHARS = 300
  */
 function sanitizeForTTS(raw: string): string {
   let t = raw
+    .replace(/```[\s\S]*?```/g, ' ')                 // fenced code blocks (drop entirely)
     .replace(/\[PROMPT_START\]|\[PROMPT_END\]/g, '') // control markers
     .replace(/\*\*/g, '')                            // bold markers
     .replace(/#{1,6}/g, '')                          // markdown headings (##, ###, ...)
-    .replace(/`+/g, '')                              // code ticks
+    .replace(/`+/g, '')                              // inline code ticks
     .replace(/\s+/g, ' ')
     .trim()
 

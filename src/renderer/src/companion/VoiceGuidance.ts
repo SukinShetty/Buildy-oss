@@ -1,41 +1,58 @@
 // VoiceGuidance.ts
 // Audio playback for the Buildy companion.
-// Two modes:
-//   1. ElevenLabs: receives base64 MP3 from main process, plays via HTMLAudioElement
-//   2. System TTS fallback: Web Speech API
+// Two sources, ONE queue:
+//   1. ElevenLabs: base64 MP3 from main → HTMLAudioElement   (kind: 'audio')
+//   2. System TTS fallback: Web Speech API                   (kind: 'tts')
 //
-// All paths log clearly. No silent failures.
+// ─── ROOT-CAUSE DIAGNOSIS (voice cut off / skipped ahead — recurred 4+ times) ──
+// The serial queue + lock added in previous fixes ONLY governed the ElevenLabs
+// path (playAudio). The system-TTS fallback (speakSystemTTS → speakNow) ran
+// entirely OUTSIDE the queue and lock, and speakNow() called
+// window.speechSynthesis.cancel() at the top of EVERY utterance. So whenever
+// voice went through Web Speech — which is the DEFAULT, since defaultSettings()
+// ships with an empty elevenLabsApiKey — each newly arriving analysis cancelled
+// the still-speaking previous utterance MID-SENTENCE. That was the persistent
+// cut-off. Secondarily, because the two paths shared no lock, a fallback TTS
+// utterance could also start ON TOP OF a still-playing ElevenLabs clip (overlap
+// = "skips ahead"). Every prior fix hardened only the ElevenLabs HTMLAudio path,
+// so the most common path (system TTS) kept cutting itself off.
+//
+// THE FIX (this file): both sources go through ONE queue and ONE lock. Items are
+// played strictly one at a time. The lock is released ONLY inside done(), which
+// is reached from: audio 'ended'/'error', utterance 'end'/'error', the per-clip
+// safety timeout, or stopAllAudio (via finishCurrent). speechSynthesis.cancel()
+// is now called ONLY from stopAllAudio — never per-utterance. New analysis NEVER
+// interrupts; it only appends to the queue.
 
 let currentAudio: HTMLAudioElement | null = null
-let audioLock = false                                                       // true while a clip is actively playing
-let queuedAudio: { audioBase64: string; resolve: () => void } | null = null // at most ONE clip waiting
-let finishCurrent: (() => void) | null = null                               // resolves + unlocks the in-flight clip
+let audioLock = false                                      // true while a clip is actively playing
+let finishCurrent: ((reason: string) => void) | null = null // settles + unlocks the in-flight clip
+
+// True serial queue: new arrivals APPEND and wait their turn — the currently
+// playing clip is never interrupted. Capped so a backlog can't pile up.
+type QueueItem =
+  | { kind: 'audio'; audioBase64: string; text: string; resolve: () => void }
+  | { kind: 'tts'; text: string; resolve: () => void }
+const audioQueue: QueueItem[] = []
+const MAX_QUEUE = 3
 
 // ─── Speech deduplication ─────────────────────────────────────────────────────
-// Stops the same guidance being spoken over and over. The same text is skipped
-// while it is still the most recent thing said AND it was said within the cooldown.
+// Stops the same guidance being spoken over and over. A clip is skipped if its
+// full constructed text matches the last thing actually spoken AND that was
+// within the cooldown. lastSpokenText is recorded only once playback STARTS, so a
+// failed clip never blocks the legitimate next one.
 let lastSpokenText: string = ''
 let lastSpokenAt: number = 0
-const SPEAK_COOLDOWN_MS = 60_000
+const SPEAK_COOLDOWN_MS = 90_000
+const CLIP_SAFETY_MS = 90_000
 
-/**
- * Decide whether `text` should be spoken now. Returns false (skip) for empty text
- * and for an exact repeat of the last spoken text within the cooldown window.
- * Records the text + timestamp when it is allowed through.
- */
-function shouldSpeak(text: string): boolean {
-  const trimmed = (text || '').trim()
-  if (!trimmed) {
-    console.log('[Voice] shouldSpeak: empty text — skipping')
-    return false
-  }
-  if (trimmed === lastSpokenText && Date.now() - lastSpokenAt < SPEAK_COOLDOWN_MS) {
-    console.log('[Voice] shouldSpeak: duplicate within cooldown — skipping')
-    return false
-  }
-  lastSpokenText = trimmed
+function isDuplicate(text: string): boolean {
+  return !!text && text === lastSpokenText && Date.now() - lastSpokenAt < SPEAK_COOLDOWN_MS
+}
+
+function recordSpoken(text: string): void {
+  lastSpokenText = text
   lastSpokenAt = Date.now()
-  return true
 }
 
 /**
@@ -47,46 +64,83 @@ export function resetSpeechDedup(): void {
   console.log('[Voice] resetSpeechDedup: cleared')
 }
 
-// ─── ElevenLabs audio playback ───────────────────────────────────────────────
+// ─── Unified serial queue (both ElevenLabs and system TTS) ────────────────────
 
 /**
- * Play base64 MP3 audio. Playback is serialized so new TTS never interrupts the
- * clip already playing (which caused the choppy / cut-off voice). If audio is
- * busy, the new clip is queued; the queue holds at most one clip, so when a third
- * clip arrives the stale middle one is dropped and only the latest plays. The
- * lock is always released — on natural end, on error, or on a failed .play().
+ * Shared enqueue path for both audio sources. Dedup, back-to-back guard, append,
+ * cap, then pump. Returns true if the item was queued, false if skipped.
+ */
+function enqueue(item: QueueItem): boolean {
+  const trimmed = item.text.trim()
+  if (!trimmed) { item.resolve(); return false }
+  item.text = trimmed
+
+  // Dedup: skip an exact repeat of the last spoken text within the cooldown.
+  if (isDuplicate(trimmed)) {
+    console.log(`[Voice] Skipped (dedup): ${trimmed.slice(0, 60)}`)
+    item.resolve()
+    return false
+  }
+  // Don't enqueue the identical text twice back-to-back (covers rapid repeats
+  // that arrive before the first has started playing / recorded dedup state).
+  const tail = audioQueue[audioQueue.length - 1]
+  if (tail && tail.text === trimmed) {
+    console.log(`[Voice] Skipped (already queued): ${trimmed.slice(0, 60)}`)
+    item.resolve()
+    return false
+  }
+
+  console.log(`[Voice] Queue size before append: ${audioQueue.length}`)
+  audioQueue.push(item)
+  console.log(`[Voice] Queueing: ${trimmed.slice(0, 60)}`)
+
+  // Cap the queue — drop the OLDEST waiting clip (never the one playing).
+  while (audioQueue.length > MAX_QUEUE) {
+    const dropped = audioQueue.shift()!
+    console.log(`[Voice] Queue dropped (full): ${dropped.text.slice(0, 60)}`)
+    dropped.resolve()
+  }
+  console.log(`[Voice] Queue size after append: ${audioQueue.length}`)
+
+  pumpQueue()
+  return true
+}
+
+/**
+ * Queue base64 MP3 audio (ElevenLabs) for playback. Playback is fully serial: the
+ * clip already playing always finishes before the next begins. New arrivals are
+ * appended (never substituted), so explanations are read completely and in order.
  */
 export function playAudio(audioBase64: string, text: string): Promise<void> {
   return new Promise((resolve) => {
-    console.log(`[Voice] playAudio: received ${audioBase64.length} chars of base64`)
-
-    // Deduplicate: skip repeats of the same spoken content (see shouldSpeak)
-    if (!shouldSpeak(text)) {
-      resolve()
-      return
-    }
-
-    if (audioLock) {
-      // Already playing — queue the latest, dropping any stale queued clip (cap = 1)
-      if (queuedAudio) {
-        console.log('[Voice] playAudio: dropping stale queued clip, keeping latest')
-        queuedAudio.resolve()
-      }
-      console.log('[Voice] playAudio: audio busy — queuing this clip')
-      queuedAudio = { audioBase64, resolve }
-      return
-    }
-
-    startPlayback(audioBase64, resolve)
+    enqueue({ kind: 'audio', audioBase64, text: text || '', resolve })
   })
 }
 
-function startPlayback(audioBase64: string, resolve: () => void): void {
+/** Start the next queued item if nothing is currently playing. */
+function pumpQueue(): void {
+  if (audioLock) return
+  const next = audioQueue.shift()
+  if (!next) return
+  if (next.kind === 'audio') startAudioPlayback(next)
+  else startTtsPlayback(next)
+}
+
+/**
+ * Build the shared lifecycle for one queued item: a single-shot done() that
+ * releases the lock and advances the queue, plus a safety timer. The lock is
+ * released ONLY through this done().
+ */
+function beginItem(
+  item: QueueItem,
+  onTimeout: () => void
+): { done: (reason: string) => void; markSettled: () => boolean } {
   audioLock = true
   let settled = false
   let safetyTimer: ReturnType<typeof setTimeout> | null = null
+  const startedAt = Date.now()
+  console.log(`[Voice] Acquiring lock — currentText: ${item.text.slice(0, 60)}`)
 
-  // Release the lock exactly once, then play the next queued clip if there is one.
   const done = (reason: string): void => {
     if (settled) return
     settled = true
@@ -94,61 +148,96 @@ function startPlayback(audioBase64: string, resolve: () => void): void {
     finishCurrent = null
     cleanupAudio()
     audioLock = false
-    console.log(`[Voice] playAudio: LOCK RELEASED (${reason})`)
-    resolve()
-    if (queuedAudio) {
-      const next = queuedAudio
-      queuedAudio = null
-      startPlayback(next.audioBase64, next.resolve)
-    }
+    const secs = ((Date.now() - startedAt) / 1000).toFixed(1)
+    console.log(`[Voice] Playback duration: ${secs}s`)
+    console.log(`[Voice] Releasing lock — reason: ${reason}`)
+    item.resolve()
+    pumpQueue()
   }
-  finishCurrent = () => done('stopped')
+
+  finishCurrent = (reason: string) => done(reason || 'stop')
+  safetyTimer = setTimeout(() => {
+    console.warn(`[Voice] safety timeout (${CLIP_SAFETY_MS / 1000}s) — forcing end`)
+    onTimeout()
+    done('timeout')
+  }, CLIP_SAFETY_MS)
+
+  return { done, markSettled: () => settled }
+}
+
+/** ElevenLabs MP3 clip via HTMLAudioElement. Advances on the 'ended' event. */
+function startAudioPlayback(item: Extract<QueueItem, { kind: 'audio' }>): void {
+  const { done, markSettled } = beginItem(item, () => {
+    try { currentAudio?.pause() } catch { /* ignore */ }
+  })
 
   try {
-    // Use data URI directly — avoids blob URL CSP issues in Electron
-    const dataUri = `data:audio/mpeg;base64,${audioBase64}`
+    // Data URI avoids blob URL CSP issues in Electron.
+    const dataUri = `data:audio/mpeg;base64,${item.audioBase64}`
 
-    // Keep the element on a module-level variable (assigned below) so the garbage
-    // collector cannot reclaim it mid-playback and cut the audio off.
+    // Module-level variable so the GC cannot reclaim it mid-playback.
     const audio = new Audio()
     audio.preload = 'auto'    // buffer the whole clip before playing
     audio.volume = 1.0
     currentAudio = audio
 
-    audio.onended = () => {
-      console.log('[Voice] playAudio: playback ENDED')
-      done('ended')
-    }
-    audio.onerror = (e) => {
-      console.error('[Voice] playAudio: playback ERROR:', e)
-      done('error')
-    }
+    // Resolve ONLY on a natural end — never on 'play' — so a clip is read fully.
+    audio.onended = () => { console.log('[Voice] ended event fired'); done('ended') }
+    audio.onerror = (e) => { console.error('[Voice] playback ERROR:', e); done('error') }
 
-    // Only start once the full clip is buffered — prevents playback cutting off
+    // Only start once the full clip is buffered — prevents playback cutting off.
     audio.oncanplaythrough = () => {
-      if (settled) return
-      console.log('[Voice] playAudio: canplaythrough — STARTING playback')
+      if (markSettled()) return
+      console.log('[Voice] canplaythrough fired, calling play()')
       audio.play().then(() => {
-        console.log('[Voice] playAudio: playback started successfully')
+        console.log(`[Voice] play() resolved, awaiting ended... — Playing: ${item.text.slice(0, 60)}`)
+        recordSpoken(item.text) // record dedup only once playback actually started
       }).catch((err) => {
-        console.error('[Voice] playAudio: .play() rejected:', err)
+        console.error('[Voice] .play() rejected:', err)
         done('play-rejected')
       })
     }
 
-    // Safety net: if a clip never ends (stuck buffering or >60s), force-release the lock
-    safetyTimer = setTimeout(() => {
-      console.warn('[Voice] playAudio: safety timeout (60s) — forcing end')
-      try { audio.pause() } catch { /* ignore */ }
-      done('timeout')
-    }, 60_000)
-
+    console.log('[Voice] Audio src set, awaiting canplaythrough...')
     audio.src = dataUri
     audio.load()
   } catch (err) {
-    console.error('[Voice] playAudio: decode error:', err)
+    console.error('[Voice] decode error:', err)
     done('decode-error')
   }
+}
+
+/** System TTS clip via Web Speech. Advances on the utterance 'end' event. */
+function startTtsPlayback(item: Extract<QueueItem, { kind: 'tts' }>): void {
+  const { done } = beginItem(item, () => {
+    // Stuck utterance — cancel it so the synth engine is free for the next clip.
+    try { window.speechSynthesis.cancel() } catch { /* ignore */ }
+  })
+
+  if (!('speechSynthesis' in window)) {
+    console.error('[Voice] speechSynthesis not available')
+    done('no-tts')
+    return
+  }
+  if (!voicesLoaded) loadBestVoice()
+
+  const utterance = new SpeechSynthesisUtterance(item.text)
+  utterance.rate = 0.95
+  utterance.pitch = 1.05
+  utterance.volume = 1.0
+  if (selectedVoice) utterance.voice = selectedVoice
+
+  utterance.onstart = () => {
+    console.log(`[Voice] play() resolved, awaiting ended... — Playing: ${item.text.slice(0, 60)}`)
+    recordSpoken(item.text)
+  }
+  utterance.onend = () => { console.log('[Voice] ended event fired'); done('ended') }
+  utterance.onerror = (e) => { console.error('[Voice] TTS error:', e.error); done('error') }
+
+  // NOTE: deliberately NO speechSynthesis.cancel() here — cancelling is what cut
+  // off the previous utterance. Cancel happens only in stopAllAudio.
+  console.log('[Voice] Audio src set, awaiting canplaythrough... (system TTS)')
+  window.speechSynthesis.speak(utterance)
 }
 
 // ─── System TTS fallback ─────────────────────────────────────────────────────
@@ -185,64 +274,49 @@ if ('speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = loadBestVoice
 }
 
+/**
+ * Queue a system-TTS (Web Speech) clip. Goes through the SAME queue/lock as the
+ * ElevenLabs path, so it never overlaps or cancels a clip already speaking.
+ */
 export function speakSystemTTS(text: string): void {
   if (!('speechSynthesis' in window)) {
     console.error('[Voice] speakSystemTTS: speechSynthesis not available')
     return
   }
-
-  // Deduplicate before speaking (the retry path uses speakNow, which bypasses this)
-  if (!shouldSpeak(text)) return
-
-  console.log(`[Voice] speakSystemTTS: "${text.slice(0, 60)}..."`)
-  speakNow(text)
-}
-
-function speakNow(text: string): void {
-  window.speechSynthesis.cancel()
-  if (!voicesLoaded) loadBestVoice()
-
-  if (!voicesLoaded) {
-    console.warn('[Voice] speakSystemTTS: no voices loaded yet, retrying in 500ms')
-    setTimeout(() => speakNow(text), 500)
-    return
-  }
-
-  const utterance = new SpeechSynthesisUtterance(text)
-  utterance.rate = 0.95
-  utterance.pitch = 1.05
-  utterance.volume = 0.8
-  if (selectedVoice) utterance.voice = selectedVoice
-
-  utterance.onstart = () => console.log('[Voice] speakSystemTTS: speech started')
-  utterance.onend = () => console.log('[Voice] speakSystemTTS: speech ended')
-  utterance.onerror = (e) => console.error('[Voice] speakSystemTTS: error:', e.error)
-
-  window.speechSynthesis.speak(utterance)
-  console.log('[Voice] speakSystemTTS: utterance queued')
+  enqueue({ kind: 'tts', text: text || '', resolve: () => {} })
 }
 
 // ─── Stop everything ─────────────────────────────────────────────────────────
 
 export function stopAllAudio(): void {
-  // Drop any queued clip so it doesn't auto-play after we stop
-  if (queuedAudio) { queuedAudio.resolve(); queuedAudio = null }
+  console.log(`[Voice] stopAllAudio — draining queue (${audioQueue.length}) and stopping current`)
 
-  // Stop the in-flight clip and release its lock + pending promise
+  // Clear the whole queue so nothing auto-plays after we stop (resolve each
+  // waiting promise so callers awaiting playAudio don't hang).
+  while (audioQueue.length) {
+    const item = audioQueue.shift()!
+    item.resolve()
+  }
+
+  // Stop whichever source is in flight.
   if (currentAudio) {
     currentAudio.pause()
     try { currentAudio.currentTime = 0 } catch { /* ignore */ }
   }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel()
+  }
+
+  // Release the lock + settle the in-flight promise via the single done() path.
   if (finishCurrent) {
-    finishCurrent()
+    finishCurrent('stop')
   } else {
     audioLock = false
     cleanupAudio()
   }
 
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel()
-  }
+  // Reset dedup so the next watching session can speak freely.
+  resetSpeechDedup()
 }
 
 export function isPlaying(): boolean {
