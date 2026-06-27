@@ -36,10 +36,18 @@ export function GuidanceWorkspace(): React.ReactElement {
 
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const countdownRef = useRef(AUTO_ANALYSIS_INTERVAL_SECONDS)
   const [windowPickerVisible, setWindowPickerVisible] = useState(false)
   const [pendingWindowId, setPendingWindowId] = useState<string | null>(null)
 
-  const apiIsConfigured = settings.apiKey || settings.baseUrl || (settings.useProxy && settings.proxyUrl)
+  // Refs so the auto-analysis timer reads CURRENT values, not stale closures.
+  const selectedSourceRef = useRef(selectedWindowSourceId)
+  selectedSourceRef.current = selectedWindowSourceId
+  const autoEnabledRef = useRef(autoAnalysisEnabled)
+  autoEnabledRef.current = autoAnalysisEnabled
+
+  // settings is REDACTED (no raw keys) — check the has* boolean + base URL.
+  const apiIsConfigured = settings.hasApiKey || settings.baseUrl.trim().length > 0
   const isAnalyzing = analysisPhase === 'capturing' || analysisPhase === 'analyzing'
   const projectIsConfigured = project.projectName.trim().length > 0
 
@@ -58,13 +66,23 @@ export function GuidanceWorkspace(): React.ReactElement {
     setAnalysisError(null)
 
     try {
-      // Step 1: Capture the window
+      // Step 1: Capture the window. If it's gone, HALT — never capture the desktop.
       setAnalysisPhase('capturing')
-      const capture = await window.buildy.captureWindow(sourceId)
+      const outcome = await window.buildy.captureWindow(sourceId)
+      if (!outcome.ok) {
+        setSelectedWindowSourceId(null)
+        setAnalysisError(
+          outcome.reason === 'window-missing'
+            ? 'The window you were watching is no longer open. Pick a window to analyze.'
+            : 'No window selected. Pick a window to analyze.'
+        )
+        setAnalysisPhase('error')
+        return
+      }
 
-      // Step 2: Send to Claude
+      // Step 2: Send to the provider
       setAnalysisPhase('analyzing')
-      const result = await window.buildy.analyze(capture, project, settings)
+      const result = await window.buildy.analyze(outcome.capture, project, settings)
 
       // Step 3: Show results
       setLatestAnalysis(result)
@@ -87,23 +105,12 @@ export function GuidanceWorkspace(): React.ReactElement {
       return
     }
 
-    // Otherwise, show the window picker
+    // Otherwise, show the window picker (the user always chooses — no auto-detect)
     setAnalysisPhase('listing-windows')
     try {
       const windows = await window.buildy.listWindows()
       setAvailableWindows(windows)
-
-      // If Buildy auto-detected exactly one Claude Code window, use it directly
-      const autoDetected = windows.filter((w) => w.isClaudeCode)
-      if (autoDetected.length === 1) {
-        setSelectedWindowSourceId(autoDetected[0].id)
-        setAnalysisPhase('idle')
-        await startAnalysis(autoDetected[0].id)
-        return
-      }
-
-      // Multiple or zero detected — show the picker
-      setPendingWindowId(autoDetected[0]?.id ?? windows[0]?.id ?? null)
+      setPendingWindowId(windows[0]?.id ?? null)
       setWindowPickerVisible(true)
       setAnalysisPhase('awaiting-window-selection')
     } catch (error) {
@@ -142,20 +149,20 @@ export function GuidanceWorkspace(): React.ReactElement {
   function scheduleNextAutoAnalysis(): void {
     clearAutoTimers()
 
+    countdownRef.current = AUTO_ANALYSIS_INTERVAL_SECONDS
     setSecondsUntilNextAutoAnalysis(AUTO_ANALYSIS_INTERVAL_SECONDS)
 
-    // Countdown display
+    // Countdown display — pass a NUMBER to the (numeric) store setter, tracking the
+    // value in a ref (the previous code passed a function, corrupting the state).
     countdownTimerRef.current = setInterval(() => {
-      setSecondsUntilNextAutoAnalysis(
-        (prev) => (prev > 0 ? prev - 1 : 0)
-      )
+      countdownRef.current = Math.max(0, countdownRef.current - 1)
+      setSecondsUntilNextAutoAnalysis(countdownRef.current)
     }, 1000)
 
-    // Actual analysis trigger
+    // Actual analysis trigger — read CURRENT source + enabled flag from refs.
     autoTimerRef.current = setTimeout(async () => {
-      await startAnalysis(selectedWindowSourceId)
-      // Re-schedule if still enabled
-      if (autoAnalysisEnabled) {
+      await startAnalysis(selectedSourceRef.current)
+      if (autoEnabledRef.current) {
         scheduleNextAutoAnalysis()
       }
     }, AUTO_ANALYSIS_INTERVAL_SECONDS * 1000)
