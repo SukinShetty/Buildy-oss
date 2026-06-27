@@ -7,6 +7,7 @@ import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
 import type { ProjectMemory, AppSettings, CaptureResult, Goal, GuidancePayload } from '../renderer/src/types'
 import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance } from './guidance-window'
+import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings, loadGoal, setGoal, updateGoal } from './memory'
@@ -313,6 +314,16 @@ export function registerIpcHandlers(
     return { saved: true, path: result.filePath }
   })
   ipcMain.handle(IPC.MEMORY_RESET, async () => nemp.resetMemory())
+
+  // ─── Voice player ─────────────────────────────────────────────────────────────
+
+  // From the hidden voice window:
+  ipcMain.on(IPC.VOICE_ENDED, (_e, id: string) => handleVoiceEnded(id))
+  ipcMain.on(IPC.VOICE_ERROR, (_e, id: string) => handleVoiceError(id))
+  // From the companion (explicit user actions only):
+  ipcMain.on(IPC.VOICE_CTL_STOP, () => stopVoice())
+  ipcMain.on(IPC.VOICE_CTL_MUTE, (_e, muted: boolean) => setVoiceMuted(muted))
+  ipcMain.on(IPC.VOICE_CTL_RESET, () => resetVoiceDedup())
 }
 
 // ─── ElevenLabs Speech-to-Text ───────────────────────────────────────────────

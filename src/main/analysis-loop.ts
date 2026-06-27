@@ -24,12 +24,12 @@ import {
   detectAnalysisChange,
 } from './change-detector'
 import type { AnalysisChangeResult } from './change-detector'
-import { synthesizeSpeech } from './ai/elevenlabs-tts'
 import { formatSpokenGuidance } from './ai/speech-formatter'
 import { buildQuestionSystemPrompt, buildQuestionUserPrompt } from './ai/prompt-builder'
 import { fetchWithTimeout } from './ai/fetch-with-timeout'
 import * as nemp from './nemp-bridge'
 import { checkPromptQuality } from './ai/prompt-quality-check'
+import { enqueueSpeech } from './voice-player'
 
 // ─── Session context ────────────────────────────────────────────────────────
 
@@ -412,13 +412,15 @@ async function runOneAnalysisCycle(
       whatChanged: 'new_step',
       whatHappened: analysis.whatIsHappening,
       bestNextMove: analysis.bestNextMove,
-    }, settings)
+    }, settings, false)
   } else {
     console.log(`[AnalysisLoop] Change detected: ${change.whatChanged || 'none'}, significant=${change.isSignificant}, highPri=${change.isHighPriority}`)
     if (shouldSpeak(change)) {
       lastSpokeAt = Date.now()
       lastSpokenNextMove = change.bestNextMove
-      await speakToCompanion(companionWindow, change, settings)
+      // A brand-new blocker is a critical override (truncates the queue after the
+      // current chunk). Driven by the model's isCriticalOverride flag.
+      await speakToCompanion(companionWindow, change, settings, !!analysis.isCriticalOverride)
     }
   }
 
@@ -492,7 +494,8 @@ function notifyWatchedSource(w: BrowserWindow, windowName: string): void {
 async function speakToCompanion(
   companionWindow: BrowserWindow,
   change: AnalysisChangeResult,
-  settings: AppSettings
+  settings: AppSettings,
+  isCritical = false
 ): Promise<void> {
   if (companionWindow.isDestroyed()) return
   const text = formatSpokenGuidance(change.whatHappened, change.bestNextMove, change.whatChanged)
@@ -501,43 +504,26 @@ async function speakToCompanion(
     return
   }
   console.log(`[Speech] Formatted for TTS (${change.whatChanged}): "${text}"`)
-  await speakText(companionWindow, text, settings, change.whatChanged)
+  await speakText(companionWindow, text, settings, change.whatChanged, isCritical)
 }
 
+/**
+ * Hand text to the MAIN-PROCESS voice player (a hidden window that survives
+ * companion re-renders / backgrounding). The voice player owns the queue, the
+ * lock, chunking, and ElevenLabs synthesis — see voice-player.ts. We only enqueue;
+ * we never play here, so new analysis never interrupts the current clip.
+ */
 async function speakText(
   companionWindow: BrowserWindow,
   text: string,
-  settings: AppSettings,
-  changeType?: string | null
+  _settings: AppSettings,
+  changeType?: string | null,
+  isCritical = false
 ): Promise<void> {
   if (companionWindow.isDestroyed()) return
-
-  console.log(`[Speech] Attempting to speak: "${text.slice(0, 80)}..."`)
+  console.log(`[Speech] Enqueue to voice player: "${text.slice(0, 80)}..." (critical=${isCritical})`)
   notifyCompanionState(companionWindow, 'speaking')
-
-  // Try ElevenLabs first
-  if (settings.elevenLabsApiKey) {
-    try {
-      console.log('[Speech] Trying ElevenLabs TTS...')
-      const result = await synthesizeSpeech(text, settings.elevenLabsApiKey, settings.elevenLabsVoiceId || '21m00Tcm4TlvDq8ikWAM')
-      if (result.success && result.audioBase64 && !companionWindow.isDestroyed()) {
-        console.log('[Speech] ElevenLabs success — sending audio to companion')
-        companionWindow.webContents.send(IPC.COMPANION_AUDIO, { audioBase64: result.audioBase64, text, type: changeType || 'answer' })
-        return
-      }
-      console.warn(`[Speech] ElevenLabs failed: ${result.error}`)
-    } catch (err) {
-      console.error('[Speech] ElevenLabs exception:', err)
-    }
-  } else {
-    console.log('[Speech] No ElevenLabs key — using system TTS fallback')
-  }
-
-  // Fall through to system TTS
-  if (!companionWindow.isDestroyed()) {
-    console.log('[Speech] Sending COMPANION_SPEAK for system TTS')
-    companionWindow.webContents.send(IPC.COMPANION_SPEAK, { text, type: changeType || 'answer' })
-  }
+  enqueueSpeech({ id: `${changeType || 'answer'}-${Date.now()}`, text, isCritical })
 }
 
 // ─── Memory + prompt-quality wiring (Block 2 / Part C) ───────────────────────

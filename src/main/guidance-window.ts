@@ -164,6 +164,15 @@ export function hideGuidanceWindow(): void {
 }
 
 /**
+ * Tell the guidance window which sentence is currently being spoken (or null to
+ * clear the indicator). Lets the panel highlight progress (Invariant 6).
+ */
+export function sendSpeechProgress(chunkText: string | null): void {
+  if (!guidanceRef || guidanceRef.isDestroyed()) return
+  guidanceRef.webContents.send(IPC.VOICE_SPEAK_PROGRESS, chunkText)
+}
+
+/**
  * Re-anchor the guidance window to the mascot. Called on every mascot 'move'.
  */
 export function repositionGuidanceWindow(): void {

@@ -16,10 +16,12 @@ import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosi
 import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
 import { init as initNempMemory } from './nemp-bridge'
+import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
 
 let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
 let guidanceWindow: BrowserWindow | null = null
+let voicePlayerWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
 // App / tray icon — Buildy mascot logo. Resolved relative to the built main
@@ -55,6 +57,9 @@ function shutdownApp(): void {
 
   destroyGuidanceWindow()
   guidanceWindow = null
+
+  destroyVoicePlayer()
+  voicePlayerWindow = null
 
   // 4. Destroy main window (allow it to close for real)
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -209,6 +214,7 @@ app.whenReady().then(() => {
   mainWindow = createMainWindow()
   companionWindow = createCompanionWindow()
   guidanceWindow = createGuidanceWindow(companionWindow)
+  voicePlayerWindow = createVoicePlayerWindow()
   tray = createSystemTray()
 
   registerIpcHandlers(mainWindow, companionWindow)
@@ -225,6 +231,7 @@ app.on('activate', () => {
     mainWindow = createMainWindow()
     companionWindow = createCompanionWindow()
     guidanceWindow = createGuidanceWindow(companionWindow)
+    voicePlayerWindow = createVoicePlayerWindow()
     registerIpcHandlers(mainWindow, companionWindow)
   } else {
     showCompanion()
