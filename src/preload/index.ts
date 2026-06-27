@@ -207,6 +207,9 @@ const buildyAPI = {
   hideGuidance: (): void =>
     ipcRenderer.send(IPC.GUIDANCE_HIDE),
 
+  showLastGuidance: (): void =>
+    ipcRenderer.send(IPC.GUIDANCE_SHOW_LAST),
+
   resizeGuidance: (height: number): void =>
     ipcRenderer.send(IPC.GUIDANCE_RESIZE, height),
 

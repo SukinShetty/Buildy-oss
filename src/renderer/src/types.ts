@@ -157,6 +157,7 @@ export interface QuestionAnswer {
 export type GuidancePayload =
   | { kind: 'analysis'; analysis: AnalysisResult }
   | { kind: 'answer'; answer: QuestionAnswer }
+  | { kind: 'message'; message: string }   // plain notice (e.g. "No guidance yet")
 
 // ─── Brainstorm Chat ──────────────────────────────────────────────────────────
 
@@ -211,6 +212,7 @@ export const IPC = {
   GUIDANCE_HIDE:       'guidance:hide',             // companion → main (hide guidance panel)
   GUIDANCE_DATA:       'guidance:data',             // main → guidance window (payload to render)
   GUIDANCE_RESIZE:     'guidance:resize',           // guidance window → main (report content height)
+  GUIDANCE_SHOW_LAST:  'guidance:show-last',         // companion/tray → main (re-show cached guidance)
   COPY_TEXT:           'buildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
   LOAD_PROJECT:        'buildy:load-project',
   SAVE_PROJECT:        'buildy:save-project',

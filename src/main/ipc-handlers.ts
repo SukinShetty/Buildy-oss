@@ -6,7 +6,7 @@ import { ipcMain, clipboard } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
 import type { ProjectMemory, AppSettings, CaptureResult, Goal, GuidancePayload } from '../renderer/src/types'
-import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow } from './guidance-window'
+import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance } from './guidance-window'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import { loadProjectMemory, saveProjectMemory, loadSettings, saveSettings, loadGoal, setGoal, updateGoal } from './memory'
 import { getProvider } from './ai/provider-registry'
@@ -274,6 +274,10 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.GUIDANCE_HIDE, () => {
     hideGuidanceWindow()
+  })
+
+  ipcMain.on(IPC.GUIDANCE_SHOW_LAST, () => {
+    showLastGuidance()
   })
 
   ipcMain.on(IPC.GUIDANCE_RESIZE, (_event, height: number) => {

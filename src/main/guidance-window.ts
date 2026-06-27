@@ -28,6 +28,10 @@ let companionRef: BrowserWindow | null = null
 let isReady = false
 let pendingPayload: GuidancePayload | null = null
 let currentHeight = 300
+// The most recent real guidance (analysis/answer), so the user can re-summon it
+// after dismissing the panel even if no new analysis has arrived. Placeholder
+// 'message' payloads never overwrite it.
+let lastGuidancePayload: GuidancePayload | null = null
 
 function maxHeight(): number {
   const display = screen.getPrimaryDisplay()
@@ -89,7 +93,7 @@ export function createGuidanceWindow(companionWindow: BrowserWindow): BrowserWin
     },
   })
 
-  window.setAlwaysOnTop(true, 'floating')
+  window.setAlwaysOnTop(true, 'screen-saver')
   window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -120,6 +124,9 @@ export function createGuidanceWindow(companionWindow: BrowserWindow): BrowserWin
 export function showGuidanceWindow(payload: GuidancePayload): void {
   if (!guidanceRef || guidanceRef.isDestroyed()) return
 
+  // Cache real guidance so it can be re-shown later (but not placeholder notices).
+  if (payload.kind !== 'message') lastGuidancePayload = payload
+
   // Renderer not loaded yet — remember and replay once it's ready.
   if (!isReady) {
     pendingPayload = payload
@@ -133,7 +140,22 @@ export function showGuidanceWindow(payload: GuidancePayload): void {
 
   // showInactive so the panel never steals focus from the user's work.
   guidanceRef.showInactive()
-  guidanceRef.setAlwaysOnTop(true, 'floating')
+  guidanceRef.setAlwaysOnTop(true, 'screen-saver')
+}
+
+/**
+ * Re-show the most recent guidance on demand (e.g. the companion's "show last
+ * guidance" button or the tray). If nothing has been shown yet, display a
+ * placeholder notice instead.
+ */
+export function showLastGuidance(): void {
+  if (lastGuidancePayload) {
+    console.log('[Guidance] showLastGuidance — re-showing cached payload')
+    showGuidanceWindow(lastGuidancePayload)
+  } else {
+    console.log('[Guidance] showLastGuidance — no cache, showing placeholder')
+    showGuidanceWindow({ kind: 'message', message: 'No guidance yet — start a watching session.' })
+  }
 }
 
 export function hideGuidanceWindow(): void {
@@ -169,4 +191,5 @@ export function destroyGuidanceWindow(): void {
   companionRef = null
   isReady = false
   pendingPayload = null
+  lastGuidancePayload = null
 }

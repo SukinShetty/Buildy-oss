@@ -12,8 +12,8 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, shell } from 'electron'
 import { join } from 'path'
 import { IPC } from '../renderer/src/types'
 import { registerIpcHandlers } from './ipc-handlers'
-import { createCompanionWindow, showCompanion, resetCompanionPosition } from './companion-window'
-import { createGuidanceWindow, destroyGuidanceWindow } from './guidance-window'
+import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosition } from './companion-window'
+import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
 
 let mainWindow: BrowserWindow | null = null
@@ -136,7 +136,20 @@ function createSystemTray(): Tray {
     {
       label: 'Show Buildy',
       click: () => {
+        // showCompanion() re-asserts the screen-saver always-on-top level.
         showCompanion()
+      },
+    },
+    {
+      label: 'Hide Buildy',
+      click: () => {
+        hideCompanion()
+      },
+    },
+    {
+      label: 'Show last guidance',
+      click: () => {
+        showLastGuidance()
       },
     },
     {
@@ -176,7 +189,22 @@ function createSystemTray(): Tray {
 // Track quit intent so panel close handler knows to actually close
 ;(app as any).isQuitting = false
 
+// Single-instance lock: if a second launch happens (e.g. user clicks the taskbar
+// icon / re-runs the app), Electron fires 'second-instance' on the FIRST instance
+// instead of starting a new one. We use that to re-summon the companion.
+const gotInstanceLock = app.requestSingleInstanceLock()
+if (!gotInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    console.log('[App] second-instance — summoning companion')
+    showCompanion()
+  })
+}
+
 app.whenReady().then(() => {
+  if (!gotInstanceLock) return  // second instance is quitting — don't create windows
+
   mainWindow = createMainWindow()
   companionWindow = createCompanionWindow()
   guidanceWindow = createGuidanceWindow(companionWindow)
