@@ -48,18 +48,7 @@ export async function testProviderConnection(
 // ─── Provider-specific tests ─────────────────────────────────────────────────
 
 async function testAnthropic(settings: AppSettings, startTime: number): Promise<ConnectionTestResult> {
-  if (settings.useProxy && settings.proxyUrl) {
-    // Just check if the proxy URL responds
-    const response = await fetchWithTimeout(settings.proxyUrl.replace(/\/$/, ''), { method: 'GET' })
-    const latency = Date.now() - startTime
-    if (response.ok || response.status === 405 || response.status === 404) {
-      // Proxy is reachable (405/404 is expected for GET on a POST-only endpoint)
-      return { success: true, message: `Proxy is reachable (${latency}ms)`, latencyMs: latency }
-    }
-    return { success: false, message: `Proxy returned status ${response.status}`, latencyMs: latency }
-  }
-
-  // Send a minimal message to verify API key
+  // Send a minimal message to verify API key (proxy mode removed in v1).
   const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -125,9 +114,12 @@ async function testOpenAICompatible(
 
 async function testGemini(settings: AppSettings, startTime: number): Promise<ConnectionTestResult> {
   const baseUrl = settings.baseUrl || 'https://generativelanguage.googleapis.com/v1beta'
-  const url = `${baseUrl}/models?key=${settings.apiKey}`
+  const url = `${baseUrl}/models`
 
-  const response = await fetchWithTimeout(url, { method: 'GET' })
+  const response = await fetchWithTimeout(url, {
+    method: 'GET',
+    headers: { 'x-goog-api-key': settings.apiKey },
+  })
   const latency = Date.now() - startTime
 
   if (response.ok) {

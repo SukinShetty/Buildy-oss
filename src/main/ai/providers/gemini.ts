@@ -87,12 +87,13 @@ export class GeminiProvider implements AIProvider {
     }
 
     const baseUrl = settings.baseUrl || this.info.defaultBaseUrl
-    const url = `${baseUrl}/models/${settings.modelId}:streamGenerateContent?alt=sse&key=${settings.apiKey}`
+    // Key goes in a header, never the URL (URLs can end up in logs).
+    const url = `${baseUrl}/models/${settings.modelId}:streamGenerateContent?alt=sse`
 
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
         body: JSON.stringify(requestBody),
       })
 
@@ -154,11 +155,12 @@ export class GeminiProvider implements AIProvider {
     settings: AppSettings
   ): Promise<string> {
     const baseUrl = settings.baseUrl || this.info.defaultBaseUrl
-    const url = `${baseUrl}/models/${settings.modelId}:generateContent?key=${settings.apiKey}`
+    // Key goes in a header, never the URL (URLs can end up in logs).
+    const url = `${baseUrl}/models/${settings.modelId}:generateContent`
 
     const response = await fetchWithTimeout(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
       body: JSON.stringify(requestBody),
     })
 

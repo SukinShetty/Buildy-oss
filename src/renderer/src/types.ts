@@ -98,32 +98,62 @@ export type ProviderType =
   | 'custom'
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// SECURITY: API keys are secrets. They live ONLY in the main process (encrypted via
+// secure-store) and are never sent to the renderer. The renderer holds RedactedSettings
+// (non-secret fields + has* booleans). `AppSettings` is the MAIN-internal full shape
+// with secrets injected at call time — it must never cross IPC to the renderer.
 
-export interface AppSettings {
+// Names of the encrypted secrets managed by the main-process secure store.
+export type SecretName =
+  | 'anthropicApiKey'
+  | 'openaiApiKey'
+  | 'geminiApiKey'
+  | 'openrouterApiKey'
+  | 'customApiKey'
+  | 'elevenLabsApiKey'
+
+// Non-secret settings — persisted to disk and safe to accept from / send to the renderer.
+export interface NonSecretSettings {
   provider: ProviderType         // Which AI provider to use
   modelId: string                // Model identifier (e.g. "claude-sonnet-4-6", "gpt-4o")
-  apiKey: string                 // API key — used by anthropic, openai, gemini, openrouter
   baseUrl: string                // Base URL — used by ollama, lmstudio, custom, openrouter
-  useProxy: boolean              // If true, send Anthropic requests to proxyUrl
-  proxyUrl: string               // Cloudflare Worker URL (Anthropic proxy mode)
   autoAnalysisIntervalSeconds: number
-  // ElevenLabs TTS (optional — falls back to system TTS if not configured)
-  elevenLabsApiKey: string
   elevenLabsVoiceId: string      // ElevenLabs voice ID (default: Rachel — warm, friendly)
 }
 
-export function defaultSettings(): AppSettings {
+// MAIN-internal full settings: non-secret fields + secrets injected from secure-store.
+// NEVER serialize this to the renderer.
+export interface AppSettings extends NonSecretSettings {
+  apiKey: string                 // resolved from secure-store for the active provider
+  elevenLabsApiKey: string       // resolved from secure-store
+}
+
+// What the renderer receives/holds: non-secret settings + which secrets are set.
+// Only booleans — never the secret values.
+export interface RedactedSettings extends NonSecretSettings {
+  hasApiKey: boolean             // a key for the SELECTED provider exists (convenience)
+  hasElevenLabsKey: boolean      // an ElevenLabs key exists in secure-store
+  secretFlags: Partial<Record<SecretName, boolean>>  // per-secret existence (for the UI)
+}
+
+const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM' // Rachel — warm, conversational
+
+export function defaultNonSecretSettings(): NonSecretSettings {
   return {
     provider: 'anthropic',
     modelId: 'claude-opus-4-7',
-    apiKey: '',
     baseUrl: '',
-    useProxy: false,
-    proxyUrl: '',
     autoAnalysisIntervalSeconds: 30,
-    elevenLabsApiKey: '',
-    elevenLabsVoiceId: '21m00Tcm4TlvDq8ikWAM',  // Rachel — warm, conversational
+    elevenLabsVoiceId: DEFAULT_VOICE_ID,
   }
+}
+
+export function defaultSettings(): AppSettings {
+  return { ...defaultNonSecretSettings(), apiKey: '', elevenLabsApiKey: '' }
+}
+
+export function defaultRedactedSettings(): RedactedSettings {
+  return { ...defaultNonSecretSettings(), hasApiKey: false, hasElevenLabsKey: false, secretFlags: {} }
 }
 
 // ─── Screen Capture ───────────────────────────────────────────────────────────
@@ -247,8 +277,9 @@ export const IPC = {
   COPY_TEXT:           'buildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
   LOAD_PROJECT:        'buildy:load-project',
   SAVE_PROJECT:        'buildy:save-project',
-  LOAD_SETTINGS:       'buildy:load-settings',
-  SAVE_SETTINGS:       'buildy:save-settings',
+  LOAD_SETTINGS:       'buildy:load-settings',     // → RedactedSettings (never raw keys)
+  SAVE_SETTINGS:       'buildy:save-settings',     // non-secret settings only
+  SET_SECRET:          'buildy:set-secret',        // renderer → main, one-way (store an API key)
   GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
   GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
   GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)

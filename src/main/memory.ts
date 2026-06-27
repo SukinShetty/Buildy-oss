@@ -8,12 +8,19 @@
 import { app } from 'electron'
 import { promises as fs } from 'fs'
 import { join } from 'path'
-import type { ProjectMemory, AppSettings, Goal } from '../renderer/src/types'
-import { emptyProjectMemory, defaultSettings } from '../renderer/src/types'
+import type {
+  ProjectMemory,
+  AppSettings,
+  NonSecretSettings,
+  RedactedSettings,
+  Goal,
+} from '../renderer/src/types'
+import { emptyProjectMemory, defaultNonSecretSettings } from '../renderer/src/types'
+import { getSecret, hasSecret, secretKeyForProvider, getAllRedacted } from './secure-store'
 
 const userDataDirectory = app.getPath('userData')
 const projectMemoryFilePath = join(userDataDirectory, 'project-memory.json')
-const settingsFilePath = join(userDataDirectory, 'settings.json')
+export const settingsFilePath = join(userDataDirectory, 'settings.json')
 
 // ─── Project memory ───────────────────────────────────────────────────────────
 
@@ -83,57 +90,71 @@ export async function updateGoal(partial: Partial<Goal>): Promise<Goal | null> {
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────
+// Secrets (API keys) are NOT stored here — they live encrypted in secure-store.
+// settings.json holds only NON-SECRET fields. Three views:
+//   - loadNonSecretSettings(): what's on disk (no secrets)
+//   - loadSettings(): main-internal full settings (secrets injected) — never sent to renderer
+//   - loadRedactedSettings(): what the renderer gets (non-secret + has* booleans)
 
-export async function loadSettings(): Promise<AppSettings> {
+/** Read the non-secret settings from disk, tolerant of old/missing fields. */
+export async function loadNonSecretSettings(): Promise<NonSecretSettings> {
+  const d = defaultNonSecretSettings()
   try {
-    const fileContent = await fs.readFile(settingsFilePath, 'utf-8')
-    const raw = JSON.parse(fileContent) as Record<string, unknown>
-    return migrateSettings(raw)
-  } catch {
-    return defaultSettings()
-  }
-}
-
-/**
- * Migrate settings from older versions.
- * v1 had: { anthropicApiKey, proxyUrl, useProxy, autoAnalysisIntervalSeconds }
- * v2 has: { provider, modelId, apiKey, baseUrl, useProxy, proxyUrl, autoAnalysisIntervalSeconds }
- */
-function migrateSettings(raw: Record<string, unknown>): AppSettings {
-  const defaults = defaultSettings()
-
-  // v1 → v2: anthropicApiKey was renamed to apiKey, provider/modelId were added
-  if ('anthropicApiKey' in raw && !('provider' in raw)) {
+    const raw = JSON.parse(await fs.readFile(settingsFilePath, 'utf-8')) as Record<string, unknown>
     return {
-      provider: 'anthropic',
-      modelId: 'claude-opus-4-7',
-      apiKey: String(raw.anthropicApiKey ?? ''),
-      baseUrl: '',
-      useProxy: Boolean(raw.useProxy ?? false),
-      proxyUrl: String(raw.proxyUrl ?? ''),
-      autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? 30),
-      elevenLabsApiKey: '',
-      elevenLabsVoiceId: defaults.elevenLabsVoiceId,
+      provider: (raw.provider as NonSecretSettings['provider']) ?? d.provider,
+      modelId: String(raw.modelId ?? d.modelId),
+      baseUrl: String(raw.baseUrl ?? ''),
+      autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? d.autoAnalysisIntervalSeconds),
+      elevenLabsVoiceId: String(raw.elevenLabsVoiceId ?? d.elevenLabsVoiceId),
     }
-  }
-
-  // Already v2+ shape — fill in any missing fields with defaults
-  return {
-    provider: (raw.provider as AppSettings['provider']) ?? defaults.provider,
-    modelId: String(raw.modelId ?? defaults.modelId),
-    apiKey: String(raw.apiKey ?? ''),
-    baseUrl: String(raw.baseUrl ?? ''),
-    useProxy: Boolean(raw.useProxy ?? false),
-    proxyUrl: String(raw.proxyUrl ?? ''),
-    autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? 30),
-    elevenLabsApiKey: String(raw.elevenLabsApiKey ?? ''),
-    elevenLabsVoiceId: String(raw.elevenLabsVoiceId ?? defaults.elevenLabsVoiceId),
+  } catch {
+    return d
   }
 }
 
-export async function saveSettings(settings: AppSettings): Promise<void> {
+/** Inject secrets from the encrypted store → main-internal full settings. */
+export function resolveSettings(nonSecret: NonSecretSettings): AppSettings {
+  const providerSecret = secretKeyForProvider(nonSecret.provider)
+  return {
+    ...nonSecret,
+    apiKey: providerSecret ? getSecret(providerSecret) : '',
+    elevenLabsApiKey: getSecret('elevenLabsApiKey'),
+  }
+}
+
+/** Build the redacted view (booleans only) for the renderer. */
+export function redactSettings(nonSecret: NonSecretSettings): RedactedSettings {
+  const providerSecret = secretKeyForProvider(nonSecret.provider)
+  return {
+    ...nonSecret,
+    hasApiKey: providerSecret ? hasSecret(providerSecret) : false,
+    hasElevenLabsKey: hasSecret('elevenLabsApiKey'),
+    secretFlags: getAllRedacted(),
+  }
+}
+
+/** MAIN-internal: full settings with secrets injected. NEVER send this to the renderer. */
+export async function loadSettings(): Promise<AppSettings> {
+  return resolveSettings(await loadNonSecretSettings())
+}
+
+/** Renderer-safe redacted settings. */
+export async function loadRedactedSettings(): Promise<RedactedSettings> {
+  return redactSettings(await loadNonSecretSettings())
+}
+
+/** Persist ONLY non-secret fields. Any stray secret/proxy fields are dropped. */
+export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void> {
   await ensureUserDataDirectoryExists()
-  await fs.writeFile(settingsFilePath, JSON.stringify(settings, null, 2), 'utf-8')
+  const clean: NonSecretSettings = {
+    provider: s.provider,
+    modelId: s.modelId,
+    baseUrl: s.baseUrl,
+    autoAnalysisIntervalSeconds: s.autoAnalysisIntervalSeconds,
+    elevenLabsVoiceId: s.elevenLabsVoiceId,
+  }
+  await fs.writeFile(settingsFilePath, JSON.stringify(clean, null, 2), 'utf-8')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

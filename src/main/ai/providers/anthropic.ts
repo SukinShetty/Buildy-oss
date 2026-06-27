@@ -186,17 +186,12 @@ export class AnthropicProvider implements AIProvider {
     return textBlock.text
   }
 
-  private resolveUrl(settings: AppSettings, path: string): string {
-    if (settings.useProxy && settings.proxyUrl) {
-      return `${settings.proxyUrl.replace(/\/$/, '')}/chat`
-    }
+  // Always direct to the Anthropic API (the Worker proxy is disabled in v1).
+  private resolveUrl(_settings: AppSettings, path: string): string {
     return `https://api.anthropic.com${path}`
   }
 
   private buildHeaders(settings: AppSettings): Record<string, string> {
-    if (settings.useProxy && settings.proxyUrl) {
-      return { 'Content-Type': 'application/json' }
-    }
     return {
       'Content-Type': 'application/json',
       'x-api-key': settings.apiKey,

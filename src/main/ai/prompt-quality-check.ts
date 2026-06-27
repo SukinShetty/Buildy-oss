@@ -100,27 +100,25 @@ async function callGrader(
   user: string,
   settings: AppSettings
 ): Promise<string> {
-  const isAnthropic = settings.provider === 'anthropic'
-  const usingProxy = settings.useProxy && !!settings.proxyUrl
-
-  // We can only run the grader through the Anthropic Messages shape here. That's
-  // available when the provider is Anthropic, or when a proxy is configured.
-  if (!isAnthropic && !usingProxy) {
-    console.log('[PromptQuality] Non-Anthropic provider and no proxy — skipping grader')
+  // The grader uses the Anthropic Messages shape (Haiku). Only run it when the
+  // configured provider is Anthropic and a key is present; otherwise skip and keep
+  // the original prompt. (Worker proxy mode removed in v1.)
+  if (settings.provider !== 'anthropic') {
+    console.log('[PromptQuality] Non-Anthropic provider — skipping grader')
     return ''
   }
-  if (!usingProxy && !settings.apiKey) {
+  if (!settings.apiKey) {
     console.log('[PromptQuality] No Anthropic API key — skipping grader')
     return ''
   }
 
-  // Haiku for speed/cost; fall back to the analysis model only if Haiku id is
-  // somehow rejected (handled by the catch in the caller).
-  const model = isAnthropic ? HAIKU_MODEL : (settings.modelId || HAIKU_MODEL)
-  const url = usingProxy ? `${settings.proxyUrl.replace(/\/$/, '')}/chat` : 'https://api.anthropic.com/v1/messages'
-  const headers: Record<string, string> = usingProxy
-    ? { 'Content-Type': 'application/json' }
-    : { 'Content-Type': 'application/json', 'x-api-key': settings.apiKey, 'anthropic-version': '2023-06-01' }
+  const model = HAIKU_MODEL
+  const url = 'https://api.anthropic.com/v1/messages'
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-api-key': settings.apiKey,
+    'anthropic-version': '2023-06-01',
+  }
 
   const body = {
     model,

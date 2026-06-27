@@ -225,8 +225,7 @@ async function callProviderForAnswer(
   let body: any
 
   if (providerType === 'anthropic') {
-    const baseUrl = (settings.useProxy && settings.proxyUrl) ? settings.proxyUrl : 'https://api.anthropic.com'
-    url = `${baseUrl}/v1/messages`
+    url = 'https://api.anthropic.com/v1/messages'
     headers = {
       'Content-Type': 'application/json',
       'x-api-key': settings.apiKey,
@@ -245,8 +244,9 @@ async function callProviderForAnswer(
     }
   } else if (providerType === 'gemini') {
     const modelId = settings.modelId || 'gemini-2.5-flash'
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${settings.apiKey}`
-    headers = { 'Content-Type': 'application/json' }
+    // Key in a header, never the URL.
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`
+    headers = { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey }
     const parts: any[] = []
     if (screenshotBase64) {
       parts.push({ inline_data: { mime_type: 'image/jpeg', data: screenshotBase64 } })

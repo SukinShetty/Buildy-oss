@@ -17,6 +17,8 @@ import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from '.
 import { stopAnalysisLoop } from './analysis-loop'
 import { init as initNempMemory } from './nemp-bridge'
 import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
+import { migratePlaintextSecrets } from './secure-store'
+import { settingsFilePath } from './memory'
 
 let mainWindow: BrowserWindow | null = null
 let companionWindow: BrowserWindow | null = null
@@ -210,6 +212,9 @@ if (!gotInstanceLock) {
 
 app.whenReady().then(() => {
   if (!gotInstanceLock) return  // second instance is quitting — don't create windows
+
+  // One-time: move any plaintext API keys out of settings.json into encrypted storage.
+  try { migratePlaintextSecrets(settingsFilePath) } catch (e) { console.error('[SecureStore] migration failed:', e) }
 
   mainWindow = createMainWindow()
   companionWindow = createCompanionWindow()
