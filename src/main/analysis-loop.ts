@@ -28,6 +28,8 @@ import { synthesizeSpeech } from './ai/elevenlabs-tts'
 import { formatSpokenGuidance } from './ai/speech-formatter'
 import { buildQuestionSystemPrompt, buildQuestionUserPrompt } from './ai/prompt-builder'
 import { fetchWithTimeout } from './ai/fetch-with-timeout'
+import * as nemp from './nemp-bridge'
+import { checkPromptQuality } from './ai/prompt-quality-check'
 
 // ─── Session context ────────────────────────────────────────────────────────
 
@@ -354,9 +356,19 @@ async function runOneAnalysisCycle(
   notifyCompanionState(companionWindow, 'thinking')
 
   const provider = getProvider(settings.provider)
-  // Companion uses no project memory — but DO inject the user's goal so guidance
-  // can judge whether the current activity moves toward it.
-  const analysisProject = watchedGoal ? { ...EMPTY_PROJECT, goal: watchedGoal } : EMPTY_PROJECT
+  // Inject the user's goal AND the Nemp project-memory context so guidance is
+  // memory-aware (knows what's built / decided / blocked).
+  let memoryContext = ''
+  try {
+    memoryContext = await nemp.getContextSummary()
+  } catch (error) {
+    console.warn('[AnalysisLoop] memory context unavailable:', error)
+  }
+  const analysisProject = {
+    ...EMPTY_PROJECT,
+    ...(watchedGoal ? { goal: watchedGoal } : {}),
+    memoryContext,
+  }
   let analysis: AnalysisResult
   try {
     analysis = await provider.analyzeScreen(capture, analysisProject, settings)
@@ -377,6 +389,15 @@ async function runOneAnalysisCycle(
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, analysis)
   }
+
+  // Tee the analysis into the memory layer AFTER the UI has it (fire-and-forget,
+  // never blocks display).
+  teeAnalysisToMemory(analysis)
+
+  // Second-pass prompt-quality grade — runs in parallel, never blocks. If it
+  // improves or blanks the prompt, re-send the corrected analysis so the panel
+  // updates in place.
+  gradePromptQuality(companionWindow, analysis, memoryContext, settings)
 
   // Step 5: Speak
   // First cycle: ALWAYS speak, no cooldown/quiet/overlap checks
@@ -517,4 +538,62 @@ async function speakText(
     console.log('[Speech] Sending COMPANION_SPEAK for system TTS')
     companionWindow.webContents.send(IPC.COMPANION_SPEAK, { text, type: changeType || 'answer' })
   }
+}
+
+// ─── Memory + prompt-quality wiring (Block 2 / Part C) ───────────────────────
+
+/**
+ * Push the analysis into the Nemp memory layer. Fire-and-forget — the bridge
+ * functions log + swallow their own errors, so this never affects the UI.
+ */
+function teeAnalysisToMemory(analysis: AnalysisResult): void {
+  try {
+    const id = analysis.analyzedAt
+    if (analysis.whatIsHappening) void nemp.recordObservation(analysis.whatIsHappening, id)
+    if (analysis.goalAlignment === 'on-track') {
+      for (const feature of analysis.whatIsBuilt.slice(0, 5)) void nemp.recordCompletion(feature)
+    }
+    if (analysis.goalAlignment === 'blocked') {
+      for (const broken of analysis.whatIsBroken.slice(0, 5)) void nemp.recordBlocker(broken)
+    }
+  } catch (error) {
+    console.warn('[AnalysisLoop] memory tee failed:', error)
+  }
+}
+
+/**
+ * Run the Haiku second-pass grade in the background. If the prompt is weak, swap
+ * in an improved version (or blank it with an explanation) and re-send so the
+ * guidance panel updates. Never blocks the main flow.
+ */
+function gradePromptQuality(
+  companionWindow: BrowserWindow,
+  analysis: AnalysisResult,
+  memoryContext: string,
+  settings: AppSettings
+): void {
+  void (async () => {
+    try {
+      const result = await checkPromptQuality(analysis, memoryContext, watchedGoal, settings)
+      if (result.valid) return
+
+      const corrected: AnalysisResult = { ...analysis }
+      if (result.improvedPrompt) {
+        corrected.nextPrompt = result.improvedPrompt
+        console.log('[AnalysisLoop] Prompt replaced by grader-improved version')
+      } else {
+        corrected.nextPrompt = ''
+        corrected.alignmentNote = result.reason
+          ? `No prompt suggested: ${result.reason}`
+          : (corrected.alignmentNote || 'No high-quality next prompt right now.')
+        console.log('[AnalysisLoop] Prompt blanked by grader (no improvement available)')
+      }
+
+      if (!companionWindow.isDestroyed()) {
+        companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, corrected)
+      }
+    } catch (error) {
+      console.warn('[AnalysisLoop] prompt-quality grading failed:', error)
+    }
+  })()
 }
