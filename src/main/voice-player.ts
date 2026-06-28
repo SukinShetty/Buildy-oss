@@ -22,6 +22,7 @@ import type { SpeakRequest } from './voice-queue'
 import { synthesizeSpeech } from './ai/elevenlabs-tts'
 import { sendSpeechProgress } from './guidance-window'
 import { loadSettings } from './memory'
+import { debugLog } from './debug-log'
 
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
 const SETTINGS_TTL_MS = 10_000
@@ -70,11 +71,12 @@ export function createVoicePlayerWindow(): BrowserWindow {
   })
   win.setIgnoreMouseEvents(true)
 
-  // CRITICAL: the voice window is invisible and has no devtools, so for six prior
-  // sessions nobody could see what it actually did. Forward its console to the main
-  // process stdout so `npm run dev` prints [Voice-Window] … lines.
+  // The voice window is invisible and has no devtools. Forward its console to the
+  // main process stdout so `npm run dev` (with BUILDY_DEBUG) prints [Voice-Window]
+  // lines for debugging. These can include spoken-text fragments, so they are
+  // gated — silent in production.
   win.webContents.on('console-message', (_e, _level, message) => {
-    console.log(`[Voice-Window] ${message}`)
+    debugLog(`[Voice-Window] ${message}`)
   })
 
   // Show OFFSCREEN once ready (not show:false) so its audio is never suspended.

@@ -44,6 +44,7 @@ import { join } from 'path'
 import type { ProjectMemory, MemoryEntry, MemorySnapshot, Goal } from '../renderer/src/types'
 import { loadProjectMemory, loadGoal } from './memory'
 import { isSemanticDuplicate, subjectKey } from './semantic-dedup'
+import { debugLog } from './debug-log'
 
 // ─── Local typings for Nemp's internal modules (loaded via dynamic import) ─────
 
@@ -125,7 +126,8 @@ function readAll(): NempMemory[] {
 function writeOne(mem: NempMemory): void {
   if (!storage) { console.warn('[Nemp] write skipped — Nemp not ready'); return }
   try {
-    console.log(`[Nemp] WRITE ${mem.key} [${mem.tags.join(',')}] "${mem.value.slice(0, 60)}"`)
+    // The key embeds a content slug and the value is memory content — gate it.
+    debugLog(`[Nemp] WRITE ${mem.key} [${mem.tags.join(',')}] "${mem.value.slice(0, 60)}"`)
     storage.upsertMemory(mem, projectPath)
     storage.updateMemoryIndex(projectPath)
   } catch (error) {
@@ -241,7 +243,8 @@ export async function searchMemories(query: string): Promise<MemoryEntry[]> {
   const all = readAll()
   try {
     const results = search.searchMemories(query, all.map((m) => ({ key: m.key, value: m.value, tags: m.tags })))
-    console.log(`[Nemp] SEARCH "${query}" → ${results.length} hits`)
+    console.log(`[Nemp] SEARCH → ${results.length} hits`)
+    debugLog(`[Nemp] search query: "${query}"`)
     // Re-hydrate timestamp/source from the original memories.
     return results.map((r) => {
       const orig = all.find((m) => m.key === r.key)
@@ -263,7 +266,7 @@ export async function recordObservation(text: string, sourceAnalysisId?: string)
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, 20)
   if (recent.some((m) => isSemanticDuplicate(text, m.value))) {
-    console.log(`[Nemp] Skipped duplicate observation: ${subjectKey(text)}`)
+    debugLog(`[Nemp] Skipped duplicate observation: ${subjectKey(text)}`)
     return
   }
   const key = `obs:${Date.now()}:${slug(text, 24)}`
@@ -279,7 +282,7 @@ export async function recordCompletion(feature: string): Promise<void> {
   const existing = readAll().filter((m) => hasTag(m, 'completion'))
   const dup = existing.find((m) => isSemanticDuplicate(feature, m.value))
   if (dup) {
-    console.log(`[Nemp] Skipped duplicate completion: ${subjectKey(feature)}`)
+    debugLog(`[Nemp] Skipped duplicate completion: ${subjectKey(feature)}`)
     writeOne({ ...dup, timestamp: nowISO() })
     return
   }

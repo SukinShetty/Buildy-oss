@@ -16,6 +16,8 @@
 //      pending items are dropped). The currently-playing item always finishes.
 //   5. A critical item truncates the queue AFTER the current chunk, then plays.
 
+import { debugLog } from './debug-log'
+
 export interface SpeakRequest {
   id: string
   text: string
@@ -88,11 +90,11 @@ export class VoiceQueue {
     const item: SpeakRequest = { ...req, text }
 
     if (this.muted) {
-      console.log(`[VoicePlayer-Main] Muted — dropping "${text.slice(0, 50)}"`)
+      debugLog(`[VoicePlayer-Main] Muted — dropping "${text.slice(0, 50)}"`)
       return
     }
     if (!item.isCritical && this.isDuplicate(text)) {
-      console.log(`[VoicePlayer-Main] Skipped (dedup): ${text.slice(0, 50)}`)
+      debugLog(`[VoicePlayer-Main] Skipped (dedup): ${text.slice(0, 50)}`)
       return
     }
 
@@ -189,7 +191,8 @@ export class VoiceQueue {
 
     const n = a.index + 1
     const m = a.chunks.length
-    console.log(`[VoicePlayer-Main] Chunk ${n} of ${m} starting: "${chunkText.slice(0, 50)}"`)
+    console.log(`[VoicePlayer-Main] Chunk ${n} of ${m} starting`)
+    debugLog(`[VoicePlayer-Main] chunk text: "${chunkText.slice(0, 50)}"`)
     this.onProgress?.({ id: a.req.id, chunkIndex: a.index, chunkCount: m, chunkText, fullText: a.req.text })
 
     // Record dedup on the first chunk of an item (once it actually starts).
