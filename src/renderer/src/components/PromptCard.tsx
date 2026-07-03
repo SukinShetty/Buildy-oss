@@ -6,9 +6,11 @@ import React, { useState } from 'react'
 
 interface Props {
   promptText: string
+  title?: string
+  hint?: string
 }
 
-export function PromptCard({ promptText }: Props): React.ReactElement {
+export function PromptCard({ promptText, title, hint }: Props): React.ReactElement {
   const [copied, setCopied] = useState(false)
 
   function handleCopyClick(): void {
@@ -23,8 +25,8 @@ export function PromptCard({ promptText }: Props): React.ReactElement {
       {/* Header */}
       <div style={styles.header}>
         <span style={styles.headerIcon}>📋</span>
-        <span style={styles.headerTitle}>Suggested next action</span>
-        <span style={styles.headerHint}>Copy this and paste it in</span>
+        <span style={styles.headerTitle}>{title ?? 'Suggested next action'}</span>
+        <span style={styles.headerHint}>{hint ?? 'Copy this and paste it in'}</span>
       </div>
 
       {/* Prompt text */}

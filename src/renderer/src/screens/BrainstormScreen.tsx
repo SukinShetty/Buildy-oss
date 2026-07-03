@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
+import { PromptCard } from '../components/PromptCard'
 import type { ChatMessage, ExtractedProjectData } from '../types'
 
 export function BrainstormScreen(): React.ReactElement {
@@ -89,7 +90,7 @@ export function BrainstormScreen(): React.ReactElement {
     }
   }
 
-  function handleSaveProjectData(data: ExtractedProjectData): void {
+  async function handleSaveProjectData(data: ExtractedProjectData): Promise<void> {
     patchProject({
       projectName: data.projectName,
       productSummary: data.productSummary,
@@ -98,7 +99,30 @@ export function BrainstormScreen(): React.ReactElement {
       brainstormSummary: data.brainstormSummary,
     })
     // Persist to disk
-    window.buildy.saveProject({ ...project, ...data })
+    await window.buildy.saveProject({ ...project, ...data })
+
+    // Seed the watch session so it starts already knowing the project:
+    //  • Goal — so goal-aware analysis judges every step against this product.
+    if (data.productSummary?.trim()) {
+      try {
+        await window.buildy.goal.set({
+          purpose: data.productSummary,
+          mostImportant: data.brainstormSummary || undefined,
+          audience: data.targetUser || undefined,
+        })
+      } catch (e) {
+        console.warn('[Brainstorm] goal seed failed:', e)
+      }
+    }
+    //  • Memory — record the planned first step so guidance references it.
+    if (data.firstPrompt?.trim()) {
+      try {
+        await window.buildy.memory.addObservation(`Planned first build step: ${data.firstPrompt}`)
+      } catch (e) {
+        console.warn('[Brainstorm] first-prompt memory seed failed:', e)
+      }
+    }
+
     setCurrentScreen('guidance')
   }
 
@@ -279,6 +303,17 @@ function ExtractedDataCard({
         <span style={styles.extractedLabel}>Problem it solves</span>
         <span style={styles.extractedValue}>{data.coreProblem}</span>
       </div>
+
+      {data.firstPrompt?.trim() && (
+        <div style={{ marginTop: 8 }}>
+          <PromptCard
+            promptText={data.firstPrompt}
+            title="Your first Claude Code prompt"
+            hint="Paste this into Claude Code to start"
+          />
+        </div>
+      )}
+
       <button
         className="btn-primary"
         style={{ width: '100%', marginTop: 10, justifyContent: 'center' }}
