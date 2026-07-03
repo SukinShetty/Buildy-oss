@@ -13,7 +13,10 @@
 //   - Dismiss (X) hides the window immediately.
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import type { GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer } from '../types'
+import type {
+  GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer, VerificationStatus,
+} from '../types'
+import { HandoffCard } from './HandoffCard'
 
 const AUTO_HIDE_MS = 60_000
 
@@ -127,6 +130,14 @@ function AnalysisBody({ analysis }: { analysis: AnalysisResult }): React.ReactEl
 
   return (
     <>
+      {analysis.verification && (
+        <VerificationBadge status={analysis.verification.status} note={analysis.verification.note} />
+      )}
+
+      {analysis.needsHumanJudgment && (
+        <HandoffCard reason={analysis.humanJudgmentReason} />
+      )}
+
       {analysis.goalAlignment && (
         <AlignmentPill alignment={analysis.goalAlignment} note={analysis.alignmentNote} />
       )}
@@ -161,6 +172,55 @@ function AnalysisBody({ analysis }: { analysis: AnalysisResult }): React.ReactEl
         </div>
       )}
     </>
+  )
+}
+
+// ─── Verification badge (Block 4 — did the last prompt work?) ────────────────────
+
+const VERIFICATION: Record<VerificationStatus, { icon: string; label: string; color: string; gradient: string }> = {
+  success: {
+    icon: '✓',
+    label: 'Previous step verified',
+    color: '#10B981',
+    gradient: 'linear-gradient(135deg, rgba(16,185,129,0.18), rgba(16,185,129,0.08))',
+  },
+  failed: {
+    icon: '⚠',
+    label: "Previous prompt didn't fully work",
+    color: '#EF4444',
+    gradient: 'linear-gradient(135deg, rgba(239,68,68,0.18), rgba(239,68,68,0.08))',
+  },
+  partial: {
+    icon: '↻',
+    label: 'Partial progress',
+    color: '#FBBF24',
+    gradient: 'linear-gradient(135deg, rgba(251,191,36,0.18), rgba(251,191,36,0.08))',
+  },
+}
+
+function VerificationBadge({
+  status,
+  note,
+}: {
+  status: VerificationStatus
+  note: string
+}): React.ReactElement {
+  const cfg = VERIFICATION[status]
+  return (
+    <div style={S.verifyRow}>
+      <span
+        style={{
+          ...S.pill,
+          color: cfg.color,
+          background: cfg.gradient,
+          border: `1px solid ${cfg.color}55`,
+        }}
+      >
+        <span style={{ fontWeight: 700 }}>{cfg.icon}</span>
+        {cfg.label}
+      </span>
+      {note && <div style={{ ...S.alignmentNote, marginTop: 8 }}>{note}</div>}
+    </div>
   )
 }
 
@@ -328,6 +388,13 @@ const S = {
     display: 'flex',
     alignItems: 'center',
     paddingRight: 24, // leave room for the close button
+  },
+  verifyRow: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start',
+    paddingRight: 24, // leave room for the close button
+    marginBottom: 14,
   },
   pill: {
     display: 'inline-flex',
