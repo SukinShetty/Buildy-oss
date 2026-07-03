@@ -51,12 +51,20 @@ export function tryExtractProjectData(
     return match ? match[1].trim() : ''
   }
 
+  // FIRST_PROMPT is the last field in the block and may run long; capture
+  // everything after its label to the end of the block (tolerates wrapping).
+  function extractFirstPrompt(): string {
+    const match = summaryBlock.match(/FIRST_PROMPT:\s*([\s\S]+?)\s*$/)
+    return match ? match[1].trim() : ''
+  }
+
   return {
     projectName: extractField('PROJECT_NAME'),
     productSummary: extractField('PRODUCT_SUMMARY'),
     targetUser: extractField('TARGET_USER'),
     coreProblem: extractField('CORE_PROBLEM'),
     brainstormSummary: extractField('MVP_FOCUS'),
+    firstPrompt: extractFirstPrompt(),
   }
 }
 
@@ -192,11 +200,14 @@ function normalizeAnalysisResult(
     whereUserIsStuck: parsed.whereUserIsStuck != null ? toStr(parsed.whereUserIsStuck, null) : null,
     bestNextMove: toStr(parsed.bestNextMove, ''),
     nextPrompt: toStr(parsed.nextPrompt, ''),
+    expectedOutcome: parsed.expectedOutcome != null ? toStr(parsed.expectedOutcome, '') : undefined,
     builderNote: toStr(parsed.builderNote, ''),
     goalAlignment: toGoalAlignment(parsed.goalAlignment),
     alignmentNote: parsed.alignmentNote != null ? toStr(parsed.alignmentNote, '') : undefined,
     projectUnderstandingNote: parsed.projectUnderstandingNote != null ? toStr(parsed.projectUnderstandingNote, '') : undefined,
     isCriticalOverride: toBool(parsed.isCriticalOverride, false),
+    needsHumanJudgment: toBool(parsed.needsHumanJudgment, false),
+    humanJudgmentReason: parsed.humanJudgmentReason != null ? toStr(parsed.humanJudgmentReason, '') : undefined,
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }

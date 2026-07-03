@@ -29,10 +29,16 @@ import { buildQuestionSystemPrompt, buildQuestionUserPrompt } from './ai/prompt-
 import { fetchWithTimeout } from './ai/fetch-with-timeout'
 import * as nemp from './nemp-bridge'
 import { checkPromptQuality } from './ai/prompt-quality-check'
+import { verifyPromptOutcome } from './ai/verifier-check'
+import {
+  recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes,
+} from './verifier'
+import type { PromptOutcome } from './verifier'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
 import { isStaleSession } from './capture-guard'
 import { debugLog, debugError } from './debug-log'
+import type { VerificationVerdict } from '../renderer/src/types'
 
 // Recently-spoken completion subjects + next-steps, for semantic (near-duplicate)
 // dedup within a 3-minute window. Cleared on each fresh watch session.
@@ -87,6 +93,12 @@ let currentSession = 0
 let inFlight = false
 let getSettingsFn: (() => Promise<AppSettings>) | null = null
 let getGoalFn: (() => Promise<Goal | null>) | null = null
+
+// The analysis currently shown in the guidance panel for THIS cycle. Parallel
+// background passes (prompt-quality grader, verifier) patch it and re-send so
+// they compose instead of clobbering each other's fields.
+let displayAnalysis: AnalysisResult | null = null
+let displaySession = 0
 
 const LOOP_INTERVAL_MS = 10_000
 const NORMAL_COOLDOWN_MS = 15_000
@@ -435,10 +447,24 @@ async function runOneAnalysisCycle(
   const change = detectAnalysisChange(previousAnalysis, analysis)
   previousAnalysis = analysis
 
-  // Send analysis to companion for prompt card
+  // Seed the per-cycle display analysis, then send it to the companion. Parallel
+  // background passes patch THIS object and re-send (never clobber each other).
+  displayAnalysis = analysis
+  displaySession = mySession
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, analysis)
   }
+
+  // Verifier (Block 4): if a prompt was suggested on a PREVIOUS cycle, check
+  // whether it worked — using THIS analysis as evidence. Capture the pending
+  // outcome BEFORE recording the new one below. Runs in parallel, never blocks.
+  const toVerify = getMostRecentPending()
+  if (toVerify) {
+    runVerifier(companionWindow, toVerify, analysis, memoryContext, settings, mySession)
+  }
+  // Record the CURRENT suggestion as the thing to verify NEXT cycle (no-op if the
+  // model produced no prompt / no expected outcome).
+  recordPendingOutcome(analysis.nextPrompt, analysis.expectedOutcome || '')
 
   // Tee the analysis into the memory layer AFTER the UI has it (fire-and-forget,
   // never blocks display).
@@ -533,6 +559,10 @@ function clearStaleState(): void {
   isFirstCycle = true
   recentSpokenCompletions.clear()
   recentSpokenNextMoves.clear()
+  // Drop any pending prompt-outcomes so a new watch session never verifies a
+  // suggestion made for a different window.
+  clearOutcomes()
+  displayAnalysis = null
 }
 
 function notifyCompanionState(w: BrowserWindow, state: 'idle' | 'thinking' | 'speaking'): void {
@@ -650,23 +680,83 @@ function gradePromptQuality(
       // Don't re-send guidance for a window the user has since switched away from.
       if (isStaleSession(mySession, currentSession)) return
 
-      const corrected: AnalysisResult = { ...analysis }
+      const patch: Partial<AnalysisResult> = {}
       if (result.improvedPrompt) {
-        corrected.nextPrompt = result.improvedPrompt
+        patch.nextPrompt = result.improvedPrompt
         console.log('[AnalysisLoop] Prompt replaced by grader-improved version')
       } else {
-        corrected.nextPrompt = ''
-        corrected.alignmentNote = result.reason
+        patch.nextPrompt = ''
+        patch.alignmentNote = result.reason
           ? `No prompt suggested: ${result.reason}`
-          : (corrected.alignmentNote || 'No high-quality next prompt right now.')
+          : (analysis.alignmentNote || 'No high-quality next prompt right now.')
         console.log('[AnalysisLoop] Prompt blanked by grader (no improvement available)')
       }
-
-      if (!companionWindow.isDestroyed()) {
-        companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, corrected)
-      }
+      patchDisplayAndResend(companionWindow, patch, mySession)
     } catch (error) {
       debugError('[AnalysisLoop] prompt-quality grading failed:', error)
+    }
+  })()
+}
+
+/**
+ * Merge a patch into the current cycle's display analysis and re-send it to the
+ * companion so the guidance panel updates in place. Discards the patch if the
+ * watch session has advanced or the display belongs to a different cycle — so a
+ * stale background pass can never repaint the wrong window's guidance.
+ */
+function patchDisplayAndResend(
+  companionWindow: BrowserWindow,
+  patch: Partial<AnalysisResult>,
+  mySession: number
+): void {
+  if (isStaleSession(mySession, currentSession)) return
+  if (displaySession !== mySession || !displayAnalysis) return
+  displayAnalysis = { ...displayAnalysis, ...patch }
+  if (!companionWindow.isDestroyed()) {
+    companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)
+  }
+}
+
+/**
+ * Verifier (Block 4): judge whether a previously-suggested prompt achieved its
+ * expected outcome, using the current analysis as evidence. Runs in parallel and
+ * respects the session token, so a stale-window verdict is discarded and voice
+ * never fires for the wrong window. Records completions/blockers in Nemp and, on
+ * failure, swaps in a corrective prompt.
+ */
+function runVerifier(
+  companionWindow: BrowserWindow,
+  pending: PromptOutcome,
+  analysis: AnalysisResult,
+  memoryContext: string,
+  settings: AppSettings,
+  mySession: number
+): void {
+  void (async () => {
+    try {
+      const verdict = await verifyPromptOutcome(pending, analysis, watchedGoal, memoryContext, settings)
+      // Not enough evidence yet — leave it pending for a later cycle, show nothing.
+      if (verdict.status === 'still_pending') return
+      // Don't repaint / record for a window the user has since switched away from.
+      if (isStaleSession(mySession, currentSession)) return
+
+      resolveOutcome(pending.id, verdict.status, verdict.note, verdict.correctivePrompt)
+
+      const note = verdict.note || pending.expectedOutcome
+      if (verdict.status === 'success') {
+        void nemp.recordCompletion(pending.expectedOutcome)
+      } else if (verdict.status === 'failed') {
+        void nemp.recordBlocker(note)
+      }
+
+      const verification: VerificationVerdict = { status: verdict.status, note }
+      const patch: Partial<AnalysisResult> = { verification }
+      // On a failed/partial outcome, offer the corrective prompt as the next step.
+      if (verdict.correctivePrompt) patch.nextPrompt = verdict.correctivePrompt
+      patchDisplayAndResend(companionWindow, patch, mySession)
+      console.log(`[Verifier] previous prompt → ${verdict.status}`)
+    } catch (error) {
+      debugError('[AnalysisLoop] verifier failed:', error)
     }
   })()
 }

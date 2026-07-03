@@ -187,6 +187,17 @@ export type CaptureOutcome =
 // How the current activity relates to the user's goal.
 export type GoalAlignment = 'on-track' | 'drift' | 'blocked'
 
+// ─── Verifier (loop engineering Block 4) ──────────────────────────────────────
+// After Buildy suggests a prompt, the NEXT analysis verifies whether the pasted
+// prompt achieved its intended outcome. This verdict is computed in the main
+// process (verifier-check.ts) and attached transiently to the following analysis.
+export type VerificationStatus = 'success' | 'failed' | 'partial'
+
+export interface VerificationVerdict {
+  status: VerificationStatus
+  note: string   // one plain-English sentence about what happened
+}
+
 export interface AnalysisResult {
   screenContentVisible: boolean
   whatIsHappening: string           // Plain language: what's happening on screen right now
@@ -197,6 +208,9 @@ export interface AnalysisResult {
   whereUserIsStuck: string | null   // If the user appears stuck, describe it; else null
   bestNextMove: string              // One clear sentence: what to do right now
   nextPrompt: string                // Suggested next prompt or action
+  // Verifier (Block 4): a one-sentence description of what success looks like for
+  // nextPrompt. Present whenever nextPrompt is non-empty; the next cycle checks it.
+  expectedOutcome?: string
   builderNote: string               // Encouraging, buddy-style note from Buildy
   // Goal alignment — present only when the user has set a goal (see Goal type).
   goalAlignment?: GoalAlignment | null
@@ -206,6 +220,14 @@ export interface AnalysisResult {
   // True only for a NEW, fundamentally different blocker. When true the voice
   // queue truncates after the current chunk so the alert is spoken next.
   isCriticalOverride?: boolean
+  // Hand-off detection (Block 6): true ONLY for genuine human-judgment moments
+  // (architectural tradeoffs, irreversible commitments, legal/compliance, or two
+  // equally-valid approaches). Never for routine coding choices Buildy can default.
+  needsHumanJudgment?: boolean
+  humanJudgmentReason?: string      // one plain-English sentence describing the decision
+  // Verifier (Block 4): verdict on the PREVIOUS suggested prompt, attached by the
+  // main-process loop (never produced by the model, never persisted).
+  verification?: VerificationVerdict | null
   analyzedAt: string                // ISO date string
   analysisDurationMs: number
 }
@@ -240,6 +262,9 @@ export interface ExtractedProjectData {
   targetUser: string
   coreProblem: string
   brainstormSummary: string
+  // A concrete, paste-ready first Claude Code prompt to start building. Produced
+  // once the product is sufficiently defined; empty string until then.
+  firstPrompt: string
 }
 
 // ─── IPC Channel Names ────────────────────────────────────────────────────────
