@@ -206,7 +206,7 @@ export async function handleQuestion(
   let screenshotBase64: string | null = null
   let windowTitle = watchedWindowName || 'unknown'
   if (watchedSourceId) {
-    const capture = await captureWatchedWindow(watchedSourceId)
+    const capture = await captureWatchedWindow(watchedSourceId, watchedWindowName)
     if (capture) {
       screenshotBase64 = capture.imageBase64
       windowTitle = capture.windowTitle
@@ -366,28 +366,25 @@ async function runOneAnalysisCycle(
   const thisIsFirstCycle = isFirstCycle
   isFirstCycle = false
 
-  // Step 1: Capture the watched window (NEVER the full screen — see capturer.ts)
-  const capture = await captureWatchedWindow(watchedSourceId)
+  // Step 1: Capture the watched window (NEVER the full screen — see capturer.ts).
+  // Identity is (id + selection-time name) so a reused HWND/id can't swap us onto
+  // a different window (see findWatchedSource).
+  const capture = await captureWatchedWindow(watchedSourceId, watchedWindowName)
   if (isStaleSession(mySession, currentSession)) return
   if (!capture) {
-    // Structural log only — no window title (may contain user content).
-    console.log('[AnalysisLoop] watched window disappeared — analysis halted, reselection required')
+    // Watched window is gone, or its id was reused by a DIFFERENT window. HALT —
+    // never switch to or capture another window; only the user picks the target.
+    // Structural log only (source id is not screen content).
+    console.log(`[Capture] watched window ${watchedSourceId} no longer exists — analysis halted, awaiting reselection`)
     isPaused = true
     if (!companionWindow.isDestroyed()) {
       companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
         windowName: null,
-        message: `"${watchedWindowName}" is no longer open. Pick a new window.`,
+        message: `"${watchedWindowName}" is no longer open. Pick a window to watch.`,
       })
     }
     notifyCompanionState(companionWindow, 'idle')
     return
-  }
-
-  // Update window name if title changed
-  if (capture.windowTitle !== watchedWindowName) {
-    watchedWindowName = capture.windowTitle
-    if (session) session.windowName = watchedWindowName
-    notifyWatchedSource(companionWindow, watchedWindowName)
   }
 
   // Step 2: Image-level gate — SKIP for first cycle (always analyze on watch start)

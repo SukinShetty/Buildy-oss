@@ -76,10 +76,11 @@ export function registerIpcHandlers(
 
   // ─── Screen capture ─────────────────────────────────────────────────────────
 
-  ipcMain.handle(IPC.CAPTURE_WINDOW, async (_event, rawSourceId: unknown) => {
+  ipcMain.handle(IPC.CAPTURE_WINDOW, async (_event, rawSourceId: unknown, rawExpectedName: unknown) => {
     try {
       const sid = rawSourceId == null ? null : parseInput(sourceIdSchema, 'CAPTURE_WINDOW', rawSourceId)
-      return await captureWindowForAnalysis(sid)
+      const ename = rawExpectedName == null ? null : parseInput(windowNameSchema, 'CAPTURE_WINDOW', rawExpectedName)
+      return await captureWindowForAnalysis(sid, ename)
     } catch (error) {
       console.error('[IPC] CAPTURE_WINDOW error:', error)
       throw error

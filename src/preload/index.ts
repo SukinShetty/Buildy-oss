@@ -34,8 +34,8 @@ const buildyAPI = {
 
   // ─── Screen capture ──────────────────────────────────────────────────────
   // Returns a halt outcome (never a full-screen image) when the window is missing.
-  captureWindow: (sourceId: string | null): Promise<CaptureOutcome> =>
-    ipcRenderer.invoke(IPC.CAPTURE_WINDOW, sourceId),
+  captureWindow: (sourceId: string | null, expectedName?: string | null): Promise<CaptureOutcome> =>
+    ipcRenderer.invoke(IPC.CAPTURE_WINDOW, sourceId, expectedName ?? null),
 
   // ─── Analysis ────────────────────────────────────────────────────────────
   analyze: (

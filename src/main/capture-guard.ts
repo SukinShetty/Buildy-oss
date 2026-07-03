@@ -20,6 +20,36 @@ export function captureHaltReason(sourceId: string | null, windowFound: boolean)
 }
 
 /**
+ * Locate the user's watched window in the CURRENT live window list.
+ *
+ * The watched target is identified by BOTH its source id AND the exact name the
+ * window had when the user picked it. Matching on the source id ALONE is unsafe:
+ * on Windows a desktopCapturer window id is `window:<HWND>:0`, and when the
+ * watched window closes its HWND — and therefore its source id — can be reused
+ * immediately by a DIFFERENT window. A bare id match would then resolve to that
+ * unrelated window and Buildy would silently start watching it (the observed
+ * "CIVITAS closed → PowerShell watched" reattach). Requiring the name to match
+ * as well means a reused id resolves to a different name and is correctly treated
+ * as "target lost".
+ *
+ * Returns the matching source, or null to signal "halt and ask the user to
+ * reselect" — we NEVER fall through to another window or the full screen.
+ *
+ * Trade-off: if the watched window's own title changes, its (id, name) pair no
+ * longer matches and it is treated as lost, prompting reselection. That is the
+ * intended, safe posture — a title change is ambiguous (same window vs. reused
+ * HWND) and Buildy must never guess which window to watch.
+ */
+export function findWatchedSource<T extends { id: string; name: string }>(
+  sources: readonly T[],
+  watchedId: string | null,
+  watchedName: string | null
+): T | null {
+  if (!watchedId) return null
+  return sources.find((s) => s.id === watchedId && s.name === watchedName) ?? null
+}
+
+/**
  * True if a cycle that started in `cycleSession` is now stale because the current
  * session has advanced (window switched / watch stopped+restarted). Stale results
  * must be discarded: do not mutate state, send guidance, or speak.

@@ -11,7 +11,7 @@
 
 import { desktopCapturer } from 'electron'
 import type { WindowSource, CaptureResult, CaptureOutcome } from '../renderer/src/types'
-import { captureHaltReason } from './capture-guard'
+import { captureHaltReason, findWatchedSource } from './capture-guard'
 
 // Picker thumbnails: small + lower quality to minimise exposure of other windows.
 const THUMB_SIZE = { width: 160, height: 100 }
@@ -45,12 +45,15 @@ export async function listOpenWindows(): Promise<WindowSource[]> {
 // ─── Capture a specific window ───────────────────────────────────────────────
 
 /**
- * Captures a specific window by its source ID at full resolution.
- * Returns null if the window no longer exists — Buildy halts, never guesses.
- * NEVER falls back to another window or the full screen.
+ * Captures a specific window by its source ID + selection-time name at full
+ * resolution. Returns null if that exact window is no longer in the live list —
+ * Buildy halts, never guesses. NEVER falls back to another window (including one
+ * that reused the closed window's HWND/id) or the full screen. See
+ * findWatchedSource for why the name must match, not just the id.
  */
 export async function captureWatchedWindow(
-  sourceId: string
+  sourceId: string,
+  expectedName: string | null
 ): Promise<CaptureResult | null> {
   const sources = await desktopCapturer.getSources({
     types: ['window'],
@@ -58,9 +61,9 @@ export async function captureWatchedWindow(
     fetchWindowIcons: false,
   })
 
-  const target = sources.find((s) => s.id === sourceId)
+  const target = findWatchedSource(sources, sourceId, expectedName)
   if (!target) {
-    return null // watched window is gone — halt, don't guess
+    return null // watched window gone (or its id reused by another window) — halt, don't guess
   }
 
   return {
@@ -77,15 +80,16 @@ export async function captureWatchedWindow(
  * prompt the user to reselect rather than capturing the desktop.
  */
 export async function captureWindowForAnalysis(
-  sourceId: string | null
+  sourceId: string | null,
+  expectedName: string | null
 ): Promise<CaptureOutcome> {
   if (!sourceId) {
     console.log('[Capture] no window selected — analysis halted, reselection required')
     return { ok: false, reason: captureHaltReason(null, false)! }
   }
-  const capture = await captureWatchedWindow(sourceId)
+  const capture = await captureWatchedWindow(sourceId, expectedName)
   if (captureHaltReason(sourceId, !!capture)) {
-    console.log('[Capture] selected window not found — analysis halted, reselection required')
+    console.log(`[Capture] watched window ${sourceId} no longer exists — analysis halted, awaiting reselection`)
     return { ok: false, reason: 'window-missing' }
   }
   return { ok: true, capture: capture! }

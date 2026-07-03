@@ -20,13 +20,14 @@ export function GuidanceWorkspace(): React.ReactElement {
     analysisPhase,
     availableWindows,
     selectedWindowSourceId,
+    selectedWindowName,
     latestAnalysis,
     analysisErrorMessage,
     autoAnalysisEnabled,
     secondsUntilNextAutoAnalysis,
     setAnalysisPhase,
     setAvailableWindows,
-    setSelectedWindowSourceId,
+    setSelectedWindow,
     setLatestAnalysis,
     setAnalysisError,
     setAutoAnalysisEnabled,
@@ -43,6 +44,8 @@ export function GuidanceWorkspace(): React.ReactElement {
   // Refs so the auto-analysis timer reads CURRENT values, not stale closures.
   const selectedSourceRef = useRef(selectedWindowSourceId)
   selectedSourceRef.current = selectedWindowSourceId
+  const selectedNameRef = useRef(selectedWindowName)
+  selectedNameRef.current = selectedWindowName
   const autoEnabledRef = useRef(autoAnalysisEnabled)
   autoEnabledRef.current = autoAnalysisEnabled
 
@@ -60,17 +63,19 @@ export function GuidanceWorkspace(): React.ReactElement {
 
   // ─── Analysis flow ──────────────────────────────────────────────────────────
 
-  async function startAnalysis(sourceId: string | null): Promise<void> {
+  async function startAnalysis(sourceId: string | null, expectedName: string | null): Promise<void> {
     if (isAnalyzing) return
 
     setAnalysisError(null)
 
     try {
-      // Step 1: Capture the window. If it's gone, HALT — never capture the desktop.
+      // Step 1: Capture the window by id + selection-time name. If that exact
+      // window is gone (or its id was reused by another window), HALT — never
+      // capture a different window or the desktop.
       setAnalysisPhase('capturing')
-      const outcome = await window.buildy.captureWindow(sourceId)
+      const outcome = await window.buildy.captureWindow(sourceId, expectedName)
       if (!outcome.ok) {
-        setSelectedWindowSourceId(null)
+        setSelectedWindow(null, null)
         setAnalysisError(
           outcome.reason === 'window-missing'
             ? 'The window you were watching is no longer open. Pick a window to analyze.'
@@ -101,7 +106,7 @@ export function GuidanceWorkspace(): React.ReactElement {
 
     // If user has previously selected a window, reuse it
     if (selectedWindowSourceId) {
-      await startAnalysis(selectedWindowSourceId)
+      await startAnalysis(selectedWindowSourceId, selectedWindowName)
       return
     }
 
@@ -121,10 +126,11 @@ export function GuidanceWorkspace(): React.ReactElement {
 
   function handleWindowPickerConfirm(): void {
     if (!pendingWindowId) return
-    setSelectedWindowSourceId(pendingWindowId)
+    const pendingName = availableWindows.find((w) => w.id === pendingWindowId)?.name ?? null
+    setSelectedWindow(pendingWindowId, pendingName)
     setWindowPickerVisible(false)
     setAnalysisPhase('idle')
-    startAnalysis(pendingWindowId)
+    startAnalysis(pendingWindowId, pendingName)
   }
 
   function handleWindowPickerCancel(): void {
@@ -161,7 +167,7 @@ export function GuidanceWorkspace(): React.ReactElement {
 
     // Actual analysis trigger — read CURRENT source + enabled flag from refs.
     autoTimerRef.current = setTimeout(async () => {
-      await startAnalysis(selectedSourceRef.current)
+      await startAnalysis(selectedSourceRef.current, selectedNameRef.current)
       if (autoEnabledRef.current) {
         scheduleNextAutoAnalysis()
       }
@@ -217,7 +223,7 @@ export function GuidanceWorkspace(): React.ReactElement {
             <button
               className="btn-ghost"
               onClick={() => {
-                setSelectedWindowSourceId(null)
+                setSelectedWindow(null, null)
                 handleAnalyzeNowClick()
               }}
               style={styles.smallButton}

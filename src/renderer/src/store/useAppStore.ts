@@ -51,6 +51,7 @@ interface AppState {
   analysisPhase: AnalysisPhase
   availableWindows: WindowSource[]
   selectedWindowSourceId: string | null
+  selectedWindowName: string | null       // name at pick time — guards against HWND/id reuse
   latestCapture: CaptureResult | null
   latestAnalysis: AnalysisResult | null
   analysisErrorMessage: string | null
@@ -77,6 +78,7 @@ interface AppState {
   setAnalysisPhase: (phase: AnalysisPhase) => void
   setAvailableWindows: (windows: WindowSource[]) => void
   setSelectedWindowSourceId: (id: string | null) => void
+  setSelectedWindow: (id: string | null, name: string | null) => void
   setLatestCapture: (capture: CaptureResult | null) => void
   setLatestAnalysis: (result: AnalysisResult | null) => void
   setAnalysisError: (message: string | null) => void
@@ -110,6 +112,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   analysisPhase: 'idle',
   availableWindows: [],
   selectedWindowSourceId: null,
+  selectedWindowName: null,
   latestCapture: null,
   latestAnalysis: null,
   analysisErrorMessage: null,
@@ -138,6 +141,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setAnalysisPhase: (analysisPhase) => set({ analysisPhase }),
   setAvailableWindows: (availableWindows) => set({ availableWindows }),
   setSelectedWindowSourceId: (selectedWindowSourceId) => set({ selectedWindowSourceId }),
+  setSelectedWindow: (selectedWindowSourceId, selectedWindowName) =>
+    set({ selectedWindowSourceId, selectedWindowName }),
   setLatestCapture: (latestCapture) => set({ latestCapture }),
   setLatestAnalysis: (latestAnalysis) => set({ latestAnalysis }),
   setAnalysisError: (analysisErrorMessage) => set({ analysisErrorMessage }),
