@@ -13,6 +13,14 @@ Buildy watches what you're doing on screen (e.g. Claude Code, Cursor, a terminal
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#-install--run)
 
 </div>
+---
+
+## 🎬 Demo
+
+> 📸 **Demo coming soon.** Drop a GIF or screenshot here showing the mascot narrating a live coding session.
+>
+> <!-- Replace with: ![Buildy demo](docs/assets/demo.gif) -->
+
 
 ---
 
@@ -168,6 +176,27 @@ For a deeper technical walkthrough, see [`AGENTS.md`](./AGENTS.md).
 
 ---
 
+## 🧯 Troubleshooting / FAQ
+
+**`npm install` fails with peer-dependency errors.**
+Use `npm install --legacy-peer-deps` — electron-vite pins an older Vite peer range, so the flag is required.
+
+**Buildy lists no windows to watch (macOS).**
+Grant Screen Recording permission to Buildy (or to your terminal in dev) under System Settings → Privacy & Security → Screen Recording, then restart the app.
+
+**The mascot is silent.**
+Voice uses ElevenLabs when a key is set in Settings, otherwise the built-in system voice. Check your Settings, and make sure quiet mode is off on the mascot.
+
+**Analysis fails or errors out.**
+Re-check your provider in Settings — API key, model id, and (for local providers) the Base URL. For Ollama / LM Studio the server must be running and the model must be vision-capable.
+
+**Can I run it fully offline?**
+Yes — pick `ollama` or `lmstudio`, point the Base URL at your local server, choose a vision-capable local model, and skip the ElevenLabs key.
+
+Something else? [Open an issue](../../issues).
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! A few notes:
@@ -188,3 +217,4 @@ Contributions are welcome! A few notes:
 <div align="center">
 Built for non-technical founders who want to ship.
 </div>
+
