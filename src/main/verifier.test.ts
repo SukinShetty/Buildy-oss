@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes, getOutcomes,
+  replacePendingOutcome,
 } from './verifier'
 
 describe('verifier — pending prompt-outcome tracking', () => {
@@ -42,5 +43,22 @@ describe('verifier — pending prompt-outcome tracking', () => {
     clearOutcomes()
     expect(getOutcomes()).toHaveLength(0)
     expect(getMostRecentPending()).toBeNull()
+  })
+
+  it('replacePendingOutcome replaces rather than stacks (a SENT prompt is the only pending outcome)', () => {
+    recordPendingOutcome('suggested but never pasted', 'o1')
+    recordPendingOutcome('another unsent suggestion', 'o2')
+    const sent = replacePendingOutcome('the prompt actually sent', 'the dashboard renders')
+    expect(sent).not.toBeNull()
+    expect(getOutcomes()).toHaveLength(1)
+    expect(getMostRecentPending()?.id).toBe(sent!.id)
+    expect(getMostRecentPending()?.promptText).toBe('the prompt actually sent')
+  })
+
+  it('replacePendingOutcome keeps existing outcomes when there is nothing to register', () => {
+    const kept = recordPendingOutcome('p1', 'o1')!
+    expect(replacePendingOutcome('', 'outcome')).toBeNull()
+    expect(replacePendingOutcome('prompt', '')).toBeNull()
+    expect(getMostRecentPending()?.id).toBe(kept.id)
   })
 })

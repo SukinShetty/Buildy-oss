@@ -45,6 +45,21 @@ export function recordPendingOutcome(promptText: string, expectedOutcome: string
 }
 
 /**
+ * Register a prompt the user actually SENT as the single pending outcome,
+ * REPLACING everything tracked so far. Suggested prompts pile up every cycle
+ * whether or not the user runs them; once one is genuinely sent, it is the only
+ * thing worth verifying. Works for any displayed prompt — the first suggestion,
+ * a grader-improved version, or a verifier corrective prompt.
+ */
+export function replacePendingOutcome(promptText: string, expectedOutcome: string): PromptOutcome | null {
+  const p = (promptText || '').trim()
+  const o = (expectedOutcome || '').trim()
+  if (!p || !o) return null
+  pending = []
+  return recordPendingOutcome(p, o)
+}
+
+/**
  * The most recent still-pending outcome to verify against the next analysis, or
  * null if there is nothing awaiting verification.
  */
