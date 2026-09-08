@@ -20,6 +20,21 @@ const THUMB_QUALITY = 40
 const CAPTURE_SIZE = { width: 1280, height: 800 }
 const CAPTURE_QUALITY = 88
 
+// ─── Continuity poll (cheap id/title list, no thumbnails) ────────────────────
+
+/**
+ * The current window sources as bare (id, name) pairs — no thumbnails, so this
+ * is cheap enough to run every 2 s for the watch-continuity poll.
+ */
+export async function listLiveWindowSources(): Promise<{ id: string; name: string }[]> {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: { width: 0, height: 0 },
+    fetchWindowIcons: false,
+  })
+  return sources.map((source) => ({ id: source.id, name: source.name }))
+}
+
 // ─── List windows (for user to pick from) ────────────────────────────────────
 
 /**
@@ -45,15 +60,16 @@ export async function listOpenWindows(): Promise<WindowSource[]> {
 // ─── Capture a specific window ───────────────────────────────────────────────
 
 /**
- * Captures a specific window by its source ID + selection-time name at full
- * resolution. Returns null if that exact window is no longer in the live list —
- * Buildy halts, never guesses. NEVER falls back to another window (including one
- * that reused the closed window's HWND/id) or the full screen. See
- * findWatchedSource for why the name must match, not just the id.
+ * Captures a specific window by its source ID at full resolution. Returns null
+ * if that id is not in the live list right now — the caller decides whether
+ * that means a brief gap (continuity grace) or real loss. NEVER falls back to
+ * another window or the full screen. Identity is the id alone: titles change
+ * legitimately every agent turn, and HWND/id reuse is guarded by the
+ * continuity tracker in capture-guard.ts, not by a title match here.
  */
 export async function captureWatchedWindow(
   sourceId: string,
-  expectedName: string | null
+  _expectedName: string | null
 ): Promise<CaptureResult | null> {
   const sources = await desktopCapturer.getSources({
     types: ['window'],
@@ -61,9 +77,9 @@ export async function captureWatchedWindow(
     fetchWindowIcons: false,
   })
 
-  const target = findWatchedSource(sources, sourceId, expectedName)
+  const target = findWatchedSource(sources, sourceId)
   if (!target) {
-    return null // watched window gone (or its id reused by another window) — halt, don't guess
+    return null // watched window not in the current list — caller decides, never guess
   }
 
   return {

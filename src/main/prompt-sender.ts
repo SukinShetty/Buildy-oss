@@ -24,13 +24,11 @@ export function isSendInFlight(): boolean {
 }
 
 /**
- * True if the watched window (id + selection-time name, see findWatchedSource)
- * is still present in the live window list. Used by send eligibility.
+ * True if the watched window's source id is present in the live window list
+ * (identity is the id alone — titles change every agent turn; see
+ * capture-guard.ts). Used by send eligibility: not eligible while missing.
  */
-export async function isWatchedWindowPresent(
-  watchedId: string | null,
-  watchedName: string | null
-): Promise<boolean> {
+export async function isWatchedWindowPresent(watchedId: string | null): Promise<boolean> {
   if (!watchedId) return false
   try {
     const sources = await desktopCapturer.getSources({
@@ -38,7 +36,7 @@ export async function isWatchedWindowPresent(
       thumbnailSize: { width: 0, height: 0 },
       fetchWindowIcons: false,
     })
-    return findWatchedSource(sources, watchedId, watchedName) !== null
+    return findWatchedSource(sources, watchedId) !== null
   } catch (error) {
     console.warn('[Send] window presence check failed:', error)
     return false

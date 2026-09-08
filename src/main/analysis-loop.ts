@@ -16,7 +16,7 @@ import type { BrowserWindow } from 'electron'
 import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
 import { emptyProjectMemory } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
-import { captureWatchedWindow } from './capturer'
+import { captureWatchedWindow, listLiveWindowSources } from './capturer'
 import { getProvider } from './ai/provider-registry'
 import {
   computeImageChangeFraction,
@@ -40,7 +40,8 @@ import { executeSend, isSendInFlight, isWatchedWindowPresent } from './prompt-se
 import { sendGuidanceSendState } from './guidance-window'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
-import { isStaleSession } from './capture-guard'
+import { isStaleSession, startContinuity, pollContinuity } from './capture-guard'
+import type { WatchContinuity } from './capture-guard'
 import { debugLog, debugError } from './debug-log'
 import type { VerificationVerdict, SendEligibility, SendPromptResult } from '../renderer/src/types'
 
@@ -97,6 +98,15 @@ let currentSession = 0
 let inFlight = false
 let getSettingsFn: (() => Promise<AppSettings>) | null = null
 let getGoalFn: (() => Promise<Goal | null>) | null = null
+
+// Watch continuity: a cheap 2s poll (independent of the ~10s analysis cycle)
+// that tracks the watched window by source id so legitimate title changes —
+// coding agents rename the terminal every turn — never halt the watch. See
+// capture-guard.ts for the missing/lost grace rules.
+let continuity: WatchContinuity | null = null
+let continuityTimer: ReturnType<typeof setInterval> | null = null
+let continuityPollBusy = false
+const CONTINUITY_POLL_MS = 2_000
 
 // The analysis currently shown in the guidance panel for THIS cycle. Parallel
 // background passes (prompt-quality grader, verifier) patch it and re-send so
@@ -159,6 +169,12 @@ export function startWatching(
   // Structural log only — no window title (it may contain user content).
   console.log(`[AnalysisLoop] Now watching session ${mySession} (${sourceId})`)
 
+  // Track window identity by source id, independent of title changes.
+  continuity = startContinuity(sourceId, windowName)
+  continuityTimer = setInterval(() => {
+    void pollWatchContinuity(companionWindow, mySession)
+  }, CONTINUITY_POLL_MS)
+
   notifyWatchedSource(companionWindow, windowName)
   notifyCompanionState(companionWindow, 'idle')
 
@@ -210,6 +226,80 @@ export function pauseAnalysisLoop(): void { isPaused = true }
 export function resumeAnalysisLoop(): void { isPaused = false }
 export function setQuietMode(quiet: boolean): void { isQuietMode = quiet }
 export function isAnalysisLoopRunning(): boolean { return isRunning && !isPaused && watchedSourceId !== null }
+
+// ─── Watch continuity poll (every 2s, independent of the analysis cycle) ─────
+
+/**
+ * One continuity tick: refresh the live source list and react to what the
+ * tracker says. Title changes and brief disappearances keep the watch alive
+ * (the analysis cycle, post-send analysis and Verifier all continue as if
+ * nothing happened); only a real loss halts and asks for reselection.
+ */
+async function pollWatchContinuity(companionWindow: BrowserWindow, mySession: number): Promise<void> {
+  if (isStaleSession(mySession, currentSession) || !continuity || continuityPollBusy) return
+  continuityPollBusy = true
+  let sources: { id: string; name: string }[]
+  try {
+    sources = await listLiveWindowSources()
+  } catch (error) {
+    console.warn('[Watch] continuity poll failed:', error)
+    return
+  } finally {
+    continuityPollBusy = false
+  }
+  if (isStaleSession(mySession, currentSession) || !continuity) return
+
+  const event = pollContinuity(continuity, sources, Date.now())
+  switch (event.kind) {
+    case 'title-changed':
+      // Same source id in consecutive polls = same window; the title is cosmetic.
+      watchedWindowName = event.to
+      console.log('[Watch] title changed — same window, watch continues')
+      debugLog(`[Watch] title: "${event.from}" -> "${event.to}"`)
+      notifyWatchedSource(companionWindow, event.to)
+      void pushSendEligibility()
+      break
+    case 'went-missing':
+      // Unknown whether minimized windows drop out of the source list — log the
+      // possibilities and let the grace rules decide; no special-casing.
+      console.log('[Watch] watched window missing from source list (closed, minimized, or hidden?) — grace period started')
+      if (!companionWindow.isDestroyed()) {
+        companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+          windowName: watchedWindowName,
+          message: 'Looking for the watched window…',
+        })
+      }
+      void pushSendEligibility()
+      break
+    case 'resumed':
+      watchedWindowName = event.title
+      console.log('[Watch] resumed — watched window is back in the source list')
+      debugLog(`[Watch] resumed with title "${event.title}"`)
+      notifyWatchedSource(companionWindow, event.title)
+      void pushSendEligibility()
+      break
+    case 'lost':
+      console.log('[Watch] watched window lost — halting, awaiting reselection')
+      haltWatchAsLost(companionWindow)
+      break
+    case 'none':
+      break
+  }
+}
+
+/** Halt exactly as the old target-lost path did: pause and ask for reselection. */
+function haltWatchAsLost(companionWindow: BrowserWindow): void {
+  isPaused = true
+  if (continuityTimer) { clearInterval(continuityTimer); continuityTimer = null }
+  if (!companionWindow.isDestroyed()) {
+    companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+      windowName: null,
+      message: `"${watchedWindowName}" is no longer open. Pick a window to watch.`,
+    })
+  }
+  notifyCompanionState(companionWindow, 'idle')
+  void pushSendEligibility()
+}
 
 // ─── Question handling ──────────────────────────────────────────────────────
 
@@ -392,24 +482,16 @@ async function runOneAnalysisCycle(
   isFirstCycle = false
 
   // Step 1: Capture the watched window (NEVER the full screen — see capturer.ts).
-  // Identity is (id + selection-time name) so a reused HWND/id can't swap us onto
-  // a different window (see findWatchedSource).
+  // Identity is the source id; the continuity poll guards HWND/id reuse across
+  // gaps and follows legitimate title renames (see capture-guard.ts).
   const capture = await captureWatchedWindow(watchedSourceId, watchedWindowName)
   if (isStaleSession(mySession, currentSession)) return
   if (!capture) {
-    // Watched window is gone, or its id was reused by a DIFFERENT window. HALT —
-    // never switch to or capture another window; only the user picks the target.
-    // Structural log only (source id is not screen content).
-    console.log(`[Capture] watched window ${watchedSourceId} no longer exists — analysis halted, awaiting reselection`)
-    isPaused = true
-    if (!companionWindow.isDestroyed()) {
-      companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-        windowName: null,
-        message: `"${watchedWindowName}" is no longer open. Pick a window to watch.`,
-      })
-    }
+    // Watched window not in the source list THIS cycle. The 2s continuity poll
+    // owns the missing/lost decision (grace for renames and brief gaps) — the
+    // cycle just skips; it never halts the watch or captures anything else.
+    console.log('[Watch] capture skipped — watched window not in source list this cycle (continuity poll decides)')
     notifyCompanionState(companionWindow, 'idle')
-    void pushSendEligibility()
     return
   }
 
@@ -568,6 +650,9 @@ function quickWordOverlap(a: string, b: string): number {
 
 function clearStaleState(): void {
   if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
+  if (continuityTimer) { clearInterval(continuityTimer); continuityTimer = null }
+  continuity = null
+  continuityPollBusy = false
   previousScreenshot = null
   previousAnalysis = null
   lastSpokeAt = 0
@@ -748,9 +833,10 @@ function patchDisplayAndResend(
  */
 async function computeSendEligibility(): Promise<SendEligibility> {
   const watchActive = isRunning && !isPaused && watchedSourceId !== null
-  // Only pay for the live window-list lookup when everything cheaper holds.
-  const windowFound = watchActive
-    ? await isWatchedWindowPresent(watchedSourceId, watchedWindowName)
+  // Not eligible while the continuity tracker says the window is missing/lost;
+  // only pay for the live window-list lookup when everything cheaper holds.
+  const windowFound = watchActive && continuity?.state === 'watching'
+    ? await isWatchedWindowPresent(watchedSourceId)
     : false
   return evaluateSendEligibility({
     platform: process.platform,
