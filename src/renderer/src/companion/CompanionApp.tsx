@@ -24,6 +24,7 @@ export function CompanionApp(): React.ReactElement {
 
   const [windowList, setWindowList] = useState<WindowItem[]>([])
   const [needsApiKey, setNeedsApiKey] = useState(false)
+  const [sentFlash, setSentFlash] = useState(false)
   const isMutedRef = useRef(isMuted)
   isMutedRef.current = isMuted
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -62,6 +63,13 @@ export function CompanionApp(): React.ReactElement {
         window.buildy.showGuidanceAnswer(d)
       }),
       window.buildy.onCompanionShutdown(() => window.buildy.voice.stop()),
+      // Brief "Sent" status after a successful Send to Claude Code.
+      window.buildy.onSendStatus((_: unknown, status: string) => {
+        if (status === 'sent') {
+          setSentFlash(true)
+          setTimeout(() => setSentFlash(false), 2000)
+        }
+      }),
     ]
     return () => { unsubs.forEach((u) => u()) }
   }, [])
@@ -196,13 +204,15 @@ export function CompanionApp(): React.ReactElement {
 
   // ─── Render ─────────────────────────────────────────────────────────
 
-  const watchLabel = needsApiKey
-    ? 'click orb to set up API key'
-    : watchedSourceMessage
-      ? watchedSourceMessage
-      : watchedWindowName
-        ? watchedWindowName
-        : 'click orb to pick a window'
+  const watchLabel = sentFlash
+    ? 'Sent'
+    : needsApiKey
+      ? 'click orb to set up API key'
+      : watchedSourceMessage
+        ? watchedSourceMessage
+        : watchedWindowName
+          ? watchedWindowName
+          : 'click orb to pick a window'
 
   const micLabel = micState === 'listening' ? 'listening...'
     : micState === 'transcribing' ? 'transcribing...'

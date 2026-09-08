@@ -15,15 +15,23 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import type {
   GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer, VerificationStatus,
+  SendEligibility,
 } from '../types'
 import { HandoffCard } from './HandoffCard'
 
 const AUTO_HIDE_MS = 60_000
 
+// Until main pushes real eligibility, the send button stays safely disabled.
+const DEFAULT_SEND_ELIGIBILITY: SendEligibility = {
+  canSend: false,
+  sendBlockedReason: 'Waiting for the next analysis',
+}
+
 export function GuidancePanel(): React.ReactElement | null {
   const [payload, setPayload] = useState<GuidancePayload | null>(null)
   const [renderKey, setRenderKey] = useState(0)
   const [speakingChunk, setSpeakingChunk] = useState<string | null>(null)
+  const [sendEligibility, setSendEligibility] = useState<SendEligibility>(DEFAULT_SEND_ELIGIBILITY)
   const panelRef = useRef<HTMLDivElement>(null)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -31,6 +39,14 @@ export function GuidancePanel(): React.ReactElement | null {
   useEffect(() => {
     const unsub = window.buildy.onSpeechProgress((_: unknown, chunkText: string | null) => {
       setSpeakingChunk(chunkText)
+    })
+    return () => unsub()
+  }, [])
+
+  // Send eligibility — main decides, we only render (disabled button + tooltip).
+  useEffect(() => {
+    const unsub = window.buildy.onSendEligibility((_: unknown, state: SendEligibility) => {
+      setSendEligibility(state)
     })
     return () => unsub()
   }, [])
@@ -94,7 +110,9 @@ export function GuidancePanel(): React.ReactElement | null {
           </svg>
         </button>
 
-        {payload.kind === 'analysis' && <AnalysisBody analysis={payload.analysis} />}
+        {payload.kind === 'analysis' && (
+          <AnalysisBody analysis={payload.analysis} sendEligibility={sendEligibility} />
+        )}
         {payload.kind === 'answer' && <AnswerBody answer={payload.answer} />}
         {payload.kind === 'message' && <div style={S.message}>{payload.message}</div>}
 
@@ -112,8 +130,18 @@ export function GuidancePanel(): React.ReactElement | null {
 
 // ─── Analysis body ─────────────────────────────────────────────────────────────
 
-function AnalysisBody({ analysis }: { analysis: AnalysisResult }): React.ReactElement {
+function AnalysisBody({
+  analysis,
+  sendEligibility,
+}: {
+  analysis: AnalysisResult
+  sendEligibility: SendEligibility
+}): React.ReactElement {
   const [copied, setCopied] = useState(false)
+  const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [sendError, setSendError] = useState<string | null>(null)
+
+  const isWindows = window.buildy.platform === 'win32'
 
   async function copyPrompt(): Promise<void> {
     if (!analysis.nextPrompt) return
@@ -127,6 +155,54 @@ function AnalysisBody({ analysis }: { analysis: AnalysisResult }): React.ReactEl
       console.warn('[GuidancePanel] Copy failed:', e)
     }
   }
+
+  // Windows: send ONLY the prompt id — main resolves the text and decides.
+  // On any failure the text is left/put on the clipboard for a manual paste.
+  async function sendPrompt(): Promise<void> {
+    if (!analysis.nextPrompt || !analysis.promptId || sendState === 'sending') return
+    setSendState('sending')
+    setSendError(null)
+    try {
+      const result = await window.buildy.sendPromptToWindow(analysis.promptId)
+      if (result.sent) {
+        setSendState('sent')
+        setTimeout(() => setSendState('idle'), 2000)
+        return
+      }
+      console.warn('[GuidancePanel] Send failed:', result.reason)
+      await window.buildy.copyText(analysis.nextPrompt)
+      setSendState('idle')
+      setSendError('Copied instead. Press Ctrl+V then Enter in Claude Code.')
+      setTimeout(() => setSendError(null), 6000)
+    } catch (e) {
+      console.warn('[GuidancePanel] Send failed:', e)
+      try { await window.buildy.copyText(analysis.nextPrompt) } catch { /* clipboard best-effort */ }
+      setSendState('idle')
+      setSendError('Copied instead. Press Ctrl+V then Enter in Claude Code.')
+      setTimeout(() => setSendError(null), 6000)
+    }
+  }
+
+  // macOS/Linux: the primary button only copies.
+  async function copyForClaudeCode(): Promise<void> {
+    if (!analysis.nextPrompt) return
+    try {
+      await window.buildy.copyText(analysis.nextPrompt)
+      setSendState('sent')
+      setTimeout(() => setSendState('idle'), 2000)
+    } catch (e) {
+      console.warn('[GuidancePanel] Copy failed:', e)
+    }
+  }
+
+  const sendLabel = !isWindows
+    ? (sendState === 'sent' ? 'Copied!' : 'Copy for Claude Code')
+    : sendState === 'sending' ? 'Sending…'
+    : sendState === 'sent' ? 'Sent'
+    : 'Send to Claude Code'
+  const sendDisabled = isWindows
+    ? (!sendEligibility.canSend || sendState === 'sending')
+    : false
 
   return (
     <>
@@ -160,15 +236,26 @@ function AnalysisBody({ analysis }: { analysis: AnalysisResult }): React.ReactEl
         <div style={S.promptCard}>
           <div style={S.promptHeader}>
             <span style={S.promptLabel}>Prompt to paste</span>
-            <button onClick={copyPrompt} style={S.copyBtn} title="Copy prompt">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
+            <div style={S.promptActions}>
+              <button onClick={copyPrompt} style={S.copyBtn} title="Copy prompt">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                onClick={isWindows ? sendPrompt : copyForClaudeCode}
+                disabled={sendDisabled}
+                style={{ ...S.sendBtn, ...(sendDisabled ? S.sendBtnDisabled : {}) }}
+                title={sendDisabled && sendEligibility.sendBlockedReason ? sendEligibility.sendBlockedReason : sendLabel}
+              >
+                {sendLabel}
+              </button>
+            </div>
           </div>
           <div style={S.promptText} data-selectable>{analysis.nextPrompt}</div>
+          {sendError && <div style={S.sendError}>{sendError}</div>}
         </div>
       )}
     </>
@@ -489,6 +576,37 @@ const S = {
     cursor: 'pointer',
     transition: 'background 0.15s',
     flexShrink: 0,
+  },
+  promptActions: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  sendBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 10,
+    fontWeight: 700,
+    padding: '4px 10px',
+    borderRadius: 7,
+    background: '#10B981',
+    color: '#08110D',
+    border: '1px solid rgba(16,185,129,0.9)',
+    cursor: 'pointer',
+    transition: 'background 0.15s, opacity 0.15s',
+    flexShrink: 0,
+  },
+  sendBtnDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
+  },
+  sendError: {
+    fontSize: 11,
+    fontStyle: 'italic' as const,
+    color: '#FBBF24',
+    lineHeight: 1.5,
   },
   questionLabel: {
     fontSize: 10,

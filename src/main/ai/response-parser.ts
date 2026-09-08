@@ -12,7 +12,7 @@
 //
 // This parser handles all of those cases gracefully.
 
-import type { AnalysisResult, ExtractedProjectData, GoalAlignment } from '../../renderer/src/types'
+import type { AnalysisResult, ExtractedProjectData, GoalAlignment, TerminalState } from '../../renderer/src/types'
 
 /**
  * Parse raw model output text into a structured AnalysisResult.
@@ -208,9 +208,24 @@ function normalizeAnalysisResult(
     isCriticalOverride: toBool(parsed.isCriticalOverride, false),
     needsHumanJudgment: toBool(parsed.needsHumanJudgment, false),
     humanJudgmentReason: parsed.humanJudgmentReason != null ? toStr(parsed.humanJudgmentReason, '') : undefined,
+    terminalState: toTerminalState(parsed.terminalState),
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }
+}
+
+/**
+ * Coerce a value to a valid TerminalState; 'unknown' when absent/unrecognized.
+ * Tolerates minor model variations like "awaiting-prompt" or "Awaiting Prompt".
+ */
+function toTerminalState(value: unknown): TerminalState {
+  if (typeof value !== 'string') return 'unknown'
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (normalized === 'awaiting_prompt') return 'awaiting_prompt'
+  if (normalized === 'working') return 'working'
+  if (normalized === 'permission_prompt') return 'permission_prompt'
+  if (normalized === 'not_a_coding_agent') return 'not_a_coding_agent'
+  return 'unknown'
 }
 
 /**
@@ -263,6 +278,7 @@ function buildFallbackAnalysisResult(rawText: string, startTime: number): Analys
     bestNextMove: 'Click "Analyze Now" again to get a fresh read.',
     nextPrompt: '',
     builderNote: 'No worries — sometimes it takes a second try!',
+    terminalState: 'unknown',
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }

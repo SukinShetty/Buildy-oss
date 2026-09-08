@@ -23,10 +23,16 @@ import type {
   QuestionAnswer,
   MemoryEntry,
   MemorySnapshot,
+  SendEligibility,
+  SendPromptResult,
 } from '../renderer/src/types'
 
 // The API exposed to window.buildy in the renderer
 const buildyAPI = {
+
+  // OS platform ('win32' | 'darwin' | 'linux') — the send button is Windows-only;
+  // macOS/Linux fall back to clipboard copy.
+  platform: process.platform as string,
 
   // ─── Window listing ──────────────────────────────────────────────────────
   listWindows: (): Promise<WindowSource[]> =>
@@ -227,6 +233,27 @@ const buildyAPI = {
 
   copyText: (text: string): Promise<void> =>
     ipcRenderer.invoke(IPC.COPY_TEXT, text),
+
+  // Approve-and-send: sends ONLY the displayed prompt's id — main resolves the
+  // text and performs the send (Windows-only).
+  sendPromptToWindow: (promptId: string): Promise<SendPromptResult> =>
+    ipcRenderer.invoke(IPC.SEND_PROMPT, promptId),
+
+  // Main pushes canSend + blocked reason; the renderer only renders it.
+  onSendEligibility: (handler: (event: unknown, state: SendEligibility) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: SendEligibility) =>
+      handler(_event, state)
+    ipcRenderer.on(IPC.SEND_ELIGIBILITY, listener)
+    return () => ipcRenderer.removeListener(IPC.SEND_ELIGIBILITY, listener)
+  },
+
+  // Companion mascot: transient send status (e.g. 'sent') for the status label.
+  onSendStatus: (handler: (event: unknown, status: string) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: string) =>
+      handler(_event, status)
+    ipcRenderer.on(IPC.SEND_STATUS, listener)
+    return () => ipcRenderer.removeListener(IPC.SEND_STATUS, listener)
+  },
 
   onGuidanceData: (handler: (event: unknown, payload: GuidancePayload) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: GuidancePayload) =>

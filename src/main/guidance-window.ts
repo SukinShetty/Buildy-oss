@@ -17,7 +17,7 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { IPC } from '../renderer/src/types'
-import type { GuidancePayload } from '../renderer/src/types'
+import type { GuidancePayload, SendEligibility } from '../renderer/src/types'
 
 const GUIDANCE_WIDTH = 420
 const GAP = 8
@@ -170,6 +170,25 @@ export function hideGuidanceWindow(): void {
 export function sendSpeechProgress(chunkText: string | null): void {
   if (!guidanceRef || guidanceRef.isDestroyed()) return
   guidanceRef.webContents.send(IPC.VOICE_SPEAK_PROGRESS, chunkText)
+}
+
+/**
+ * Push the current send-to-terminal eligibility (canSend + blocked reason) so
+ * the panel can enable/disable the "Send to Claude Code" button. Main decides;
+ * the renderer only renders.
+ */
+export function sendGuidanceSendState(state: SendEligibility): void {
+  if (!guidanceRef || guidanceRef.isDestroyed()) return
+  guidanceRef.webContents.send(IPC.SEND_ELIGIBILITY, state)
+}
+
+/**
+ * WebContents id of the guidance window, for IPC sender checks: only the
+ * guidance window (where the Send button lives) may request a send.
+ */
+export function getGuidanceWebContentsId(): number | null {
+  if (!guidanceRef || guidanceRef.isDestroyed()) return null
+  return guidanceRef.webContents.id
 }
 
 /**

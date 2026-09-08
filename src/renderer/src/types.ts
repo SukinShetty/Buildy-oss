@@ -187,6 +187,16 @@ export type CaptureOutcome =
 // How the current activity relates to the user's goal.
 export type GoalAlignment = 'on-track' | 'drift' | 'blocked'
 
+// Model-classified state of any AI coding agent (Claude Code, Codex CLI or
+// similar) visible in the watched window. Gates the "Send to Claude Code"
+// button: sending is only allowed when the agent is idle and awaiting input.
+export type TerminalState =
+  | 'awaiting_prompt'      // agent input box visible, empty and idle
+  | 'working'              // agent is mid-turn (generating / running tools)
+  | 'permission_prompt'    // agent is asking y/n or for approval
+  | 'not_a_coding_agent'   // shell prompt, editor, browser, anything else
+  | 'unknown'
+
 // ─── Verifier (loop engineering Block 4) ──────────────────────────────────────
 // After Buildy suggests a prompt, the NEXT analysis verifies whether the pasted
 // prompt achieved its intended outcome. This verdict is computed in the main
@@ -228,8 +238,37 @@ export interface AnalysisResult {
   // Verifier (Block 4): verdict on the PREVIOUS suggested prompt, attached by the
   // main-process loop (never produced by the model, never persisted).
   verification?: VerificationVerdict | null
+  // Model-classified coding-agent state (see TerminalState). Parser defaults to
+  // 'unknown' when the model omits it.
+  terminalState?: TerminalState
+  // Identity of the currently-displayed prompt, assigned by the MAIN process
+  // (analysis-loop) whenever nextPrompt is set or patched. The renderer sends
+  // ONLY this id back on "Send to Claude Code" — main resolves the text itself
+  // and rejects ids that no longer match the displayed prompt.
+  promptId?: string
   analyzedAt: string                // ISO date string
   analysisDurationMs: number
+}
+
+// ─── Send-to-terminal (approve-and-send) ──────────────────────────────────────
+// Main computes eligibility and pushes it to the guidance window; the renderer
+// only renders it (disabled button + tooltip) and never decides for itself.
+
+export interface SendEligibility {
+  canSend: boolean
+  sendBlockedReason: string   // tooltip text when canSend is false; '' when true
+}
+
+export type SendFailureReason =
+  | 'window_not_in_front'
+  | 'timeout'
+  | 'not_eligible'
+  | 'stale'
+  | 'unknown'
+
+export interface SendPromptResult {
+  sent: boolean
+  reason?: SendFailureReason
 }
 
 // ─── Guidance panel ───────────────────────────────────────────────────────────
@@ -305,6 +344,9 @@ export const IPC = {
   GUIDANCE_RESIZE:     'guidance:resize',           // guidance window → main (report content height)
   GUIDANCE_SHOW_LAST:  'guidance:show-last',         // companion/tray → main (re-show cached guidance)
   COPY_TEXT:           'buildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
+  SEND_PROMPT:         'buildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)
+  SEND_ELIGIBILITY:    'buildy:send-eligibility',   // main → guidance window (canSend + sendBlockedReason)
+  SEND_STATUS:         'buildy:send-status',        // main → companion (transient "Sent" mascot label)
   LOAD_PROJECT:        'buildy:load-project',
   SAVE_PROJECT:        'buildy:save-project',
   LOAD_SETTINGS:       'buildy:load-settings',     // → RedactedSettings (never raw keys)

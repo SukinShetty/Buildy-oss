@@ -6,7 +6,7 @@ import { ipcMain, clipboard, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
-import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance } from './guidance-window'
+import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
@@ -19,12 +19,12 @@ import { debugLog, debugError } from './debug-log'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
-import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion } from './analysis-loop'
+import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion, handleSendPromptRequest } from './analysis-loop'
 import {
-  parseInput, assertFromMainWindow, isAllowedBaseUrl,
+  parseInput, assertFromMainWindow, assertFromGuidanceWindow, isAllowedBaseUrl,
   nonSecretSettingsSchema, setSecretSchema, captureResultSchema, projectMemorySchema,
   goalPartialSchema, shortText, sourceId as sourceIdSchema, windowName as windowNameSchema,
-  confidenceEnum, chatHistorySchema,
+  confidenceEnum, chatHistorySchema, promptIdSchema,
 } from './ipc-schemas'
 
 // Registered ONCE at startup. Window references are GETTERS so handlers always
@@ -334,6 +334,19 @@ export function registerIpcHandlers(
   // where navigator.clipboard would throw "Document is not focused".
   ipcMain.handle(IPC.COPY_TEXT, async (_event, text: string) => {
     clipboard.writeText(text)
+  })
+
+  // Approve-and-send: the guidance window sends ONLY the displayed prompt's id;
+  // main resolves the text itself and rejects stale/unknown ids. Windows-only.
+  ipcMain.handle(IPC.SEND_PROMPT, async (event, promptIdRaw: unknown) => {
+    try {
+      assertFromGuidanceWindow(event, getGuidanceWebContentsId(), 'SEND_PROMPT')
+      const promptId = parseInput(promptIdSchema, 'SEND_PROMPT', promptIdRaw)
+      return await handleSendPromptRequest(promptId)
+    } catch (error) {
+      console.error('[IPC] SEND_PROMPT error:', error)
+      return { sent: false, reason: 'unknown' }
+    }
   })
 
   // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────────

@@ -105,6 +105,14 @@ If you cannot produce a nextPrompt meeting all 7 requirements, return an empty s
 EXPECTED OUTCOME (mandatory whenever nextPrompt is non-empty):
 Whenever you produce a nextPrompt, you MUST also produce "expectedOutcome": ONE plain-English sentence describing what SUCCESS looks like after the user pastes and runs that prompt — something concrete and observable on screen (e.g. "A /dashboard route renders a table of customers with a working search box" or "The build completes with no errors and the login page loads"). On the NEXT analysis, Buildy uses this to check whether the prompt actually worked. If nextPrompt is empty, set expectedOutcome to an empty string.
 
+TERMINAL STATE (mandatory field "terminalState"):
+Classify the state of any AI coding agent (Claude Code, Codex CLI or similar) visible in the window. Choose EXACTLY one:
+- "awaiting_prompt": an AI coding agent's input box is visible, EMPTY and idle — ready for a new prompt.
+- "working": the agent is mid-turn — generating output, running tools, or streaming.
+- "permission_prompt": the agent is asking the user for approval (y/n, allow/deny, trust this folder, etc.).
+- "not_a_coding_agent": the window shows a plain shell prompt, an editor, a browser, or anything else that is not an AI coding agent.
+- "unknown": you cannot confidently tell.
+
 HUMAN JUDGMENT / HAND-OFF (mandatory field "needsHumanJudgment"):
 Set "needsHumanJudgment" to true ONLY when the next step is a genuine decision a human must own, specifically:
 - An architectural decision with real tradeoffs (e.g. SQL vs NoSQL, monolith vs microservices, REST vs GraphQL).
@@ -127,6 +135,7 @@ YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
   "expectedOutcome": "ONE sentence: what success looks like on screen after the user runs nextPrompt. Empty string if nextPrompt is empty.",
   "builderNote": "Short encouraging note",
   "projectUnderstandingNote": "ONE sentence describing what you currently understand the user is building, based on project memory + what is on screen (e.g. 'a CRM for freelancers to track customers and invoices'). Keep it short.",
+  "terminalState": "awaiting_prompt OR working OR permission_prompt OR not_a_coding_agent OR unknown — see TERMINAL STATE above. MANDATORY.",
   "isCriticalOverride": false,
   "needsHumanJudgment": false,
   "humanJudgmentReason": ""${goalSchema}

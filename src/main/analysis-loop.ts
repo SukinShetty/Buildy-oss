@@ -32,13 +32,17 @@ import { checkPromptQuality } from './ai/prompt-quality-check'
 import { verifyPromptOutcome } from './ai/verifier-check'
 import {
   recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes,
+  replacePendingOutcome,
 } from './verifier'
 import type { PromptOutcome } from './verifier'
+import { evaluateSendEligibility, sanitizePromptForSend } from './prompt-sender-core'
+import { executeSend, isSendInFlight, isWatchedWindowPresent } from './prompt-sender'
+import { sendGuidanceSendState } from './guidance-window'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
 import { isStaleSession } from './capture-guard'
 import { debugLog, debugError } from './debug-log'
-import type { VerificationVerdict } from '../renderer/src/types'
+import type { VerificationVerdict, SendEligibility, SendPromptResult } from '../renderer/src/types'
 
 // Recently-spoken completion subjects + next-steps, for semantic (near-duplicate)
 // dedup within a 3-minute window. Cleared on each fresh watch session.
@@ -99,6 +103,14 @@ let getGoalFn: (() => Promise<Goal | null>) | null = null
 // they compose instead of clobbering each other's fields.
 let displayAnalysis: AnalysisResult | null = null
 let displaySession = 0
+
+// Identity of the displayed prompt (send-to-terminal). A fresh id is assigned
+// whenever nextPrompt is set or patched; a send request must present the id of
+// the CURRENTLY displayed prompt or it is rejected as stale.
+let promptIdCounter = 0
+function nextPromptId(): string {
+  return `prompt:${currentSession}:${++promptIdCounter}`
+}
 
 const LOOP_INTERVAL_MS = 10_000
 const NORMAL_COOLDOWN_MS = 15_000
@@ -191,6 +203,7 @@ export function stopAnalysisLoop(): void {
   getGoalFn = null
   session = null
   console.log('[AnalysisLoop] Stopped')
+  void pushSendEligibility()
 }
 
 export function pauseAnalysisLoop(): void { isPaused = true }
@@ -396,6 +409,7 @@ async function runOneAnalysisCycle(
       })
     }
     notifyCompanionState(companionWindow, 'idle')
+    void pushSendEligibility()
     return
   }
 
@@ -449,11 +463,13 @@ async function runOneAnalysisCycle(
 
   // Seed the per-cycle display analysis, then send it to the companion. Parallel
   // background passes patch THIS object and re-send (never clobber each other).
+  analysis.promptId = nextPromptId()
   displayAnalysis = analysis
   displaySession = mySession
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, analysis)
   }
+  void pushSendEligibility()
 
   // Verifier (Block 4): if a prompt was suggested on a PREVIOUS cycle, check
   // whether it worked — using THIS analysis as evidence. Capture the pending
@@ -712,9 +728,109 @@ function patchDisplayAndResend(
   if (isStaleSession(mySession, currentSession)) return
   if (displaySession !== mySession || !displayAnalysis) return
   displayAnalysis = { ...displayAnalysis, ...patch }
+  // A patched nextPrompt (grader-improved or verifier corrective) is a NEW
+  // displayed prompt — give it a fresh id so send requests for the old one are
+  // rejected as stale, and so the new one is itself sendable.
+  if ('nextPrompt' in patch) {
+    displayAnalysis.promptId = nextPromptId()
+  }
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)
   }
+  void pushSendEligibility()
+}
+
+// ─── Send-to-terminal (approve-and-send) ─────────────────────────────────────
+
+/**
+ * Compute whether "Send to Claude Code" is allowed RIGHT NOW. Main is the sole
+ * decision-maker; the renderer only renders the result.
+ */
+async function computeSendEligibility(): Promise<SendEligibility> {
+  const watchActive = isRunning && !isPaused && watchedSourceId !== null
+  // Only pay for the live window-list lookup when everything cheaper holds.
+  const windowFound = watchActive
+    ? await isWatchedWindowPresent(watchedSourceId, watchedWindowName)
+    : false
+  return evaluateSendEligibility({
+    platform: process.platform,
+    watchActive,
+    windowFound,
+    terminalState: displayAnalysis?.terminalState,
+    hasDisplayedPrompt: !!displayAnalysis?.nextPrompt?.trim(),
+    sendInFlight: isSendInFlight(),
+  })
+}
+
+/** Push the current send eligibility to the guidance window (fire-and-forget). */
+async function pushSendEligibility(): Promise<void> {
+  try {
+    sendGuidanceSendState(await computeSendEligibility())
+  } catch (error) {
+    console.warn('[Send] eligibility push failed:', error)
+  }
+}
+
+/**
+ * Handle a send request from the guidance window. The renderer supplies ONLY a
+ * prompt id — the prompt text is resolved here from the currently displayed
+ * analysis (main is the source of truth). Serialized: a second send while one
+ * is in flight is rejected, not queued.
+ */
+export async function handleSendPromptRequest(promptId: string): Promise<SendPromptResult> {
+  console.log('[Send] request received')
+
+  const current = displayAnalysis
+  if (!current?.promptId || current.promptId !== promptId) {
+    console.log('[Send] rejected: id does not match the currently displayed prompt (stale)')
+    return { sent: false, reason: 'stale' }
+  }
+
+  const eligibility = await computeSendEligibility()
+  if (!eligibility.canSend) {
+    console.log(`[Send] rejected: not eligible (${eligibility.sendBlockedReason})`)
+    return { sent: false, reason: 'not_eligible' }
+  }
+
+  const mySession = currentSession
+  const promptText = current.nextPrompt
+  const expectedOutcome = current.expectedOutcome || ''
+
+  const sendPromise = executeSend(promptText, watchedWindowName || '')
+  void pushSendEligibility() // in-flight now → button disables while sending
+  const result = await sendPromise
+
+  if (result.sent && !isStaleSession(mySession, currentSession)) {
+    // The SENT prompt becomes the single pending outcome (replacing any
+    // stacked suggestions) so the verifier judges what actually ran.
+    const outcome = replacePendingOutcome(sanitizePromptForSend(promptText), expectedOutcome)
+    console.log(`[Send] ${outcome ? 'registered sent prompt as the pending outcome' : 'no expected outcome — nothing registered for verification'}`)
+
+    if (companionRef && !companionRef.isDestroyed()) {
+      companionRef.webContents.send(IPC.SEND_STATUS, 'sent')
+    }
+    triggerImmediateAnalysis(mySession)
+  }
+
+  void pushSendEligibility()
+  return result
+}
+
+/**
+ * Run one analysis cycle now (so the next reading confirms the sent prompt
+ * landed), respecting the existing in-flight guard: if a cycle is already
+ * running it will pick up the change itself, so we do nothing.
+ */
+function triggerImmediateAnalysis(mySession: number): void {
+  if (isStaleSession(mySession, currentSession)) return
+  if (inFlight) {
+    console.log('[Send] analysis already in flight — skipping immediate trigger')
+    return
+  }
+  if (!companionRef || companionRef.isDestroyed() || !watchedSourceId) return
+  if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
+  console.log('[Send] triggering immediate post-send analysis')
+  void runCycleAndReschedule(companionRef, mySession)
 }
 
 /**

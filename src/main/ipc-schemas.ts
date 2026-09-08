@@ -31,6 +31,18 @@ export function assertFromMainWindow(
   }
 }
 
+/** Sender check: only the guidance window (Send button host) may request a send. */
+export function assertFromGuidanceWindow(
+  event: IpcMainInvokeEvent | IpcMainEvent,
+  guidanceWebContentsId: number | null,
+  channel: string
+): void {
+  if (guidanceWebContentsId === null || event.sender.id !== guidanceWebContentsId) {
+    console.warn(`[IPC] rejected ${channel}: sender is not the guidance window`)
+    throw new Error(`Unauthorized sender on ${channel}`)
+  }
+}
+
 // ─── Provider URL allowlist ───────────────────────────────────────────────────────
 
 const ALLOWED_CLOUD_HOSTS = new Set([
@@ -124,6 +136,8 @@ export const goalPartialSchema = z.object({
 }).passthrough()
 
 export const shortText = z.string().max(10_000)
+// Displayed-prompt identity for send-to-terminal (main-generated, opaque).
+export const promptIdSchema = z.string().min(1).max(200)
 export const sourceId = z.string().max(2000)
 export const windowName = z.string().max(2000)
 export const confidenceEnum = z.enum(['low', 'medium', 'high'])
