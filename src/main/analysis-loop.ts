@@ -751,8 +751,10 @@ async function runOneAnalysisCycle(
   analysis.promptId = nextPromptId()
   // Destructive-prompt guard (speed bump, not a sandbox): computed here so the
   // renderer only renders the verdict; it drives the two-click "Review first"
-  // flow on the send button.
-  analysis.sendGuard = detectDestructivePrompt(analysis.nextPrompt || '')
+  // flow on the send button. Scan the SANITIZED text — the exact bytes a send
+  // would deliver — so a newline can't split a hazard across the guard's
+  // single-line patterns (e.g. "git push\n--force").
+  analysis.sendGuard = detectDestructivePrompt(sanitizePromptForSend(analysis.nextPrompt || ''))
   analysis.callsThisHour = getCallsThisHour() // guidance panel footer
   displayAnalysis = analysis
   displaySession = mySession
@@ -1065,7 +1067,9 @@ function patchDisplayAndResend(
   // destructive-prompt guard for the same reason (new text, new verdict).
   if ('nextPrompt' in patch) {
     displayAnalysis.promptId = nextPromptId()
-    displayAnalysis.sendGuard = detectDestructivePrompt(displayAnalysis.nextPrompt || '')
+    displayAnalysis.sendGuard = detectDestructivePrompt(
+      sanitizePromptForSend(displayAnalysis.nextPrompt || '')
+    )
   }
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)

@@ -153,6 +153,13 @@ describe('detectDestructivePrompt — normal build prompts pass', () => {
     expect(detectDestructivePrompt('')).toBeNull()
     expect(detectDestructivePrompt('   \n  ')).toBeNull()
   })
+
+  it('catches a hazard split across lines when scanning the sanitized (sent) text', () => {
+    // The guard's patterns are single-line ([^\n] spans); the caller must scan
+    // the same bytes a send would deliver — sanitize collapses the newline.
+    const raw = 'git push\n--force origin main'
+    expect(detectDestructivePrompt(sanitizePromptForSend(raw))).not.toBeNull()
+  })
 })
 
 describe('buildSendCommand — no user content in the command string', () => {
