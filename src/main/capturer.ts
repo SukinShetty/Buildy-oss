@@ -19,6 +19,11 @@ const THUMB_QUALITY = 40
 // Full-res capture of the SELECTED window only.
 const CAPTURE_SIZE = { width: 1280, height: 800 }
 const CAPTURE_QUALITY = 88
+// Turn-end poll: LOW-RESOLUTION thumbnail of the watched window only, consumed
+// locally by computeImageChangeFraction and discarded. NEVER sent to any
+// provider — it exists so mid-turn polling costs no AI calls (turn-detector.ts).
+const POLL_SIZE = { width: 480, height: 300 }
+const POLL_QUALITY = 50
 
 // ─── Continuity poll (cheap id/title list, no thumbnails) ────────────────────
 
@@ -88,6 +93,23 @@ export async function captureWatchedWindow(
     sourceId: target.id,
     capturedAt: new Date().toISOString(),
   }
+}
+
+/**
+ * Low-res LOCAL poll capture of the watched window for turn-end detection.
+ * Returns the JPEG base64 or null if the window is not in the live list (the
+ * continuity poll owns the missing/lost decision). Same no-fallback rule as
+ * captureWatchedWindow: never another window, never the full screen.
+ */
+export async function capturePollThumbnail(sourceId: string): Promise<string | null> {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: POLL_SIZE,
+    fetchWindowIcons: false,
+  })
+  const target = findWatchedSource(sources, sourceId)
+  if (!target) return null
+  return target.thumbnail.toJPEG(POLL_QUALITY).toString('base64')
 }
 
 /**

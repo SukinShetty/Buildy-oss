@@ -5,6 +5,9 @@
 //   1. User picks a window → startWatching()
 //   2. IMMEDIATE first analysis (no delay, no gates) → always speaks
 //   3. 10s interval: capture → image gate → AI → change gate → speak if meaningful
+//      — EXCEPT while the agent is mid-turn ("working" or just after a Send):
+//        then NO AI calls; a 5s LOCAL low-res poll + turn-detector.ts decide
+//        when the turn ended and fire one analysis.
 //   4. User asks question → fresh capture + session context → conversational answer
 //   5. User picks different window → clear session → restart
 //
@@ -16,7 +19,7 @@ import type { BrowserWindow } from 'electron'
 import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
 import { emptyProjectMemory, CHOOSE_MODEL_MESSAGE } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
-import { captureWatchedWindow, listLiveWindowSources } from './capturer'
+import { captureWatchedWindow, listLiveWindowSources, capturePollThumbnail } from './capturer'
 import { getProvider } from './ai/provider-registry'
 import {
   computeImageChangeFraction,
@@ -44,6 +47,10 @@ import { hasVisionPass } from './vision-approvals'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
 import { isStaleSession, startContinuity, pollContinuity } from './capture-guard'
+import {
+  TurnDetector, TURN_POLL_INTERVAL_MS,
+  shouldAnnouncePermission, permissionAlertLine,
+} from './turn-detector'
 import type { WatchContinuity } from './capture-guard'
 import { debugLog, debugError } from './debug-log'
 import type { VerificationVerdict, SendEligibility, SendPromptResult } from '../renderer/src/types'
@@ -110,6 +117,16 @@ let continuity: WatchContinuity | null = null
 let continuityTimer: ReturnType<typeof setInterval> | null = null
 let continuityPollBusy = false
 const CONTINUITY_POLL_MS = 2_000
+
+// Turn-end detection (Phase 5 Task A): while the agent is mid-turn — last
+// analysis said "working", or within 3 min of a Send — the 10s timer makes NO
+// AI calls. A 5s LOCAL low-res poll feeds the pure TurnDetector state machine,
+// which fires exactly one analysis when the turn likely ended (changed →
+// stable → stable) or as a 3-minute progress checkpoint. See turn-detector.ts.
+const turnDetector = new TurnDetector()
+let turnPollTimer: ReturnType<typeof setInterval> | null = null
+let turnPollBusy = false
+let lastPollThumbnail: string | null = null
 
 // The analysis currently shown in the guidance panel for THIS cycle. Parallel
 // background passes (prompt-quality grader, verifier) patch it and re-send so
@@ -244,18 +261,26 @@ export function startWatching(
   void runCycleAndReschedule(companionWindow, mySession)
 }
 
-/** Run one cycle (guarded) then schedule the next, unless the session changed. */
-async function runCycleAndReschedule(companionWindow: BrowserWindow, mySession: number): Promise<void> {
+/** Run one cycle (guarded) then schedule the next, unless the session changed.
+ *  `force` bypasses the working-mode skip: used by the turn detector's own
+ *  analyze-now trigger and the immediate post-send analysis. */
+async function runCycleAndReschedule(companionWindow: BrowserWindow, mySession: number, force = false): Promise<void> {
   if (mySession !== currentSession) return // a newer session superseded this chain
   if (!isPaused && !inFlight && watchedSourceId) {
-    inFlight = true
-    try {
-      await runOneAnalysisCycle(companionWindow, mySession)
-    } catch (error) {
-      debugError('[AnalysisLoop] Cycle error:', error)
-      notifyCompanionState(companionWindow, 'idle')
-    } finally {
-      inFlight = false
+    if (!force && turnDetector.isWorking(Date.now())) {
+      // Agent mid-turn: spend nothing. The 5s local poll (below) decides when
+      // the turn ended and triggers ONE analysis via runCycleAndReschedule(force).
+      ensureTurnPoll(companionWindow, mySession)
+    } else {
+      inFlight = true
+      try {
+        await runOneAnalysisCycle(companionWindow, mySession)
+      } catch (error) {
+        debugError('[AnalysisLoop] Cycle error:', error)
+        notifyCompanionState(companionWindow, 'idle')
+      } finally {
+        inFlight = false
+      }
     }
   }
   scheduleNextCycle(companionWindow, mySession)
@@ -378,6 +403,7 @@ async function pollWatchContinuity(companionWindow: BrowserWindow, mySession: nu
 function haltWatchAsLost(companionWindow: BrowserWindow): void {
   isPaused = true
   if (continuityTimer) { clearInterval(continuityTimer); continuityTimer = null }
+  stopTurnPoll()
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
       windowName: null,
@@ -386,6 +412,62 @@ function haltWatchAsLost(companionWindow: BrowserWindow): void {
   }
   notifyCompanionState(companionWindow, 'idle')
   void pushSendEligibility()
+}
+
+// ─── Turn-end poll (every 5s, LOCAL only, while the agent is working) ────────
+
+/** Start the 5s low-res poll if it isn't already running. */
+function ensureTurnPoll(companionWindow: BrowserWindow, mySession: number): void {
+  if (turnPollTimer) return
+  console.log('[TurnDetector] agent mid-turn — AI calls paused, 5s local poll started')
+  turnPollTimer = setInterval(() => {
+    void runTurnPollTick(companionWindow, mySession)
+  }, TURN_POLL_INTERVAL_MS)
+}
+
+function stopTurnPoll(): void {
+  if (turnPollTimer) { clearInterval(turnPollTimer); turnPollTimer = null }
+  turnPollBusy = false
+  lastPollThumbnail = null
+}
+
+/**
+ * One poll tick: cheap low-res LOCAL capture of the watched window (never sent
+ * anywhere), change fraction vs the previous tick, fed into the pure
+ * TurnDetector. Fires at most one forced analysis (in-flight guard + session
+ * token respected). Self-stops when working mode ends, the watch pauses, or
+ * the session changes — the normal 10s cycle then resumes untouched.
+ */
+async function runTurnPollTick(companionWindow: BrowserWindow, mySession: number): Promise<void> {
+  if (isStaleSession(mySession, currentSession) || isPaused || !watchedSourceId) {
+    stopTurnPoll()
+    return
+  }
+  if (!turnDetector.isWorking(Date.now())) {
+    console.log('[TurnDetector] working mode ended — local poll stopped, normal cycle resumes')
+    stopTurnPoll()
+    return
+  }
+  if (turnPollBusy || inFlight) return
+  turnPollBusy = true
+  try {
+    const thumbnail = await capturePollThumbnail(watchedSourceId)
+    if (isStaleSession(mySession, currentSession)) return
+    if (!thumbnail) return // window missing this tick — the continuity poll decides
+    const changeFraction = lastPollThumbnail
+      ? computeImageChangeFraction(lastPollThumbnail, thumbnail)
+      : 0
+    lastPollThumbnail = thumbnail
+    const action = turnDetector.onPoll({ timestamp: Date.now(), changeFraction })
+    if (action === 'analyze-now') {
+      console.log('[TurnDetector] turn likely ended (or 3-min checkpoint) — running one analysis')
+      triggerImmediateAnalysis(mySession)
+    }
+  } catch (error) {
+    console.warn('[TurnDetector] poll tick failed:', error)
+  } finally {
+    turnPollBusy = false
+  }
 }
 
 // ─── Question handling ──────────────────────────────────────────────────────
@@ -654,6 +736,12 @@ async function runOneAnalysisCycle(
   // Update session context
   updateSession(analysis)
 
+  // Turn-end detection: record this reading's terminalState. If it says
+  // "working" (or we're within 3 min of a send), the next scheduled cycles
+  // skip the AI and the 5s local poll takes over (see runCycleAndReschedule).
+  const prevTerminalState = previousAnalysis?.terminalState
+  turnDetector.noteAnalysis(Date.now(), analysis.terminalState)
+
   // Step 4: Analysis-level gate
   const change = detectAnalysisChange(previousAnalysis, analysis)
   previousAnalysis = analysis
@@ -690,9 +778,34 @@ async function runOneAnalysisCycle(
   // updates in place (unless the watch session has since changed).
   gradePromptQuality(companionWindow, analysis, memoryContext, settings, mySession, recordedOutcome?.id ?? null)
 
+  // Permission alert (spec item 2): the agent is asking for approval — ONE
+  // short spoken line + the mascot label. Spoken only on the TRANSITION into
+  // permission_prompt (never re-spoken while the same prompt stays on screen),
+  // and Buildy NEVER answers the permission prompt itself.
+  let spokePermissionAlert = false
+  if (analysis.terminalState === 'permission_prompt') {
+    const alertLine = permissionAlertLine(watchedWindowName)
+    if (!companionWindow.isDestroyed()) {
+      companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+        windowName: watchedWindowName, message: alertLine,
+      })
+    }
+    // Reuse the error-label restore path: the next non-permission successful
+    // cycle puts the plain watched-window name back on the mascot.
+    errorLabelShown = true
+    if (shouldAnnouncePermission(prevTerminalState, analysis.terminalState)) {
+      spokePermissionAlert = true
+      lastSpokeAt = Date.now()
+      // Critical: the user is being waited on — jump the voice queue.
+      await speakText(companionWindow, alertLine, settings, 'permission', true)
+    }
+  }
+
   // Step 5: Speak
-  // First cycle: ALWAYS speak, no cooldown/quiet/overlap checks
-  if (thisIsFirstCycle) {
+  // Permission alert already said the one thing that matters this cycle.
+  if (spokePermissionAlert) {
+    debugLog('[AnalysisLoop] permission alert spoken — skipping regular guidance speech this cycle')
+  } else if (thisIsFirstCycle) {
     debugLog(`[AnalysisLoop] ★ INITIAL analysis — happening: "${analysis.whatIsHappening?.slice(0, 60)}"`)
     debugLog(`[AnalysisLoop] ★ INITIAL analysis — nextMove: "${analysis.bestNextMove?.slice(0, 60)}"`)
     lastSpokeAt = Date.now()
@@ -770,6 +883,8 @@ function clearStaleState(): void {
   if (continuityTimer) { clearInterval(continuityTimer); continuityTimer = null }
   continuity = null
   continuityPollBusy = false
+  stopTurnPoll()
+  turnDetector.reset()
   previousScreenshot = null
   previousAnalysis = null
   lastSpokeAt = 0
@@ -1021,6 +1136,10 @@ export async function handleSendPromptRequest(promptId: string): Promise<SendPro
     if (companionRef && !companionRef.isDestroyed()) {
       companionRef.webContents.send(IPC.SEND_STATUS, 'sent')
     }
+    // The agent is presumably chewing on the sent prompt: the next 3 minutes
+    // count as working mode (no timer AI calls; the 5s local poll takes over
+    // after the immediate confirmation analysis below).
+    turnDetector.noteSend(Date.now())
     triggerImmediateAnalysis(mySession)
   }
 
@@ -1029,9 +1148,10 @@ export async function handleSendPromptRequest(promptId: string): Promise<SendPro
 }
 
 /**
- * Run one analysis cycle now (so the next reading confirms the sent prompt
- * landed), respecting the existing in-flight guard: if a cycle is already
- * running it will pick up the change itself, so we do nothing.
+ * Run one analysis cycle now — after a send (so the next reading confirms the
+ * sent prompt landed) or when the turn detector fires — respecting the
+ * existing in-flight guard: if a cycle is already running it will pick up the
+ * change itself, so we do nothing.
  */
 function triggerImmediateAnalysis(mySession: number): void {
   if (isStaleSession(mySession, currentSession)) return
@@ -1041,8 +1161,10 @@ function triggerImmediateAnalysis(mySession: number): void {
   }
   if (!companionRef || companionRef.isDestroyed() || !watchedSourceId) return
   if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
-  console.log('[Send] triggering immediate post-send analysis')
-  void runCycleAndReschedule(companionRef, mySession)
+  console.log('[Send] triggering immediate analysis')
+  // force=true: this deliberate one-off must run even in working mode (the
+  // 3-min post-send window / a "working" reading would otherwise skip it).
+  void runCycleAndReschedule(companionRef, mySession, true)
 }
 
 /**
