@@ -2,10 +2,12 @@
 // Root component. Routes to either the main settings/workspace panel or the
 // floating companion, depending on the ?companion=true query parameter.
 //
-// The panel is a multi-screen workspace (NavBar + screens). On first launch it
-// opens the Goal screen so the user states their purpose before anything else.
+// The panel is a multi-screen workspace (NavBar + screens). An unconfigured
+// install (no provider key / no model) lands on Settings first; otherwise the
+// first launch opens the Goal screen so the user states their purpose.
 
 import React, { useEffect, useState } from 'react'
+import { isModelConfigured } from './types'
 import { useAppStore } from './store/useAppStore'
 import { NavBar } from './components/NavBar'
 import { GoalScreen } from './screens/GoalScreen'
@@ -79,6 +81,14 @@ function MainPanel(): React.ReactElement {
         setSettingsAreLoaded(true)
         setProject(savedProject)
         setProjectIsLoaded(true)
+
+        // Unconfigured install (no provider key or no model chosen) → open the
+        // Settings screen so setup comes first. Same isModelConfigured check
+        // main/index.ts uses to auto-show this window on first launch.
+        if (!isModelConfigured(savedSettings)) {
+          setCurrentScreen('settings')
+          return
+        }
 
         // First launch (goal never set or skipped) → show the Goal screen first.
         if (!savedProject.goalPromptSeen && !savedProject.goal) {

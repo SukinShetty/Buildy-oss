@@ -180,6 +180,8 @@ export function registerIpcHandlers(
   })
 
   // ─── Vision-gate status (has this provider+model passed the check?) ──────────
+  // Read-only boolean — no sender check, matching the other read channels
+  // (LOAD_SETTINGS, GOAL_GET, MEMORY_GET). Mutations stay main-window-only.
 
   ipcMain.handle(IPC.VISION_STATUS, async (_event, raw: unknown) => {
     try {
