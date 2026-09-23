@@ -134,7 +134,11 @@ export function migratePlaintextSecrets(settingsFilePath: string): void {
     return // no settings file yet — nothing to migrate
   }
 
-  const map = load()
+  // Copy before mutating (same invariant as setSecret): if persist() refuses
+  // (no OS encryption), the shared cache must not hold keys that were never
+  // written to disk — hasSecret/getAllRedacted would lie for the session and
+  // the "stored" key would vanish on restart.
+  const map = { ...load() }
   let migrated = 0
 
   // Legacy settings used a single `apiKey` for the active provider.

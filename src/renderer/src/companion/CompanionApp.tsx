@@ -133,6 +133,10 @@ export function CompanionApp(): React.ReactElement {
   async function openPicker(): Promise<void> {
     const s = await window.buildy.loadSettings()
     setHasElevenKey(!!s.hasElevenLabsKey)
+    // Refresh the disclosure flag from the FRESH settings too: the state
+    // starts true (fail-open), so a failed mount-time load must not let a
+    // pick silently skip the one-time privacy notice.
+    setCaptureNoticeAccepted(s.captureNoticeAccepted)
     if (!isModelConfigured(s)) { setNeedsSetup(true); return }
     setNeedsSetup(false)
     const wins = await window.buildy.listWindows()

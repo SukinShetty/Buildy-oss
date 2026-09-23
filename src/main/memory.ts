@@ -202,13 +202,23 @@ export async function deleteAllBuildyData(): Promise<void> {
     'vision-approvals.json', // vision-check passes (keyed to key fingerprints)
     'buildy-memory',         // every project's memory + Nemp stores (recursive)
   ]
+  const failed: string[] = []
   for (const name of targets) {
     const target = join(userDataDirectory, name)
     try {
-      await fs.rm(target, { recursive: true, force: true })
+      // maxRetries: Windows can transiently lock files (AV scans, open handles).
+      await fs.rm(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
     } catch (error) {
       console.warn(`[DataWipe] could not delete ${name}:`, error)
+      failed.push(name)
     }
+  }
+  if (failed.length > 0) {
+    // Rethrow so the caller does NOT relaunch as "fresh" after a partial wipe —
+    // the Settings UI surfaces this instead of pretending everything is gone.
+    throw new Error(
+      `Could not delete: ${failed.join(', ')}. Close other programs using these files and try again.`
+    )
   }
   console.log('[DataWipe] Buildy data deleted (keys, settings, all project memory)')
 }

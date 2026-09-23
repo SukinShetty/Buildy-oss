@@ -53,15 +53,15 @@ export interface KeyInput {
 }
 
 /**
- * Reload/devtools shortcuts blocked in PACKAGED builds: Ctrl+R, F5 and
- * Ctrl+Shift+I (plus their macOS Cmd equivalents).
+ * Reload/devtools shortcuts blocked in PACKAGED builds: Ctrl+R, F5, F12 and
+ * Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (plus macOS Cmd equivalents).
  */
 export function isBlockedDevShortcut(input: KeyInput): boolean {
   if (input.type !== 'keyDown') return false
   const key = input.key.toLowerCase()
   const ctrlOrCmd = input.control || input.meta
-  if (key === 'f5') return true
+  if (key === 'f5' || key === 'f12') return true
   if (ctrlOrCmd && key === 'r') return true
-  if (ctrlOrCmd && input.shift && key === 'i') return true
+  if (ctrlOrCmd && input.shift && (key === 'i' || key === 'j' || key === 'c')) return true
   return false
 }

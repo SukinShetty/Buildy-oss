@@ -77,15 +77,24 @@ describe('isBlockedDevShortcut', () => {
     expect(isBlockedDevShortcut(key('I', { control: true, shift: true }))).toBe(true)
   })
 
+  it('blocks the other devtools routes: F12, Ctrl+Shift+J, Ctrl+Shift+C', () => {
+    expect(isBlockedDevShortcut(key('F12'))).toBe(true)
+    expect(isBlockedDevShortcut(key('j', { control: true, shift: true }))).toBe(true)
+    expect(isBlockedDevShortcut(key('J', { control: true, shift: true }))).toBe(true)
+    expect(isBlockedDevShortcut(key('c', { control: true, shift: true }))).toBe(true)
+  })
+
   it('blocks the macOS Cmd equivalents', () => {
     expect(isBlockedDevShortcut(key('r', { meta: true }))).toBe(true)
     expect(isBlockedDevShortcut(key('i', { meta: true, shift: true }))).toBe(true)
+    expect(isBlockedDevShortcut(key('j', { meta: true, shift: true }))).toBe(true)
   })
 
   it('does not block plain typing or other shortcuts', () => {
     expect(isBlockedDevShortcut(key('r'))).toBe(false)
     expect(isBlockedDevShortcut(key('i', { shift: true }))).toBe(false)
-    expect(isBlockedDevShortcut(key('c', { control: true }))).toBe(false)
+    expect(isBlockedDevShortcut(key('c', { control: true }))).toBe(false) // plain Ctrl+C copy stays
+    expect(isBlockedDevShortcut(key('j', { control: true }))).toBe(false)
     expect(isBlockedDevShortcut(key('F4'))).toBe(false)
   })
 
