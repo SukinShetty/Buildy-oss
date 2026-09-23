@@ -16,6 +16,7 @@ import { app, safeStorage } from 'electron'
 import * as fs from 'fs'
 import { join } from 'path'
 import type { ProviderType, SecretName } from '../renderer/src/types'
+import { NO_SECURE_STORAGE_MESSAGE } from '../renderer/src/types'
 
 export type { SecretName }
 
@@ -64,7 +65,9 @@ function load(): SecretMap {
     if (encryptionAvailable()) {
       json = safeStorage.decryptString(raw)
     } else {
-      // Fallback path (rare): the file was written unencrypted.
+      // READ-ONLY legacy fallback: an old Buildy version may have written this
+      // file unencrypted when safeStorage was unavailable. Existing data keeps
+      // loading — but persist() below never writes plaintext again.
       json = raw.toString('utf8')
     }
     cache = JSON.parse(json) as SecretMap
@@ -75,17 +78,14 @@ function load(): SecretMap {
 }
 
 function persist(map: SecretMap): void {
-  cache = map
-  const json = JSON.stringify(map)
-  if (encryptionAvailable()) {
-    fs.writeFileSync(filePath(), safeStorage.encryptString(json))
-  } else {
-    console.warn(
-      '[SecureStore] OS encryption is unavailable — storing secrets WITHOUT encryption (fallback). ' +
-      'On Linux, install a keyring (e.g. gnome-keyring) for encrypted storage.'
-    )
-    fs.writeFileSync(filePath(), Buffer.from(json, 'utf8'))
+  // NEVER write secrets in plain text. If the OS offers no encryption
+  // (e.g. Linux without a keyring), refuse to save instead of falling back.
+  if (!encryptionAvailable()) {
+    console.warn('[SecureStore] OS encryption unavailable — refusing to save keys in plain text')
+    throw new Error(NO_SECURE_STORAGE_MESSAGE)
   }
+  fs.writeFileSync(filePath(), safeStorage.encryptString(JSON.stringify(map)))
+  cache = map // only cache what actually persisted
 }
 
 // ─── Public API ────────────────────────────────────────────────────────────────
@@ -95,7 +95,9 @@ export function getSecret(key: SecretName): string {
 }
 
 export function setSecret(key: SecretName, value: string): void {
-  const map = load()
+  // Copy before mutating: if persist() refuses (no OS encryption), the cached
+  // map must NOT already contain the new value (hasSecret would lie to the UI).
+  const map = { ...load() }
   if (value && value.trim()) {
     map[key] = value.trim()
   } else {

@@ -13,7 +13,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import type { ProviderType, NonSecretSettings, SecretName, ModelChoice } from '../types'
-import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX } from '../types'
+import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX, NO_SECURE_STORAGE_MESSAGE } from '../types'
+
+// IPC errors arrive wrapped ("Error invoking remote method ...: Error: <msg>").
+// Show the clean, user-facing message when we recognise it.
+function friendlySaveError(error: unknown): string {
+  const text = String(error)
+  if (text.includes(NO_SECURE_STORAGE_MESSAGE)) return NO_SECURE_STORAGE_MESSAGE
+  return text
+}
 
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
 
@@ -120,6 +128,7 @@ export function SettingsScreen(): React.ReactElement {
   const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState(settings.elevenLabsVoiceId ?? DEFAULT_VOICE_ID)
   const [hourlyCallCap, setHourlyCallCap] = useState(settings.hourlyCallCap)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(isLocalProvider(settings.provider))
   const [models, setModels] = useState<ModelChoice[]>([])
   const [modelsLoading, setModelsLoading] = useState(false)
@@ -221,7 +230,12 @@ export function SettingsScreen(): React.ReactElement {
   }
 
   async function handleSave(): Promise<void> {
-    await persistAll()
+    setSaveError(null)
+    try {
+      await persistAll()
+    } catch (error) {
+      setSaveError(friendlySaveError(error))
+    }
   }
 
   async function removeStoredKey(name: SecretName): Promise<void> {
@@ -235,13 +249,14 @@ export function SettingsScreen(): React.ReactElement {
   async function runVisionCheck(overrides?: Partial<NonSecretSettings>): Promise<void> {
     setIsTesting(true)
     setTestResult(null)
+    setSaveError(null)
     try {
       await persistAll(overrides) // the check runs in main with the STORED key
       const result = await window.buildy.testConnection(buildNonSecret(overrides))
       setTestResult({ success: result.success, message: result.message })
       setVisionPassed(result.visionPassed)
     } catch (error) {
-      setTestResult({ success: false, message: String(error) })
+      setTestResult({ success: false, message: friendlySaveError(error) })
     } finally {
       setIsTesting(false)
     }
@@ -543,7 +558,8 @@ export function SettingsScreen(): React.ReactElement {
             {isTesting ? 'Checking vision…' : 'Test Connection'}
           </button>
         </div>
-        {savedAt && <span style={styles.savedAt}>Saved at {savedAt}</span>}
+        {savedAt && !saveError && <span style={styles.savedAt}>Saved at {savedAt}</span>}
+        {saveError && <div style={styles.modelsError}>{saveError}</div>}
         {testResult && (
           <div style={{
             ...styles.statusRow,

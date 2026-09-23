@@ -3,10 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Prevent Electron from loading remote content via CSP -->
+    <!-- Strict CSP: the renderer makes NO network requests — every provider and
+         ElevenLabs call happens in the main process. connect-src 'self' only.
+         In dev, electron.vite.config.ts appends the ws/http entries Vite HMR
+         needs (serve mode only — packaged builds ship exactly this policy). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: data:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.elevenlabs.io https://generativelanguage.googleapis.com https://openrouter.ai https://*.workers.dev http://localhost:* http://127.0.0.1:*"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
     />
     <title>Buildy</title>
   </head>

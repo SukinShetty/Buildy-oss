@@ -191,7 +191,8 @@ export function CompanionApp(): React.ReactElement {
             return
           }
 
-          console.log(`[Mic] Transcribed: "${result.text}"`)
+          // NOTE: never log the transcribed text itself (user speech content).
+          console.log(`[Mic] Transcription received (${result.text.length} chars)`)
           setMicState('answering')
           setMicError(null)
           await window.buildy.askQuestion(result.text)

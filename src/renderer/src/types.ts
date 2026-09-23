@@ -205,6 +205,11 @@ export function isModelConfigured(
 
 export const CHOOSE_MODEL_MESSAGE = 'Choose a model in Settings'
 
+// Shown when the OS offers no encrypted key storage (safeStorage unavailable).
+// Buildy REFUSES to write keys in plain text — saving fails with this message.
+export const NO_SECURE_STORAGE_MESSAGE =
+  "This computer has no secure key storage, so Buildy won't save keys in plain text."
+
 // ─── Live model lists (fetched in MAIN with the stored key) ──────────────────
 
 export interface ModelChoice {

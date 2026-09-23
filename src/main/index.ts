@@ -21,14 +21,58 @@ import { migratePlaintextSecrets } from './secure-store'
 import { settingsFilePath, loadRedactedSettings } from './memory'
 import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
+import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
 
-// openExternal allowlist: only open safe protocols in the user's browser.
-function isSafeExternalUrl(url: string): boolean {
-  try {
-    const p = new URL(url).protocol
-    return p === 'https:' || p === 'mailto:'
-  } catch {
-    return false
+// ─── Global web-contents security guard ──────────────────────────────────────
+// Applies to EVERY renderer (main, companion, guidance, voice — and anything
+// else that might ever be created), not just windows that remembered to set
+// their own handlers:
+//   - window.open is always denied; https/mailto are forwarded to the OS
+//     browser via shell.openExternal, everything else is dropped.
+//   - will-navigate / will-redirect may only target the app's own renderer
+//     (the packaged file:// bundle, or the dev server during `npm run dev`).
+//   - In packaged builds, reload/devtools shortcuts (Ctrl+R, F5, Ctrl+Shift+I)
+//     are blocked at the input level.
+app.on('web-contents-created', (_event, contents) => {
+  contents.setWindowOpenHandler(({ url }) => {
+    // Only forward https: / mailto: to the OS browser. Deny file:, custom
+    // protocols, and malformed URLs (which could trigger unsafe handlers).
+    if (isSafeExternalUrl(url)) {
+      shell.openExternal(url)
+    } else {
+      debugLog('[Security] blocked openExternal for disallowed URL protocol')
+    }
+    return { action: 'deny' }
+  })
+
+  const guardNavigation = (event: Electron.Event, url: string): void => {
+    if (!isAllowedAppNavigation(url, process.env['ELECTRON_RENDERER_URL'])) {
+      event.preventDefault()
+      console.warn('[Security] blocked navigation to a non-app URL')
+    }
+  }
+  contents.on('will-navigate', guardNavigation)
+  contents.on('will-redirect', guardNavigation)
+
+  if (app.isPackaged) {
+    contents.on('before-input-event', (event, input) => {
+      if (isBlockedDevShortcut(input)) event.preventDefault()
+    })
+  }
+})
+
+// ─── Application menu ────────────────────────────────────────────────────────
+// The stock Electron menu exposes Reload and Toggle Developer Tools — remove it.
+// Windows/Linux: no menu at all. macOS: minimal app + Edit menu only (Edit keeps
+// the standard clipboard shortcuts working).
+function installAppMenu(): void {
+  if (process.platform === 'darwin') {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { role: 'appMenu' },
+      { role: 'editMenu' },
+    ]))
+  } else {
+    Menu.setApplicationMenu(null)
   }
 }
 
@@ -106,7 +150,7 @@ function createMainWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
     backgroundColor: '#1C1C1E',
     show: false,
@@ -114,7 +158,8 @@ function createMainWindow(): BrowserWindow {
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    if (process.env['BUILDY_DEBUG']) {
+    // DevTools ONLY in a debug dev run — never in packaged builds.
+    if (process.env['BUILDY_DEBUG'] && !app.isPackaged) {
       window.webContents.openDevTools({ mode: 'detach' })
     }
   } else {
@@ -123,17 +168,7 @@ function createMainWindow(): BrowserWindow {
 
   // Panel stays hidden on launch — companion is the primary UI.
   // User opens it from companion gear icon or system tray.
-
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    // Only forward https: / mailto: to the OS browser. Deny file:, custom
-    // protocols, and malformed URLs (which could trigger unsafe handlers).
-    if (isSafeExternalUrl(url)) {
-      shell.openExternal(url)
-    } else {
-      debugLog('[Security] blocked openExternal for disallowed URL protocol')
-    }
-    return { action: 'deny' }
-  })
+  // window.open / navigation are covered by the global web-contents guard above.
 
   // Closing the panel just hides it — companion keeps running.
   // Quitting the app is done via tray or closing the companion.
@@ -230,6 +265,9 @@ if (!gotInstanceLock) {
 
 app.whenReady().then(async () => {
   if (!gotInstanceLock) return  // second instance is quitting — don't create windows
+
+  // No stock menu (it exposes Reload / Toggle Developer Tools).
+  installAppMenu()
 
   // One-time: move any plaintext API keys out of settings.json into encrypted storage.
   try { migratePlaintextSecrets(settingsFilePath) } catch (e) { console.error('[SecureStore] migration failed:', e) }

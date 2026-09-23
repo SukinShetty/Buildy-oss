@@ -62,7 +62,7 @@ export function createVoicePlayerWindow(): BrowserWindow {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       // Never throttle this renderer when it's in the background…
       backgroundThrottling: false,
       // …and never let autoplay policy block audio (the window gets no user gesture).
