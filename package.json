@@ -13,8 +13,10 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "package": "npm run build && electron-builder",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p e2e/tsconfig.json",
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:packaged": "node scripts/e2e-packaged.mjs"
   },
   "dependencies": {
     "framer-motion": "^12.40.0",
@@ -23,12 +25,14 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^44.4.4",
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
+    "playwright": "^1.63.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.5.0",

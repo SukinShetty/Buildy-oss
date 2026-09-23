@@ -22,6 +22,7 @@ import { settingsFilePath, loadRedactedSettings } from './memory'
 import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
 import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
+import { registerE2eTestHooks } from './e2e-hooks'
 
 // ─── Global web-contents security guard ──────────────────────────────────────
 // Applies to EVERY renderer (main, companion, guidance, voice — and anything
@@ -287,6 +288,9 @@ app.whenReady().then(async () => {
   // Register IPC handlers ONCE, with getters so they always target the current
   // window even if a window is recreated (see app.on('activate')).
   registerIpcHandlers(() => mainWindow!, () => companionWindow)
+
+  // e2e-only fixture hooks (no-op unless BUILDY_E2E=1 and not packaged).
+  registerE2eTestHooks()
 
   // First launch (or unconfigured install): there is NO default model, so open
   // the Settings panel automatically. The mascot label says
