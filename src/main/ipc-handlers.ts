@@ -6,7 +6,7 @@ import { ipcMain, clipboard, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
-import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId } from './guidance-window'
+import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId, setGuidanceFocusable } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
@@ -392,6 +392,13 @@ export function registerIpcHandlers(
 
   ipcMain.on(IPC.GUIDANCE_RESIZE, (_event, height: number) => {
     resizeGuidanceWindow(height)
+  })
+
+  // Phase 3B: the hand-off answer box needs keyboard focus in the otherwise
+  // non-focusable guidance window. Only the guidance window may toggle this.
+  ipcMain.on(IPC.GUIDANCE_SET_FOCUSABLE, (event, focusable: unknown) => {
+    if (event.sender.id !== getGuidanceWebContentsId()) return
+    setGuidanceFocusable(focusable === true)
   })
 
   // Clipboard via main — reliable even from the non-focusable guidance window,

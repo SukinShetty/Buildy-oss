@@ -160,7 +160,27 @@ export function showLastGuidance(): void {
 
 export function hideGuidanceWindow(): void {
   if (!guidanceRef || guidanceRef.isDestroyed()) return
+  // Safety: never leave the window focusable across a hide (see setGuidanceFocusable).
+  guidanceRef.setFocusable(false)
   if (guidanceRef.isVisible()) guidanceRef.hide()
+}
+
+/**
+ * Temporarily let the guidance window take keyboard focus (Phase 3B: the
+ * hand-off answer box needs typing, but the window is otherwise non-focusable
+ * so it never steals focus from the user's work). The renderer MUST restore
+ * false when the answer flow ends; hiding the window also restores it.
+ */
+export function setGuidanceFocusable(focusable: boolean): void {
+  if (!guidanceRef || guidanceRef.isDestroyed()) return
+  guidanceRef.setFocusable(focusable)
+  if (focusable) {
+    guidanceRef.focus()
+  } else {
+    guidanceRef.blur()
+  }
+  // Re-assert stacking — toggling focusability can reset always-on-top on Windows.
+  guidanceRef.setAlwaysOnTop(true, 'screen-saver')
 }
 
 /**

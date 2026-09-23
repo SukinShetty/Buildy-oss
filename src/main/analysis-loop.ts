@@ -28,7 +28,7 @@ import { formatSpokenGuidance } from './ai/speech-formatter'
 import { buildQuestionSystemPrompt, buildQuestionUserPrompt } from './ai/prompt-builder'
 import { fetchWithTimeout } from './ai/fetch-with-timeout'
 import * as nemp from './nemp-bridge'
-import { checkPromptQuality } from './ai/prompt-quality-check'
+import { checkPromptQuality, buildQualityPatch } from './ai/prompt-quality-check'
 import { verifyPromptOutcome } from './ai/verifier-check'
 import {
   recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes,
@@ -803,19 +803,18 @@ function gradePromptQuality(
   void (async () => {
     try {
       const result = await checkPromptQuality(analysis, memoryContext, watchedGoal, settings)
-      if (result.valid) return
       // Don't re-send guidance for a window the user has since switched away from.
       if (isStaleSession(mySession, currentSession)) return
 
-      const patch: Partial<AnalysisResult> = {}
-      if (result.improvedPrompt) {
-        patch.nextPrompt = result.improvedPrompt
+      // Pure policy (unit-tested): human-directed → hand-off + dropped prompt;
+      // otherwise improved/blanked as before; null when the prompt is fine.
+      const patch = buildQualityPatch(analysis, result)
+      if (!patch) return
+      if (result.humanDirected) {
+        console.log('[Prompt] routed human question to hand-off')
+      } else if (result.improvedPrompt) {
         console.log('[AnalysisLoop] Prompt replaced by grader-improved version')
       } else {
-        patch.nextPrompt = ''
-        patch.alignmentNote = result.reason
-          ? `No prompt suggested: ${result.reason}`
-          : (analysis.alignmentNote || 'No high-quality next prompt right now.')
         console.log('[AnalysisLoop] Prompt blanked by grader (no improvement available)')
       }
       patchDisplayAndResend(companionWindow, patch, mySession)

@@ -29,7 +29,77 @@ export function parseAnalysisResponse(
     return buildFallbackAnalysisResult(rawResponseText, startTime)
   }
 
-  return normalizeAnalysisResult(parsed, startTime)
+  // Phase 3B backstop: ALL providers flow through here, so a nextPrompt that
+  // asks the HUMAN a question is converted to a hand-off before anyone sees it.
+  return routeHumanQuestionToHandoff(normalizeAnalysisResult(parsed, startTime))
+}
+
+// ─── Human-question backstop (Phase 3B) ──────────────────────────────────────
+// The nextPrompt is pasted verbatim into a coding agent, so it must be an
+// instruction to the AGENT — never a question for the human. These functions are
+// pure (electron-free) and run as the final backstop for every provider.
+
+/** Phrases that always mean the prompt is talking to the human, not the agent. */
+const HUMAN_QUESTION_PHRASES = [
+  'please clarify',
+  'are you building',
+  'confirm whether',
+  'do you want',
+]
+
+/**
+ * Heuristic: does this prompt contain a question or request directed at the
+ * human user (rather than an instruction for the coding agent)?
+ *
+ * Flags (case-insensitive):
+ *   1. Any of the trigger phrases: "please clarify", "are you building",
+ *      "confirm whether", "do you want" — anywhere in the text.
+ *   2. The "you…?" heuristic: the text is split into sentences at `.`, `!`, `?`
+ *      (each sentence keeps its terminator; trailing quotes/brackets after the
+ *      terminator are ignored). A sentence that ENDS in "?" AND contains "you",
+ *      "your", or "yours" as a whole word is treated as a question to the human.
+ *      A sentence mentioning "you"/"your" WITHOUT ending in "?" does not trigger
+ *      (e.g. "The form validates your input server-side." is fine).
+ *
+ * Known limits (documented on purpose — this is a backstop, not a classifier):
+ * questions that avoid both the trigger phrases and the word "you" are not
+ * caught here; the strengthened system prompt and the quality grader handle
+ * those upstream.
+ */
+export function containsHumanDirectedQuestion(prompt: string): boolean {
+  const text = (prompt || '').toLowerCase()
+  if (!text.trim()) return false
+
+  if (HUMAN_QUESTION_PHRASES.some((phrase) => text.includes(phrase))) return true
+
+  // "you…?" heuristic — sentence-level check.
+  const sentences = text.match(/[^.!?]+[.!?]?/g) || []
+  return sentences.some((sentence) => {
+    const trimmed = sentence.trim().replace(/["')\]]+$/, '')
+    return trimmed.endsWith('?') && /\b(you|your|yours)\b/.test(trimmed)
+  })
+}
+
+/**
+ * If the analysis's nextPrompt is directed at the human, convert the analysis to
+ * a hand-off (existing Block 6 structure: needsHumanJudgment + reason) and DROP
+ * the prompt entirely — the question belongs in the hand-off card, never in the
+ * paste-prompt. Returns the analysis unchanged otherwise.
+ */
+export function routeHumanQuestionToHandoff(analysis: AnalysisResult): AnalysisResult {
+  if (!containsHumanDirectedQuestion(analysis.nextPrompt || '')) return analysis
+
+  console.log('[Prompt] routed human question to hand-off')
+  return {
+    ...analysis,
+    nextPrompt: '',
+    expectedOutcome: '',
+    needsHumanJudgment: true,
+    humanJudgmentReason:
+      (analysis.humanJudgmentReason || '').trim() ||
+      'Buildy needs your answer before it can suggest the next prompt: ' +
+        (analysis.nextPrompt || '').trim(),
+  }
 }
 
 /**

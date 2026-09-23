@@ -21,6 +21,10 @@ export interface PromptQualityResult {
   valid: boolean
   reason?: string
   improvedPrompt?: string
+  // Phase 3B: true when the prompt contains a question/request directed at the
+  // HUMAN instead of an instruction for the coding agent. A human-directed
+  // prompt is always dropped and converted to a hand-off — never "improved".
+  humanDirected?: boolean
 }
 
 /**
@@ -53,17 +57,57 @@ export async function checkPromptQuality(
       return { valid: true }
     }
 
-    const valid = json.valid !== false
+    const humanDirected = json.humanDirected === true
+    // A human-directed prompt is NEVER valid, whatever the grader's overall verdict.
+    const valid = json.valid !== false && !humanDirected
     const improved = typeof json.improvedPrompt === 'string' ? json.improvedPrompt.trim() : ''
-    debugLog(`[PromptQuality] valid=${valid} reason="${json.reason || ''}" improved=${improved ? 'yes' : 'no'}`)
+    debugLog(`[PromptQuality] valid=${valid} humanDirected=${humanDirected} reason="${json.reason || ''}" improved=${improved ? 'yes' : 'no'}`)
     return {
       valid,
       reason: typeof json.reason === 'string' ? json.reason : undefined,
       improvedPrompt: improved || undefined,
+      humanDirected: humanDirected || undefined,
     }
   } catch (error) {
     console.warn('[PromptQuality] Grader error — keeping original prompt:', error)
     return { valid: true }
+  }
+}
+
+/**
+ * Pure policy: turn a grader verdict into the display patch (Phase 3B).
+ *
+ *   - humanDirected → the analysis BECOMES a hand-off (Block 6): the prompt is
+ *     dropped entirely (empty nextPrompt/expectedOutcome) and needsHumanJudgment
+ *     is set. An improvedPrompt is deliberately IGNORED here — a prompt that
+ *     asked the human a question must not be silently rewritten into an
+ *     instruction the user never approved.
+ *   - invalid with an improvedPrompt → swap in the improved prompt.
+ *   - invalid with no improvement → blank the prompt and explain.
+ *   - valid → null (nothing to patch).
+ */
+export function buildQualityPatch(
+  analysis: AnalysisResult,
+  result: PromptQualityResult
+): Partial<AnalysisResult> | null {
+  if (result.humanDirected) {
+    return {
+      nextPrompt: '',
+      expectedOutcome: '',
+      needsHumanJudgment: true,
+      humanJudgmentReason:
+        (result.reason || '').trim() ||
+        (analysis.humanJudgmentReason || '').trim() ||
+        'Buildy needs your answer before it can suggest the next prompt.',
+    }
+  }
+  if (result.valid) return null
+  if (result.improvedPrompt) return { nextPrompt: result.improvedPrompt }
+  return {
+    nextPrompt: '',
+    alignmentNote: result.reason
+      ? `No prompt suggested: ${result.reason}`
+      : (analysis.alignmentNote || 'No high-quality next prompt right now.'),
   }
 }
 
@@ -75,6 +119,7 @@ function buildGraderPrompt(prompt: string, memoryContext: string, goal: Goal | n
 3. Does it align with the user's goal?
 4. Does it reference things from project memory correctly?
 5. Is it non-redundant (does not suggest already-completed work)?
+6. Is it addressed to the CODING AGENT only? It must be a direct instruction the agent can execute. It FAILS this criterion if it contains ANY question or request directed at the human user — e.g. "please clarify", "do you want", "are you building", "confirm whether", or any question addressed to "you". Set "humanDirected" to true when it fails this criterion.
 
 User's goal: ${goal?.purpose || '(not set)'}
 Project memory:
@@ -85,6 +130,7 @@ Suggested prompt: ${prompt}
 Respond JSON only:
 {
   "valid": true/false,
+  "humanDirected": true/false — true when the prompt asks the human a question or requests a decision/clarification from the human (criterion 6),
   "reason": "<why if not valid>",
   "improvedPrompt": "<rewritten prompt if you can improve it, otherwise empty string>"
 }`

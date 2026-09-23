@@ -2,43 +2,91 @@
 // Hand-off detection UI (loop engineering Block 6). Shown inside the guidance
 // panel when an analysis sets needsHumanJudgment — i.e. the next step is a genuine
 // decision the user must own (architectural tradeoff, irreversible commitment,
-// legal/compliance, or two equally-valid approaches).
+// legal/compliance, a clarification only they can answer, or two equally-valid
+// approaches).
 //
-// Calm, non-alarming card with two choices:
-//   • "I'll decide"  → records a decision entry in Nemp (reuses the zod-validated
-//                       memory:add-decision channel — no new unvalidated IPC), then dismisses.
+// Calm, non-alarming card:
+//   • "I'll decide"  → opens a small answer box; saving records the user's ANSWER
+//                       as a decision in the ACTIVE project via the existing
+//                       zod-validated memory:add-decision channel (no new
+//                       unvalidated IPC), then dismisses.
 //   • "Skip for now" → dismisses without recording.
+//
+// Focus note: the guidance window is non-focusable by design, so typing needs
+// window.buildy.setGuidanceFocusable(true) while the answer box is open — it is
+// ALWAYS restored to false when the flow ends (save/skip/unmount).
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 export function HandoffCard({ reason }: { reason?: string }): React.ReactElement | null {
   const [dismissed, setDismissed] = useState(false)
+  const [answering, setAnswering] = useState(false)
+  const [answer, setAnswer] = useState('')
+
+  const question = reason || 'A decision that needs human judgment'
+
+  // The window may only take keyboard focus while the answer box is open; always
+  // restore non-focusable when the flow ends or the card unmounts.
+  useEffect(() => {
+    if (!answering) return
+    window.buildy.setGuidanceFocusable(true)
+    return () => window.buildy.setGuidanceFocusable(false)
+  }, [answering])
+
   if (dismissed) return null
 
-  async function decide(): Promise<void> {
+  function close(recordDone: boolean): void {
+    setAnswering(false)
+    if (recordDone) setDismissed(true)
+  }
+
+  async function saveDecision(): Promise<void> {
     try {
+      // Store the user's hand-off ANSWER as a decision in the active project.
       await window.buildy.memory.addDecision(
-        reason || 'A decision that needs human judgment',
-        'User chose to decide this themselves'
+        question,
+        answer.trim() || 'User chose to decide this themselves'
       )
     } catch (e) {
       console.warn('[HandoffCard] recording decision failed:', e)
     }
-    setDismissed(true)
+    close(true)
   }
 
   return (
     <div style={S.card}>
       <div style={S.title}>🤔 This needs your decision</div>
       {reason && <div style={S.reason}>{reason}</div>}
-      <div style={S.buttons}>
-        <button onClick={decide} style={S.primary} title="Record this decision and continue">
-          I'll decide
-        </button>
-        <button onClick={() => setDismissed(true)} style={S.ghost} title="Dismiss without recording">
-          Skip for now
-        </button>
-      </div>
+
+      {!answering ? (
+        <div style={S.buttons}>
+          <button onClick={() => setAnswering(true)} style={S.primary} title="Type your answer — Buildy remembers it for this project">
+            I'll decide
+          </button>
+          <button onClick={() => setDismissed(true)} style={S.ghost} title="Dismiss without recording">
+            Skip for now
+          </button>
+        </div>
+      ) : (
+        <>
+          <textarea
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            placeholder="Your decision, in your own words…"
+            autoFocus
+            rows={3}
+            style={S.answerBox}
+          />
+          <div style={S.buttons}>
+            <button onClick={saveDecision} style={S.primary} title="Save this decision to project memory">
+              Save decision
+            </button>
+            <button onClick={() => close(false)} style={S.ghost} title="Back without saving">
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -64,6 +112,21 @@ const S = {
     fontSize: 13,
     color: 'rgba(255,255,255,0.7)',
     lineHeight: 1.55,
+  },
+  answerBox: {
+    marginTop: 2,
+    width: '100%',
+    boxSizing: 'border-box' as const,
+    resize: 'none' as const,
+    fontSize: 13,
+    lineHeight: 1.5,
+    fontFamily: 'inherit',
+    color: 'rgba(255,255,255,0.92)',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(99,102,241,0.35)',
+    borderRadius: 8,
+    padding: '8px 10px',
+    outline: 'none',
   },
   buttons: {
     display: 'flex',

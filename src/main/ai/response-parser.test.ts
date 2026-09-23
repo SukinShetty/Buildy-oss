@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest'
-import { parseAnalysisResponse, tryExtractProjectData } from './response-parser'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import {
+  parseAnalysisResponse,
+  tryExtractProjectData,
+  containsHumanDirectedQuestion,
+} from './response-parser'
 
 // A representative model output for a routine coding step — Buildy can default it,
 // so needsHumanJudgment must be false.
@@ -63,6 +67,94 @@ describe('parseAnalysisResponse — expected outcome (Block 4)', () => {
     const r = parseAnalysisResponse(ROUTINE_STEP, Date.now())
     expect(r.nextPrompt).toContain('/dashboard')
     expect(r.expectedOutcome).toContain('table of customers')
+  })
+})
+
+// ─── Phase 3B — human-question backstop ───────────────────────────────────────
+// Questions meant for the human must NEVER reach the paste-prompt. The parser is
+// the backstop for ALL providers: a flagged nextPrompt becomes a hand-off
+// (needsHumanJudgment) with an EMPTY prompt.
+
+/** Model output with everything routine except the given nextPrompt. */
+function analysisJsonWith(nextPrompt: string): string {
+  return JSON.stringify({
+    screenContentVisible: true,
+    whatIsHappening: 'The editor shows the form component.',
+    whatItMeans: 'The form is mid-build.',
+    whatIsBuilt: ['form layout'],
+    whatIsMissing: ['save button'],
+    whatIsBroken: [],
+    whereUserIsStuck: null,
+    bestNextMove: 'Wire up saving next.',
+    nextPrompt,
+    expectedOutcome: 'The form has a working save button.',
+    builderNote: 'Keep going!',
+    isCriticalOverride: false,
+    needsHumanJudgment: false,
+    humanJudgmentReason: '',
+  })
+}
+
+const NORMAL_BUILD_PROMPT =
+  'Add a save button to the form component and wire it to the existing submit handler'
+
+describe('parseAnalysisResponse — human-question backstop (Phase 3B)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('converts a clarification question into a hand-off with an EMPTY prompt', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const raw = analysisJsonWith(
+      'Before proceeding: I need to check something. Please clarify: Are you building X or Y?'
+    )
+    const r = parseAnalysisResponse(raw, Date.now())
+    expect(r.nextPrompt).toBe('')
+    expect(r.expectedOutcome).toBe('')
+    expect(r.needsHumanJudgment).toBe(true)
+    expect(r.humanJudgmentReason).toBeTruthy()
+    expect(logSpy).toHaveBeenCalledWith('[Prompt] routed human question to hand-off')
+  })
+
+  it('passes a normal build prompt through unchanged', () => {
+    const r = parseAnalysisResponse(analysisJsonWith(NORMAL_BUILD_PROMPT), Date.now())
+    expect(r.nextPrompt).toBe(NORMAL_BUILD_PROMPT)
+    expect(r.needsHumanJudgment).toBe(false)
+    expect(r.expectedOutcome).toBe('The form has a working save button.')
+  })
+})
+
+describe('containsHumanDirectedQuestion — detection heuristic', () => {
+  it.each([
+    ['please clarify', 'Please clarify which page should load first.'],
+    ['are you building', 'Are you building a checklist or a planner'],
+    ['confirm whether', 'First confirm whether the login page should come before the list page.'],
+    ['do you want', 'Do you want the table sorted by date or by name'],
+  ])('flags the trigger phrase "%s" (case-insensitive)', (_phrase, prompt) => {
+    expect(containsHumanDirectedQuestion(prompt)).toBe(true)
+    expect(containsHumanDirectedQuestion(prompt.toUpperCase())).toBe(true)
+  })
+
+  it('flags a question sentence addressed to "you" (the "you…?" heuristic)', () => {
+    expect(
+      containsHumanDirectedQuestion('Should the export run before you review the data?')
+    ).toBe(true)
+    expect(
+      containsHumanDirectedQuestion('Which layout would suit your workflow best?')
+    ).toBe(true)
+  })
+
+  it('does NOT flag a non-question sentence that mentions "you"/"your"', () => {
+    expect(containsHumanDirectedQuestion('The form validates your input server-side.')).toBe(false)
+    expect(
+      containsHumanDirectedQuestion(
+        'Add a save button to the form component and wire it to the existing submit handler'
+      )
+    ).toBe(false)
+  })
+
+  it('does NOT flag an empty prompt', () => {
+    expect(containsHumanDirectedQuestion('')).toBe(false)
   })
 })
 

@@ -373,6 +373,7 @@ export const IPC = {
   GUIDANCE_DATA:       'guidance:data',             // main → guidance window (payload to render)
   GUIDANCE_RESIZE:     'guidance:resize',           // guidance window → main (report content height)
   GUIDANCE_SHOW_LAST:  'guidance:show-last',         // companion/tray → main (re-show cached guidance)
+  GUIDANCE_SET_FOCUSABLE: 'guidance:set-focusable',  // guidance window → main (temporarily focusable while typing a hand-off answer)
   COPY_TEXT:           'buildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
   SEND_PROMPT:         'buildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)
   SEND_ELIGIBILITY:    'buildy:send-eligibility',   // main → guidance window (canSend + sendBlockedReason)

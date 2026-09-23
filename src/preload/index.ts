@@ -250,6 +250,11 @@ const buildyAPI = {
   resizeGuidance: (height: number): void =>
     ipcRenderer.send(IPC.GUIDANCE_RESIZE, height),
 
+  // Phase 3B: temporarily allow keyboard focus while typing a hand-off answer
+  // (the guidance window is otherwise non-focusable). Always restore false.
+  setGuidanceFocusable: (focusable: boolean): void =>
+    ipcRenderer.send(IPC.GUIDANCE_SET_FOCUSABLE, focusable),
+
   copyText: (text: string): Promise<void> =>
     ipcRenderer.invoke(IPC.COPY_TEXT, text),
 

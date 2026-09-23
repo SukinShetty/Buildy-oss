@@ -96,7 +96,7 @@ export function GuidancePanel(): React.ReactElement | null {
   }
 
   return (
-    <div style={S.root} onMouseMove={onInteract} onClick={onInteract}>
+    <div style={S.root} onMouseMove={onInteract} onClick={onInteract} onKeyDown={onInteract}>
       <div ref={panelRef} style={S.panel} key={renderKey} className="guidance-appear">
         <button
           onClick={() => window.buildy.hideGuidance()}
