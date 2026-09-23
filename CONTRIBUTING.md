@@ -1,51 +1,56 @@
 # Contributing to Buildy
 
-Thanks for helping make Buildy better. Buildy is a screen-aware desktop companion that helps non-technical founders build with AI coding tools — contributions of all sizes are welcome.
+Thanks for your interest in contributing. Buildy is a small open-source project — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
 
-## Ways to contribute
+## Before you start
 
-- **Bug reports** — open an issue with repro steps, your OS, and your provider setup.
-- **Feature ideas** — open an issue first for anything larger than a small fix so we can align on direction before you spend time on it.
-- **Code** — pick an open issue, or propose your own change in an issue first.
+For anything beyond a small bug fix or typo, please **open an issue first** so we can discuss direction before you invest time in the implementation. This avoids the frustrating situation where a PR is well-written but goes in a direction the project isn't heading.
 
-## Development setup
-
-**Requirements:** Node.js 18+, Windows 10+ / macOS 12+ / Linux.
+## Setup
 
 ```bash
 git clone https://github.com/SukinShetty/Buildy-oss.git
 cd Buildy-oss
 
-# NOTE: --legacy-peer-deps is required.
-# npm 10+ crashes with an arborist "edgesOut" error on a clean install
-# without it, even though every peer dependency resolves.
+# --legacy-peer-deps is required — electron-vite pins an older Vite peer range
 npm install --legacy-peer-deps
 
-npm run dev        # start the app (Electron + Vite HMR)
+npm run dev
 ```
 
-On first launch, open **Settings** and pick a provider: enter an API key for a cloud provider (Anthropic, OpenAI, Gemini, OpenRouter) or point Base URL at a local server (Ollama, LM Studio).
+## The rules
 
-## Useful commands
-
+**Build must stay green.**
 ```bash
-npm run dev        # dev mode with HMR
-npm run build      # compile main / preload / renderer
-npm test           # vitest — voice queue, speech formatter, semantic dedup
-npm run package    # build installers (nsis / dmg / AppImage) → dist/
+npm run build
 ```
+This compiles main, preload, and renderer via electron-vite. Fix any TypeScript errors before opening a PR.
 
-## Before opening a PR
+**Tests must stay green.**
+```bash
+npm test
+```
+45 tests covering the voice queue, speech formatter, semantic dedup, capture guard, verifier, and response parser. If you add behaviour, add a test.
 
-- `npm run build` and `npm test` must both pass — CI runs exactly these two on every PR.
-- Read [`AGENTS.md`](./AGENTS.md) — it documents the architecture, the IPC channel map, and the code style (functional components only, explicit types, no `any`, all API/storage calls through IPC, no new dependencies without discussion).
-- Keep PRs small and focused on one change.
-- Add screenshots or a short clip for UI changes — the mascot and panel are visual.
-- Update `CHANGELOG.md` under Unreleased if your change is user-visible.
+**Commit style.** Use [Conventional Commits](https://www.conventionalcommits.org/):
+- `feat: add X` — new behaviour
+- `fix: correct Y` — bug fix
+- `docs: update README` — documentation only
+- `refactor: simplify Z` — no behaviour change
+- `test: add coverage for W` — tests only
 
-## PR process
+## Code orientation
 
-1. Branch from `main`.
-2. Make your change, keep the build and tests green.
-3. Open the PR with a clear description: what it does, why, and how you tested it. Link the related issue if there is one.
-4. A maintainer reviews; CI must be green before merge.
+The renderer is a single bundle routed to three windows via a query param in `App.tsx`:
+- `?companion` — the always-on-top mascot
+- `?guidance` — the frosted-glass guidance panel
+- `?voice` — the hidden audio player
+
+All AI calls, screen capture, and file I/O live in the **main process** (`src/main/`). The renderer never touches the filesystem or calls AI providers directly. IPC channels are defined in `ipc-handlers.ts`; the renderer accesses them through `window.buildy.*` (defined in `preload/index.ts`).
+
+API keys are handled exclusively in `secure-store.ts`. Do not pass key values across the IPC boundary — only booleans (`hasKey`).
+
+## What's out of scope for now
+
+- The Cloudflare Worker proxy (`worker/`) is disabled in v1. PRs that re-enable it will not be merged until the authentication work planned for v1.1 is in place.
+- Bundled binaries or pre-built installers are not accepted as PR content.

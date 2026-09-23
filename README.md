@@ -1,63 +1,221 @@
-<div align="center">
+<p align="center">
+  <img src="docs/buildy-logo.png" width="400" alt="Buildy" />
+</p>
 
-# 🛠️ Buildy
+<h2 align="center">Buildy</h2>
+<p align="center">An AI builder companion that watches your Claude Code terminal and tells you what's happening — and what to type next.</p>
 
-**Your AI builder buddy — a screen-aware desktop companion that helps non-technical founders build with AI coding tools.**
-
-Buildy watches what you're doing on screen (e.g. Claude Code, Cursor, a terminal, your editor), explains in plain English what's happening, judges it against your goal, and writes the exact next prompt to paste — all narrated by a floating mascot with a real voice.
-
-[![Electron](https://img.shields.io/badge/Electron-44-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#-install--run)
-
-</div>
----
-
-## 🎬 Demo
-
-> 📸 **Demo coming soon.** Drop a GIF or screenshot here showing the mascot narrating a live coding session.
->
-> <!-- Replace with: ![Buildy demo](docs/assets/demo.gif) -->
-
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-lightgrey" alt="Platform" />
+  <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Built%20with-Electron-47848F?logo=electron&logoColor=white" alt="Built with Electron" /></a>
+  <img src="https://img.shields.io/badge/Memory-100%25%20Local-blue" alt="100% Local" />
+</p>
 
 ---
 
-## ✨ What it does
+## Demo
 
-You're building something with an AI coding agent, but you can't always tell *what just happened* or *what to do next*. Buildy sits on top of your desktop as a small always-on-top mascot and acts as your translator and guide:
-
-1. **Set a goal** — tell Buildy what you're building, who it's for, and what success looks like.
-2. **Pick a window to watch** — your AI coding tool, terminal, or editor.
-3. **Buildy analyzes the screen** — it takes a screenshot, sends it to a vision model, and reports:
-   - What's happening right now (plain English, no jargon)
-   - Whether it moves you toward your goal (**on-track / drifting / blocked**)
-   - What's been built, what's missing, what's broken, where you might be stuck
-   - **The exact next prompt to paste** into your AI coding tool
-4. **It speaks the guidance** out loud through a friendly voice, and shows the details in a polished side panel.
-5. **It remembers** — completed features, blockers, and decisions persist across sessions, so guidance gets smarter over time.
-
-Buildy is **provider-agnostic** (Anthropic, OpenAI, Gemini, OpenRouter, Ollama, LM Studio, or any OpenAI-compatible endpoint) and **local-first** (your project memory never leaves your machine).
+<!-- TODO: replace with demo video URL -->
+<p align="center">
+  <a href="DEMO_VIDEO_URL_HERE">
+    <img src="src/renderer/src/assets/buildy-watching.png" width="600" alt="Buildy in action" />
+    <br/>
+    <strong>▶ Watch the 90-second demo</strong>
+  </a>
+</p>
 
 ---
 
-## 🧠 Highlights
+## The problem
 
-- **🪟 Two-window companion UI** — a compact, draggable, always-on-top mascot that's *always visible*, plus a separate frosted-glass guidance panel that can never overflow or cover the mascot.
-- **🎙️ Real voice guidance** — ElevenLabs TTS with a graceful Web Speech fallback. Audio is owned by a dedicated background window so it plays cleanly even when you switch focus to your editor. A sentence-safe queue plays long guidance to completion and never cuts off mid-sentence.
-- **🔌 Multi-provider AI** — Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible providers. Use a top cloud model or run fully offline with local models.
-- **🎯 Goal-aware analysis** — every read is judged against *your* stated goal so you know if you're on track or drifting.
-- **💾 Persistent project memory** — integrates [Nemp Memory](https://github.com/SukinShetty/Nemp-memory) as a local-only memory layer. Completed features, blockers, decisions, and patterns are remembered and fed back into future analysis. Exportable to a `BUILDY.md`.
-- **✅ Prompt quality grading** — a fast second-pass check (Haiku) verifies that each suggested prompt is specific, actionable, and non-redundant before you see it.
-- **🔁 Semantic de-duplication** — Buildy won't repeat the same fact in slightly different words; near-duplicate completions are recognized and skipped.
-- **🔒 Private by default** — project memory is plain JSON on your disk. API keys live in your OS user-data dir. Nothing is sent anywhere except the AI provider you choose.
+Claude Code is the best AI coding tool in the world. It was built by developers, for developers. When it works, it is astonishing — a machine that writes full features, tests, and infrastructure from a single sentence.
+
+But the fastest-growing group of people using it have never written a line of code. They're founders, operators, and creators who were told "just use Claude Code." So they do. And then 400 lines of terminal output fly past, and they have absolutely no idea whether something brilliant just happened or whether their project is on fire.
+
+They don't need to learn to code. They need a translator.
+
+**Buildy is for them.**
 
 ---
 
-## 🖼️ How it works (architecture)
+## What Buildy does
 
-Buildy is an **Electron + React + TypeScript** app split across three windows, all driven from one main process:
+- **Watches your Claude Code terminal** — you pick the window once, Buildy watches only that
+- **Explains what just happened** in plain English, no jargon
+- **Tells you if you're on track** toward your stated goal — or drifting, or blocked
+- **Hands you the exact next prompt to paste** — no guessing, no googling
+- **Verifies whether your last prompt actually worked** — a separate AI check before moving to the next step
+- **Stops and hands back genuine decisions** — SQL vs NoSQL, choosing a payment provider, deleting data — Buildy asks you instead of guessing
+- **Speaks it out loud**, so you can stay focused on your work
+- **Remembers everything across sessions** — decisions, blockers, what's been built
+
+---
+
+## Built on loop engineering
+
+Boris Cherny, who built Claude Code, described a shift in how he works: he stopped prompting Claude directly. Instead, he builds loops — programs that prompt Claude, check the result, correct course, and repeat. Addy Osmani named this pattern **loop engineering**: stop being the person who types the prompts; design the system that types them for you.
+
+Buildy implements four foundational loop engineering blocks:
+
+| Block | What it does in Buildy |
+|---|---|
+| **Goal** | You state what you're building once. Every step is judged against it — on track, drifting, or blocked. |
+| **Memory** | Persistent project memory across sessions, powered by [Nemp Memory](https://github.com/SukinShetty/Nemp-memory). Local JSON, never uploaded. |
+| **Verifier** | A separate AI check confirms whether the prompt Buildy gave you actually achieved its intended outcome before moving on. |
+| **Hand-off** | When a decision is genuinely yours — SQL vs NoSQL, choosing a payment provider, deleting data — Buildy stops and asks. |
+
+> **Scope:** Buildy implements four of the loop engineering blocks. Scheduled loops (heartbeat) and MCP connectors (GitHub, Slack, Linear) are on the roadmap for v1.1 and are not part of v1.
+
+Every loop engineering tool that exists today assumes you can read code. Buildy is that loop, for people who can't.
+
+---
+
+## Screenshots
+
+<!-- TODO: capture and add docs/screenshot-mascot.png, docs/screenshot-guidance.png, docs/screenshot-goal.png -->
+
+<p align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="docs/screenshot-mascot.png" width="220" alt="Floating mascot companion" /><br/>
+        <sub>Floating mascot</sub>
+      </td>
+      <td align="center">
+        <img src="docs/screenshot-guidance.png" width="380" alt="Guidance panel with ON TRACK pill and next prompt" /><br/>
+        <sub>Guidance panel — ON TRACK + next prompt</sub>
+      </td>
+      <td align="center">
+        <img src="docs/screenshot-goal.png" width="280" alt="Goal-setting screen" /><br/>
+        <sub>Goal screen</sub>
+      </td>
+    </tr>
+  </table>
+</p>
+
+---
+
+## Try it yourself
+
+The two prompts below are the exact ones used in the demo videos. Paste either into Claude Code after starting Buildy to follow along.
+
+<details>
+<summary><strong>Demo 1 — Tally invoice tracker</strong></summary>
+
+<!-- DEMO PROMPT 1: Tally invoice tracker seed prompt -->
+
+</details>
+
+<details>
+<summary><strong>Demo 2 — Verifier in action</strong></summary>
+
+<!-- DEMO PROMPT 2: verifier demo scenario -->
+
+</details>
+
+---
+
+## Roadmap
+
+**Shipped in v1**
+- [x] Goal-aware loop (on track / drifting / blocked)
+- [x] Persistent memory across sessions ([Nemp Memory](https://github.com/SukinShetty/Nemp-memory))
+- [x] Verifier — confirms each prompt worked before moving on
+- [x] Hand-off — stops for decisions that require human judgment
+- [x] Voice guidance (ElevenLabs TTS + system voice fallback)
+- [x] Multi-provider AI (Anthropic, OpenAI, Gemini, OpenRouter, Ollama, LM Studio)
+- [x] Floating mascot companion + frosted-glass guidance panel
+- [x] Prompt quality grading (second-pass AI check before you see a prompt)
+- [x] Semantic deduplication (no repeated advice in slightly different words)
+
+**Coming in v1.1**
+- [ ] Scheduled loops (heartbeat — run on a timer without manual triggering)
+- [ ] MCP connectors (GitHub, Slack, Linear)
+- [ ] Onboarding wizard
+- [ ] Packaged installers (Windows NSIS, macOS DMG)
+
+---
+
+## How it works
+
+Buildy is an Electron desktop app (Windows + macOS). It opens two transparent, always-on-top windows:
+
+- **Mascot window** — a draggable companion that sits on your desktop, shows the current status pill (ON TRACK / DRIFTING / BLOCKED), and animates as it thinks.
+- **Guidance panel** — a frosted-glass side panel that shows the full analysis and the prompt to paste.
+
+The loop:
+
+```
+User picks a window to watch
+        ↓
+Buildy captures a screenshot of that window only
+        ↓
+Screenshot + goal + memory → AI vision model (structured response)
+        ↓
+Verifier checks: did the last prompt actually work?
+        ↓
+Guidance + next prompt rendered and spoken aloud
+        ↓
+Memory updated → repeat
+```
+
+**Multi-provider:** Anthropic (default — Claude Opus 4.7 has 3× higher image resolution than earlier models, making it the best choice for dense terminal screenshots), OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio, or any OpenAI-compatible endpoint. Use a cloud model or run fully offline.
+
+**Local-first:** project memory is plain JSON on your disk. The only outbound calls are to the AI provider you choose, and ElevenLabs if you enable it.
+
+---
+
+## Getting started
+
+**Requirements**
+- Node.js 18+
+- Windows 10+ or macOS 12+
+- An API key for at least one provider — e.g. [Anthropic](https://console.anthropic.com) — or a local model via [Ollama](https://ollama.com)
+
+```bash
+git clone https://github.com/SukinShetty/Buildy-oss.git
+cd Buildy-oss
+
+# --legacy-peer-deps is required (electron-vite pins an older Vite peer range)
+npm install --legacy-peer-deps
+
+npm run dev
+```
+
+On first launch, open **Settings**, choose your provider, and enter your API key. Optionally add an [ElevenLabs](https://elevenlabs.io) key for a premium voice — otherwise the system voice is used.
+
+**Build a distributable**
+```bash
+npm run build     # compile main / preload / renderer
+npm run package   # build installers → dist/
+```
+
+**Run the tests**
+```bash
+npm test          # 45 tests — voice queue, speech formatter, semantic dedup,
+                  #            capture guard, verifier, response parser
+```
+
+---
+
+## Configuration
+
+All configuration lives in the in-app **Settings** screen and is stored locally in your OS user-data directory.
+
+| Setting | Notes |
+|---|---|
+| **Provider** | `anthropic` · `openai` · `gemini` · `openrouter` · `ollama` · `lmstudio` · `custom` |
+| **Model** | e.g. `claude-opus-4-8`, `gpt-4.1`, `gemini-2.5-flash`, or any local model id |
+| **API key** | Used for cloud providers — encrypted at rest by the OS (see [Privacy](#privacy-and-security)) |
+| **Base URL** | For Ollama / LM Studio / custom OpenAI-compatible endpoints |
+| **ElevenLabs key + voice** | Optional — enables premium TTS; system voice used otherwise |
+
+**Fully offline:** select `ollama`, point the Base URL at your local server, pick a vision-capable model, and skip the ElevenLabs key.
+
+---
+
+## Architecture (for contributors)
 
 ```
 ┌─────────────────┐        ┌──────────────────────┐        ┌────────────────────┐
@@ -68,154 +226,84 @@ Buildy is an **Electron + React + TypeScript** app split across three windows, a
          │  IPC                       │ IPC                          │ IPC
          ▼                            │                              │
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│                                Main process (Node)                              │
-│  capture → AI provider (vision) → analysis → goal alignment → memory → voice    │
-│  screen capture · multi-provider AI · Nemp memory · prompt grader · TTS queue   │
+│                                Main process (Node)                            │
+│  capture → AI provider (vision) → analysis → goal alignment → memory → voice  │
+│  screen capture · multi-provider AI · Nemp memory · prompt grader · TTS queue │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
-
-- **Main process** — screen capture (`desktopCapturer`), provider-agnostic AI calls, Nemp memory, prompt-quality grading, and the voice queue + synthesis.
-- **Renderer** — React UI for the mascot, the guidance panel, the settings/workspace, and the hidden voice player. State via Zustand.
-- **Preload** — a secure `contextBridge` (`window.buildy.*`) between renderer and main; no `nodeIntegration`.
-- **Optional Cloudflare Worker** (`worker/`) — a proxy for team deployments that keeps your Anthropic key off client machines.
-
----
-
-## 🚀 Install & run
-
-### Requirements
-- **Node.js 18+**
-- **Windows 10+, macOS 12+, or Linux**
-- An API key for at least one provider (e.g. an [Anthropic API key](https://console.anthropic.com)), **or** a local model server like [Ollama](https://ollama.com).
-
-### Run from source
-```bash
-git clone https://github.com/SukinShetty/Buildy-oss.git
-cd Buildy-oss
-
-# NOTE: --legacy-peer-deps is required — npm 10+ crashes with an arborist "edgesOut"
-# error on a clean install without it, even though every peer resolves.
-npm install --legacy-peer-deps
-
-npm run dev
-```
-
-On first launch, open **Settings** and choose your provider + enter your API key (and optionally an ElevenLabs key for the premium voice).
-
-### Build a distributable
-```bash
-npm run build      # compile main / preload / renderer
-npm run package    # build installers (nsis / dmg / AppImage) → dist/
-```
-
-### Run the tests
-```bash
-npm test           # vitest — voice queue, speech formatter, semantic dedup
-```
-
----
-
-## ⚙️ Configuration
-
-All configuration is done in the in-app **Settings** screen and stored locally in your OS user-data directory.
-
-| Setting | Notes |
-|---|---|
-| **Provider** | Recommended: `anthropic` · `openai` · `gemini` · `openrouter` — plus local: `ollama` · `lmstudio` · `custom` |
-| **Model** | Picked from the LIVE model list fetched from your provider. There is no default model — you must choose one, and it must pass the vision check before watching is enabled. |
-| **API key** | Used for cloud providers. Stored locally (encrypted), write-only — never shown again. |
-| **Base URL** | For Ollama / LM Studio / custom OpenAI-compatible endpoints |
-| **API budget** | Max provider calls per rolling hour (20–600, default 120). Watching pauses at the cap. |
-| **ElevenLabs key + voice** | Optional — enables premium TTS and the mic button; otherwise the system voice is used |
-
-> 💡 **Fully offline:** select `ollama` (or `lmstudio`), point the Base URL at your local server, pick a vision-capable local model, and skip the ElevenLabs key to use the built-in system voice.
-
----
-
-## 📁 Project structure
 
 ```
 src/
   main/                     Electron main process (Node)
     index.ts                entry · windows · tray · single-instance
     capturer.ts             screen / window capture
-    companion-window.ts     the always-on-top mascot window
-    guidance-window.ts      the separate guidance panel window
-    voice-player.ts         hidden audio window + queue glue
-    voice-queue.ts          electron-free serial TTS queue (chunking, dedup)
-    semantic-dedup.ts       near-duplicate detection (shared)
+    capture-guard.ts        halts if the watched window closes; never auto-switches
+    companion-window.ts     always-on-top mascot window
+    guidance-window.ts      guidance panel window
+    voice-player.ts         hidden audio window + queue
+    voice-queue.ts          serial TTS queue (chunking, sentence-safe cutoff)
+    semantic-dedup.ts       near-duplicate detection
+    secure-store.ts         OS-encrypted API key storage (Electron safeStorage)
     nemp-bridge.ts          local persistent memory (Nemp integration)
-    analysis-loop.ts        the live watch → analyze → speak loop
+    analysis-loop.ts        watch → analyze → speak loop
     ipc-handlers.ts         all IPC channels
+    debug-log.ts            content-bearing logs gated behind BUILDY_DEBUG
     ai/
-      provider-interface.ts , provider-registry.ts
+      provider-interface.ts · provider-registry.ts
       providers/            anthropic · openai-compatible · gemini · ollama
-      prompt-builder.ts     system/user prompts
+      prompt-builder.ts     system / user prompts
       speech-formatter.ts   spoken-guidance phrasing
-      prompt-quality-check.ts   Haiku second-pass grader
+      prompt-quality-check.ts   second-pass prompt grader
+      verifier-check.ts     post-prompt outcome verification
       elevenlabs-tts.ts     TTS synthesis
-  preload/index.ts          secure window.buildy.* bridge
+  preload/index.ts          secure window.buildy.* bridge (no nodeIntegration)
   renderer/src/
-    App.tsx                 routes windows by query param
+    App.tsx                 routes windows by ?companion / ?guidance / ?voice
     companion/              mascot UI
     guidance/               guidance panel UI
-    voice/                  hidden voice player UI
+    voice/                  hidden voice player
     screens/                Goal · Brainstorm · Guidance · Memory · Settings
     store/                  Zustand state
-worker/                     optional Cloudflare Worker proxy
 ```
 
-For a deeper technical walkthrough, see [`AGENTS.md`](./AGENTS.md).
+For a deeper walkthrough, see [`AGENTS.md`](./AGENTS.md).
 
 ---
 
-## 🔐 Privacy
+## Privacy and security
 
-- **Project memory is 100% local** — stored as plain JSON in a `.nemp/` directory; nothing is uploaded.
-- **API keys** are stored in your OS user-data directory, never in the repo (`.env` and friends are git-ignored).
-- The **only** outbound network calls are to the AI provider you configure (and ElevenLabs, if you enable it).
+Buildy was designed to be safe to run alongside sensitive work.
 
----
+**API keys are encrypted at rest.** Keys are stored using Electron `safeStorage`, which delegates to DPAPI on Windows and Keychain on macOS. They live only in the main process and are never exposed to the renderer — the renderer receives only a boolean (`hasKey: true/false`), never the value.
 
-## 🧯 Troubleshooting / FAQ
+**Buildy captures only the window you choose.** You select a single window explicitly. If that window is closed, Buildy halts and requires you to reselect — it never falls back to full-screen capture and never auto-switches to another window.
 
-**`npm install` fails or crashes.**
-Use `npm install --legacy-peer-deps` — npm 10+ crashes with an arborist "edgesOut" error on a clean install without the flag, even though every peer dependency resolves.
+**Screenshots are never written to disk.** Each screenshot is processed in memory, sent to your AI provider, and discarded. There is no telemetry and no analytics.
 
-**Buildy lists no windows to watch (macOS).**
-Grant Screen Recording permission to Buildy (or to your terminal in dev) under System Settings → Privacy & Security → Screen Recording, then restart the app.
+**Screen content is never logged by default.** Any log output that might contain screen-derived content (analysis text, spoken guidance, provider response bodies) is gated behind the `BUILDY_DEBUG` environment variable. A production run produces no content-bearing output.
 
-**The mascot is silent.**
-Voice uses ElevenLabs when a key is set in Settings, otherwise the built-in system voice. Check your Settings, and make sure quiet mode is off on the mascot.
+**Project memory stays local.** [Nemp Memory](https://github.com/SukinShetty/Nemp-memory) stores session data as plain JSON on your machine. Nothing is uploaded.
 
-**Analysis fails or errors out.**
-Re-check your provider in Settings — API key, model id, and (for local providers) the Base URL. For Ollama / LM Studio the server must be running and the model must be vision-capable.
-
-**Can I run it fully offline?**
-Yes — pick `ollama` or `lmstudio`, point the Base URL at your local server, choose a vision-capable local model, and skip the ElevenLabs key.
-
-Something else? [Open an issue](../../issues).
+The only outbound network calls are to the AI provider you configure, and ElevenLabs if you enable it.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! A few notes:
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for full guidelines.
 
-- Install with `npm install --legacy-peer-deps`.
-- Keep `npm run build` and `npm test` green before opening a PR.
-- The codebase is TypeScript throughout; the renderer is split by window via a `?companion` / `?guidance` / `?voice` query param in `App.tsx`.
-- Open an issue first for larger changes so we can align on direction.
+Quick reference:
+- Install with `npm install --legacy-peer-deps`
+- Keep `npm run build` and `npm test` green before opening a PR
+- The renderer is split by window via a query param (`?companion`, `?guidance`, `?voice`) in `App.tsx`
+- Open an issue first for larger changes so we can align on direction
 
 ---
 
-## 📜 License
+## License
 
 [MIT](./LICENSE) © Sukin Shetty
 
 ---
 
-<div align="center">
-Built for non-technical founders who want to ship.
-</div>
-
+<p align="center">Built for non-technical founders who want to ship.</p>
