@@ -124,6 +124,20 @@ export function resolveOutcome(
   }
 }
 
+/**
+ * Drop a tracked outcome WITHOUT recording a verdict (Phase 3B). Used when the
+ * quality grader retracts a suggestion (human-directed → hand-off, or blanked):
+ * the prompt was recorded as pending before grading, but it was never kept on
+ * screen, so verifying it next cycle would write a spurious result into memory.
+ * A stale/unknown/null id is a no-op — in particular, after a real send the
+ * suggestion was REPLACED by a new outcome (replacePendingOutcome), so removing
+ * the original suggestion's id never touches the sent prompt's outcome.
+ */
+export function removePendingOutcome(id: string | null | undefined): void {
+  if (!id) return
+  setPending(getPending().filter((o) => o.id !== id))
+}
+
 /** Clear the active project's outcomes (called on watch start / stop / window switch). */
 export function clearOutcomes(): void {
   setPending([])

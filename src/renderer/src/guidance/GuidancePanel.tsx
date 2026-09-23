@@ -211,7 +211,9 @@ function AnalysisBody({
       )}
 
       {analysis.needsHumanJudgment && (
-        <HandoffCard reason={analysis.humanJudgmentReason} />
+        // Keyed by reason: dismissing one hand-off must not hide a DIFFERENT
+        // later hand-off (the key remounts the card, resetting its state).
+        <HandoffCard key={analysis.humanJudgmentReason || 'handoff'} reason={analysis.humanJudgmentReason} />
       )}
 
       {analysis.goalAlignment && (

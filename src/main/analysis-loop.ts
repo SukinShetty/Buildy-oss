@@ -28,11 +28,11 @@ import { formatSpokenGuidance } from './ai/speech-formatter'
 import { buildQuestionSystemPrompt, buildQuestionUserPrompt } from './ai/prompt-builder'
 import { fetchWithTimeout } from './ai/fetch-with-timeout'
 import * as nemp from './nemp-bridge'
-import { checkPromptQuality, buildQualityPatch } from './ai/prompt-quality-check'
+import { checkPromptQuality, buildQualityPatch, patchDropsPrompt } from './ai/prompt-quality-check'
 import { verifyPromptOutcome } from './ai/verifier-check'
 import {
   recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes,
-  replacePendingOutcome,
+  replacePendingOutcome, removePendingOutcome,
 } from './verifier'
 import type { PromptOutcome } from './verifier'
 import { evaluateSendEligibility, sanitizePromptForSend } from './prompt-sender-core'
@@ -587,8 +587,9 @@ async function runOneAnalysisCycle(
     runVerifier(companionWindow, toVerify, analysis, memoryContext, settings, mySession)
   }
   // Record the CURRENT suggestion as the thing to verify NEXT cycle (no-op if the
-  // model produced no prompt / no expected outcome).
-  recordPendingOutcome(analysis.nextPrompt, analysis.expectedOutcome || '')
+  // model produced no prompt / no expected outcome). Keep the id so the grader
+  // can RETRACT it if it later drops the prompt (see gradePromptQuality).
+  const recordedOutcome = recordPendingOutcome(analysis.nextPrompt, analysis.expectedOutcome || '')
 
   // Tee the analysis into the memory layer AFTER the UI has it (fire-and-forget,
   // never blocks display).
@@ -597,7 +598,7 @@ async function runOneAnalysisCycle(
   // Second-pass prompt-quality grade — runs in parallel, never blocks. If it
   // improves or blanks the prompt, re-send the corrected analysis so the panel
   // updates in place (unless the watch session has since changed).
-  gradePromptQuality(companionWindow, analysis, memoryContext, settings, mySession)
+  gradePromptQuality(companionWindow, analysis, memoryContext, settings, mySession, recordedOutcome?.id ?? null)
 
   // Step 5: Speak
   // First cycle: ALWAYS speak, no cooldown/quiet/overlap checks
@@ -798,7 +799,8 @@ function gradePromptQuality(
   analysis: AnalysisResult,
   memoryContext: string,
   settings: AppSettings,
-  mySession: number
+  mySession: number,
+  recordedOutcomeId: string | null
 ): void {
   void (async () => {
     try {
@@ -811,11 +813,18 @@ function gradePromptQuality(
       const patch = buildQualityPatch(analysis, result)
       if (!patch) return
       if (result.humanDirected) {
-        console.log('[Prompt] routed human question to hand-off')
+        console.log('[Prompt] grader routed human question to hand-off')
       } else if (result.improvedPrompt) {
         console.log('[AnalysisLoop] Prompt replaced by grader-improved version')
       } else {
         console.log('[AnalysisLoop] Prompt blanked by grader (no improvement available)')
+      }
+      // A DROPPED prompt must also retract its pending verifier outcome — the
+      // suggestion was recorded before grading, and verifying a prompt that was
+      // never kept on screen would write a spurious verdict into memory. After a
+      // real send the outcome was replaced (new id), so this never touches it.
+      if (patchDropsPrompt(patch)) {
+        removePendingOutcome(recordedOutcomeId)
       }
       patchDisplayAndResend(companionWindow, patch, mySession)
     } catch (error) {

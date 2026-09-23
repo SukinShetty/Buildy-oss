@@ -111,6 +111,16 @@ export function buildQualityPatch(
   }
 }
 
+/**
+ * Pure: does this quality patch DROP the displayed prompt (empty it) rather than
+ * improve it? When true, the caller must also retract the pending verifier
+ * outcome recorded for the original suggestion — otherwise the next cycle would
+ * "verify" a prompt that was never kept on screen or sent.
+ */
+export function patchDropsPrompt(patch: Partial<AnalysisResult> | null): boolean {
+  return !!patch && 'nextPrompt' in patch && !(patch.nextPrompt || '').trim()
+}
+
 function buildGraderPrompt(prompt: string, memoryContext: string, goal: Goal | null): string {
   return `You are a prompt quality grader. Grade this suggested next prompt for a non-technical builder using Claude Code:
 

@@ -22,6 +22,7 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
   const [dismissed, setDismissed] = useState(false)
   const [answering, setAnswering] = useState(false)
   const [answer, setAnswer] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const question = reason || 'A decision that needs human judgment'
 
@@ -41,6 +42,8 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
   }
 
   async function saveDecision(): Promise<void> {
+    if (saving) return // double-submit guard while the IPC is in flight
+    setSaving(true)
     try {
       // Store the user's hand-off ANSWER as a decision in the active project.
       await window.buildy.memory.addDecision(
@@ -50,6 +53,7 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
     } catch (e) {
       console.warn('[HandoffCard] recording decision failed:', e)
     }
+    setSaving(false)
     close(true)
   }
 
@@ -78,10 +82,15 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
             style={S.answerBox}
           />
           <div style={S.buttons}>
-            <button onClick={saveDecision} style={S.primary} title="Save this decision to project memory">
-              Save decision
+            <button
+              onClick={saveDecision}
+              disabled={saving}
+              style={{ ...S.primary, ...(saving ? S.disabled : {}) }}
+              title="Save this decision to project memory"
+            >
+              {saving ? 'Saving…' : 'Save decision'}
             </button>
-            <button onClick={() => close(false)} style={S.ghost} title="Back without saving">
+            <button onClick={() => close(false)} disabled={saving} style={S.ghost} title="Back without saving">
               Cancel
             </button>
           </div>
@@ -152,5 +161,9 @@ const S = {
     color: 'rgba(255,255,255,0.55)',
     border: '1px solid rgba(255,255,255,0.15)',
     cursor: 'pointer',
+  },
+  disabled: {
+    opacity: 0.55,
+    cursor: 'not-allowed',
   },
 }

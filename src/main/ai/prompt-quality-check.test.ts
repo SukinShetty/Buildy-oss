@@ -5,10 +5,13 @@
 // The AI call is mocked (global fetch); neutral sample data only.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { checkPromptQuality, buildQualityPatch } from './prompt-quality-check'
+import { checkPromptQuality, buildQualityPatch, patchDropsPrompt } from './prompt-quality-check'
 import type { PromptQualityResult } from './prompt-quality-check'
 import type { AnalysisResult, AppSettings } from '../../renderer/src/types'
 import { defaultSettings } from '../../renderer/src/types'
+import {
+  recordPendingOutcome, removePendingOutcome, getMostRecentPending, setVerifierProject,
+} from '../verifier'
 
 function makeAnalysis(nextPrompt: string): AnalysisResult {
   return {
@@ -121,5 +124,56 @@ describe('buildQualityPatch — converts human-directed prompts to a hand-off', 
     expect(patch!.nextPrompt).toBe('')
     expect(patch!.alignmentNote).toContain('Too generic.')
     expect(patch!.needsHumanJudgment).toBeUndefined()
+  })
+})
+
+describe('patchDropsPrompt — detects patches that empty the prompt', () => {
+  it('is true for the hand-off drop and the ordinary blank path', () => {
+    const analysis = makeAnalysis('Are you building a planner or a checklist?')
+    expect(patchDropsPrompt(buildQualityPatch(analysis, { valid: false, humanDirected: true }))).toBe(true)
+    expect(patchDropsPrompt(buildQualityPatch(analysis, { valid: false, reason: 'Too generic.' }))).toBe(true)
+  })
+
+  it('is false for an improved prompt, a valid result, and patches without nextPrompt', () => {
+    const analysis = makeAnalysis('Continue building.')
+    expect(
+      patchDropsPrompt(buildQualityPatch(analysis, { valid: false, improvedPrompt: 'Add the save button to the form component.' }))
+    ).toBe(false)
+    expect(patchDropsPrompt(buildQualityPatch(analysis, { valid: true }))).toBe(false)
+    expect(patchDropsPrompt({ alignmentNote: 'note only' })).toBe(false)
+  })
+})
+
+describe('dropped prompt → pending verifier outcome removed (stale-outcome fix)', () => {
+  // Mirrors the analysis-loop wiring: the suggestion is recorded as a pending
+  // outcome BEFORE grading; when the grade drops the prompt, the recorded
+  // outcome must be removed so the next cycle never verifies a prompt that was
+  // never shown or sent. Uses the verifier's real in-memory API.
+  it('grader drops the prompt (hand-off) → no pending outcome remains', () => {
+    setVerifierProject('quality-drop-test')
+    const analysis = makeAnalysis('Are you building a planner or a checklist?')
+    const recorded = recordPendingOutcome(analysis.nextPrompt, analysis.expectedOutcome || '')
+    expect(getMostRecentPending()).not.toBeNull()
+
+    const patch = buildQualityPatch(analysis, { valid: false, humanDirected: true })
+    if (patchDropsPrompt(patch)) removePendingOutcome(recorded?.id ?? null)
+
+    expect(getMostRecentPending()).toBeNull()
+    setVerifierProject('default')
+  })
+
+  it('an improved (not dropped) prompt keeps the pending outcome', () => {
+    setVerifierProject('quality-improve-test')
+    const analysis = makeAnalysis('Continue building.')
+    const recorded = recordPendingOutcome(analysis.nextPrompt, analysis.expectedOutcome || '')
+
+    const patch = buildQualityPatch(analysis, {
+      valid: false,
+      improvedPrompt: 'Add the save button to the form component.',
+    })
+    if (patchDropsPrompt(patch)) removePendingOutcome(recorded?.id ?? null)
+
+    expect(getMostRecentPending()?.id).toBe(recorded!.id)
+    setVerifierProject('default')
   })
 })

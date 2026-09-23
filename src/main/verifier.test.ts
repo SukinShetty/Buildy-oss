@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import {
   recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes, getOutcomes,
-  replacePendingOutcome, setVerifierProject,
+  replacePendingOutcome, setVerifierProject, removePendingOutcome,
 } from './verifier'
 
 describe('verifier — pending prompt-outcome tracking', () => {
@@ -59,6 +59,31 @@ describe('verifier — pending prompt-outcome tracking', () => {
     expect(getOutcomes()).toHaveLength(1)
     expect(getMostRecentPending()?.id).toBe(sent!.id)
     expect(getMostRecentPending()?.promptText).toBe('the prompt actually sent')
+  })
+
+  it('removePendingOutcome drops ONLY the targeted outcome, with no verdict recorded', () => {
+    const kept = recordPendingOutcome('a different suggestion', 'its outcome')!
+    const dropped = recordPendingOutcome('Are you building a planner or a checklist?', 'n/a')!
+    removePendingOutcome(dropped.id)
+    expect(getOutcomes()).toHaveLength(1)
+    expect(getMostRecentPending()?.id).toBe(kept.id)
+  })
+
+  it('removePendingOutcome no-ops for unknown/stale ids and null', () => {
+    const kept = recordPendingOutcome('p', 'o')!
+    removePendingOutcome('outcome:0:999')
+    removePendingOutcome(null)
+    expect(getMostRecentPending()?.id).toBe(kept.id)
+  })
+
+  it('removing the ORIGINAL suggestion id after a real send leaves the SENT outcome pending', () => {
+    // The grader may drop a suggestion the user has ALREADY sent; the send
+    // replaced the suggestion with a new outcome, so removal by the old id
+    // must not touch the sent one.
+    const suggested = recordPendingOutcome('the suggested prompt', 'o1')!
+    const sent = replacePendingOutcome('the suggested prompt', 'o1')!
+    removePendingOutcome(suggested.id)
+    expect(getMostRecentPending()?.id).toBe(sent.id)
   })
 
   it('replacePendingOutcome keeps existing outcomes when there is nothing to register', () => {
