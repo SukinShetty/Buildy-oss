@@ -5,7 +5,8 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
-import type { MascotState } from '../components/Mascot'
+import type { MascotState, MascotAlignment, MascotReaction, MascotReactionType } from '../components/Mascot'
+import { deriveMascotSignals } from './mascot-signals'
 import type { AnalysisResult } from '../types'
 import { isModelConfigured } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
@@ -33,6 +34,30 @@ export function CompanionApp(): React.ReactElement {
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
 
+  // ─── Mascot animation signals (Phase 6) ─────────────────────────────
+  // Alignment glow, one-shot reactions, "!" badge and drag squash. Derived
+  // from existing IPC events via deriveMascotSignals (pure, unit-tested).
+  const [alignment, setAlignment] = useState<MascotAlignment | null>(null)
+  const [reaction, setReaction] = useState<MascotReaction | null>(null)
+  const [showAlertBadge, setShowAlertBadge] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  // Previously seen analysis — reactions fire on transitions, not repeats.
+  const prevAnalysisRef = useRef<AnalysisResult | null>(null)
+  const reactionIdRef = useRef(0)
+
+  // Each event gets a fresh id so the same reaction type replays.
+  const fireReaction = useCallback((type: MascotReactionType) => {
+    reactionIdRef.current += 1
+    setReaction({ type, id: reactionIdRef.current })
+  }, [])
+
+  // New watching session (or none): forget analysis-derived mascot signals.
+  const resetMascotSignals = useCallback(() => {
+    prevAnalysisRef.current = null
+    setAlignment(null)
+    setShowAlertBadge(false)
+  }, [])
+
   // ─── Check if a provider key + model are configured ─────────────────
   // Re-checked periodically so saving Settings updates the mascot label and
   // the mic button without restarting the companion.
@@ -58,6 +83,14 @@ export function CompanionApp(): React.ReactElement {
       window.buildy.onCompanionAnalysis((_: unknown, a: AnalysisResult) => {
         setLastAnswer(null)
         setLatestAnalysis(a)
+        // Mascot signals: alignment glow + transition reactions + "!" badge.
+        // The badge is only CLEARED when the user opens the panel themselves
+        // (orb click / show-last) — the auto-show below doesn't count as seen.
+        const signals = deriveMascotSignals(a, prevAnalysisRef.current)
+        prevAnalysisRef.current = a
+        setAlignment(signals.alignment)
+        if (signals.reaction) fireReaction(signals.reaction)
+        if (signals.raiseAlertBadge) setShowAlertBadge(true)
         // Render guidance in its OWN window so it never overflows the mascot.
         window.buildy.showGuidance(a)
       }),
@@ -66,7 +99,7 @@ export function CompanionApp(): React.ReactElement {
       // voice player (hidden window) so it survives this window being backgrounded.
       window.buildy.onWatchedSourceChanged((_: unknown, d: { windowName: string | null; message: string | null }) => {
         setWatchedSource(d.windowName, d.message)
-        if (!d.windowName) { clearAnalysis(); window.buildy.hideGuidance() }
+        if (!d.windowName) { clearAnalysis(); resetMascotSignals(); window.buildy.hideGuidance() }
       }),
       window.buildy.onCompanionAnswer((_: unknown, d: { question: string; answer: string }) => {
         setLastAnswer(d)
@@ -80,8 +113,11 @@ export function CompanionApp(): React.ReactElement {
         if (status === 'sent') {
           setSentFlash(true)
           setTimeout(() => setSentFlash(false), 2000)
+          fireReaction('sent') // quick mascot nod
         }
       }),
+      // Window drag (from main's 'move' events) — mascot squash while dragging.
+      window.buildy.onCompanionDrag((_: unknown, d: boolean) => setDragging(d)),
     ]
     return () => { unsubs.forEach((u) => u()) }
   }, [])
@@ -101,6 +137,7 @@ export function CompanionApp(): React.ReactElement {
   async function pickWindow(id: string, name: string): Promise<void> {
     setShowWindowPicker(false)
     clearAnalysis()
+    resetMascotSignals()  // fresh session: no stale glow/badge from the old window
     window.buildy.hideGuidance()  // drop any stale guidance from the previous window
     window.buildy.voice.resetDedup()  // fresh watching session can speak anything
     setWatchedSource(name, null)
@@ -189,6 +226,8 @@ export function CompanionApp(): React.ReactElement {
   function onOrbClick(): void {
     if (needsSetup) { window.buildy.openPanel(); return }
     if (!watchedWindowName) { openPicker(); return }
+    // The user is opening the guidance panel — the "!" alert is now seen.
+    setShowAlertBadge(false)
     // Re-show the latest guidance/answer in the guidance window.
     if (latestAnalysis) window.buildy.showGuidance(latestAnalysis)
     else if (lastAnswer) window.buildy.showGuidanceAnswer(lastAnswer)
@@ -197,6 +236,7 @@ export function CompanionApp(): React.ReactElement {
   function onStop(): void {
     window.buildy.voice.stop(); window.buildy.voice.resetDedup(); stopRecording()
     setMicState('idle'); setAvatarState('idle')
+    setShowAlertBadge(false)
     window.buildy.hideGuidance()
   }
   function onMute(): void { const m = !isMuted; setMuted(m); window.buildy.voice.setMuted(m) }
@@ -207,7 +247,8 @@ export function CompanionApp(): React.ReactElement {
   function onQuiet(): void { const q = !isQuietMode; setQuietMode(q); window.buildy.setQuietMode(q) }
   function onSettings(): void { window.buildy.openPanel() }
   // Re-summon the most recent guidance even when no new analysis has arrived.
-  function onShowLast(): void { window.buildy.showLastGuidance() }
+  // User-opened panel — clear the "!" alert badge.
+  function onShowLast(): void { setShowAlertBadge(false); window.buildy.showLastGuidance() }
 
   function onMicToggle(): void {
     if (micState === 'listening') { stopRecording(); return }
@@ -251,7 +292,14 @@ export function CompanionApp(): React.ReactElement {
         onContextMenu={(e) => { e.preventDefault(); openPicker() }}
         title="Click to interact — right-click to pick a window"
       >
-        <Mascot state={mascotState} size={120} />
+        <Mascot
+          state={mascotState}
+          size={120}
+          alignment={alignment}
+          reaction={reaction}
+          showAlertBadge={showAlertBadge}
+          dragging={dragging}
+        />
       </div>
 
       <div style={S.watchLabel}>{watchLabel}</div>

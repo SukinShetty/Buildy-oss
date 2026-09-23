@@ -265,6 +265,24 @@ app.whenReady().then(async () => {
   }
 
   console.log('Buildy launched — companion only (panel hidden unless setup is needed)')
+
+  // ─── Dev-only: companion idle-CPU measurement (Phase 6, target < 3%) ───────
+  // Logs the companion renderer process's CPU every 5s via app.getAppMetrics().
+  // percentCPUUsage is measured since the PREVIOUS getAppMetrics() call, so the
+  // first sample is a warm-up and is skipped. Not compiled out, but fully
+  // gated on !app.isPackaged so packaged builds never run it.
+  if (!app.isPackaged) {
+    let warmedUp = false
+    const cpuTimer = setInterval(() => {
+      if (!companionWindow || companionWindow.isDestroyed()) return
+      const pid = companionWindow.webContents.getOSProcessId()
+      const metric = app.getAppMetrics().find((m) => m.pid === pid)
+      if (!metric) return
+      if (!warmedUp) { warmedUp = true; return }
+      console.log(`[MascotCPU] companion renderer pid=${pid} cpu=${metric.cpu.percentCPUUsage.toFixed(2)}%`)
+    }, 5000)
+    app.on('before-quit', () => clearInterval(cpuTimer))
+  }
 })
 
 // macOS: re-open when dock icon is clicked — show the companion, not the panel

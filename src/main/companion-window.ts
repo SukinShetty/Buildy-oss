@@ -10,6 +10,7 @@
 
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
+import { IPC } from '../renderer/src/types'
 import { repositionGuidanceWindow, hideGuidanceWindow } from './guidance-window'
 
 // Compact mascot window: holds ONLY the mascot, status label, and control pill.
@@ -97,7 +98,24 @@ export function createCompanionWindow(): BrowserWindow {
 
   // Keep the guidance window anchored to the mascot as it's dragged around,
   // and hide guidance whenever the mascot itself is hidden.
-  window.on('move', () => repositionGuidanceWindow())
+  //
+  // Drag signal for the mascot squash: -webkit-app-region drags deliver NO
+  // mouse events to the renderer, so main is the only reliable source. 'move'
+  // fires repeatedly during a drag; 350ms of silence means the drag ended.
+  let dragEndTimer: ReturnType<typeof setTimeout> | null = null
+  window.on('move', () => {
+    repositionGuidanceWindow()
+    if (window.isDestroyed()) return
+    if (dragEndTimer === null) window.webContents.send(IPC.COMPANION_DRAG, true)
+    else clearTimeout(dragEndTimer)
+    dragEndTimer = setTimeout(() => {
+      dragEndTimer = null
+      if (!window.isDestroyed()) window.webContents.send(IPC.COMPANION_DRAG, false)
+    }, 350)
+  })
+  window.on('closed', () => {
+    if (dragEndTimer !== null) { clearTimeout(dragEndTimer); dragEndTimer = null }
+  })
   window.on('hide', () => hideGuidanceWindow())
 
   // Guaranteed show after content is ready

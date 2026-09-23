@@ -431,6 +431,7 @@ export const IPC = {
   SEND_PROMPT:         'buildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)
   SEND_ELIGIBILITY:    'buildy:send-eligibility',   // main → guidance window (canSend + sendBlockedReason)
   SEND_STATUS:         'buildy:send-status',        // main → companion (transient "Sent" mascot label)
+  COMPANION_DRAG:      'buildy:companion-drag',     // main → companion (window drag started/ended — mascot squash)
   LOAD_PROJECT:        'buildy:load-project',
   SAVE_PROJECT:        'buildy:save-project',
   LOAD_SETTINGS:       'buildy:load-settings',     // → RedactedSettings (never raw keys)
