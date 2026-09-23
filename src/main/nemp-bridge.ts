@@ -40,8 +40,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { app } from 'electron'
-import { join } from 'path'
 import type { ProjectMemory, MemoryEntry, MemorySnapshot, Goal } from '../renderer/src/types'
+import { projectStoreDir } from './projects-core'
 import { loadProjectMemory, loadGoal } from './memory'
 import { isSemanticDuplicate, subjectKey } from './semantic-dedup'
 import { debugLog } from './debug-log'
@@ -69,10 +69,6 @@ interface NempSearchModule {
     memories: Array<{ key: string; value: string; tags: string[] }>
   ): Array<{ key: string; value: string; tags: string[]; score: number; matchType: string }>
 }
-interface NempDetectionModule {
-  detectStack(projectPath: string): Array<{ key: string; value: string; tags: string[] }>
-}
-
 // ─── Module state ─────────────────────────────────────────────────────────────
 
 const AGENT_ID = 'buildy'
@@ -81,7 +77,6 @@ const TAG = 'buildy'
 
 let storage: NempStorageModule | null = null
 let search: NempSearchModule | null = null
-let detection: NempDetectionModule | null = null
 let nempReady = false
 let projectPath = ''   // the directory whose `.nemp/` holds memories.json
 
@@ -91,7 +86,6 @@ async function ensureNemp(): Promise<boolean> {
   try {
     storage = (await import('nemp-mcp-server/dist/core/storage.js')) as unknown as NempStorageModule
     search = (await import('nemp-mcp-server/dist/core/search.js')) as unknown as NempSearchModule
-    detection = (await import('nemp-mcp-server/dist/core/detection.js')) as unknown as NempDetectionModule
     nempReady = true
     console.log('[Nemp] Core modules loaded')
     return true
@@ -144,31 +138,20 @@ function hasTag(m: NempMemory, tag: string): boolean { return m.tags.includes(ta
 // ─── Public bridge API ────────────────────────────────────────────────────────
 
 /**
- * Point the bridge at a project's memory store. If `projectRoot` is given we use
- * its `.nemp/` (honouring an existing separate Nemp install); otherwise we keep a
- * Buildy-owned store under userData, namespaced by projectId.
+ * Point the bridge at a project's memory store. The caller (projects.ts) passes
+ * the ALREADY-RESOLVED store directory so there is exactly ONE path derivation
+ * (projects-core.projectStoreDir) shared by the bridge, the migration, and the
+ * feature counts — the bridge never re-derives or slugs the id itself. The
+ * fallback (no storeDir) uses the same projects-core helper for callers/tests
+ * that only have an id.
  */
-export async function init(projectId: string, projectRoot?: string): Promise<void> {
-  projectPath = projectRoot && projectRoot.trim()
-    ? projectRoot
-    : join(app.getPath('userData'), 'buildy-memory', slug(projectId || 'default'))
+export async function init(projectId: string, storeDir?: string): Promise<void> {
+  projectPath = storeDir && storeDir.trim()
+    ? storeDir
+    : projectStoreDir(app.getPath('userData'), projectId || 'default')
 
   const ok = await ensureNemp()
   console.log(`[Nemp] init — projectId="${projectId}" path="${projectPath}" ready=${ok}`)
-  if (!ok) return
-
-  // Seed detected stack once (only if the store is empty), best-effort.
-  try {
-    if (projectRoot && readAll().length === 0 && detection) {
-      const stack = detection.detectStack(projectRoot)
-      for (const s of stack) {
-        writeOne({ key: s.key, value: s.value, tags: [TAG, ...s.tags], timestamp: nowISO(), source: SOURCE, agent_id: AGENT_ID })
-      }
-      console.log(`[Nemp] Seeded ${stack.length} stack memories from ${projectRoot}`)
-    }
-  } catch (error) {
-    console.warn('[Nemp] stack detection skipped:', error)
-  }
 }
 
 // ─── Reading ──────────────────────────────────────────────────────────────────

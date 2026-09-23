@@ -16,6 +16,12 @@ describe('verifier — pending prompt-outcome tracking', () => {
     expect(getMostRecentPending()?.id).toBe(o!.id)
   })
 
+  it('assigns unique ids even for outcomes recorded in the same millisecond', () => {
+    const a = recordPendingOutcome('p1', 'o1')!
+    const b = recordPendingOutcome('p2', 'o2')!
+    expect(a.id).not.toBe(b.id)
+  })
+
   it('keeps only the most recent two pending outcomes', () => {
     recordPendingOutcome('p1', 'o1')
     recordPendingOutcome('p2', 'o2')

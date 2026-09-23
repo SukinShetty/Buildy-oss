@@ -239,6 +239,30 @@ describe('project records', () => {
     expect(switched.projects.map((p) => p.id)).toContain(project.id) // nothing lost
   })
 
+  it('a corrupt projects.json is treated as not-initialized without throwing', () => {
+    writeFileSync(join(userDataDir, 'projects.json'), 'not valid json {{{', 'utf-8')
+    expect(loadProjectsFile(userDataDir)).toBeNull()
+    // Startup recovers by re-initializing rather than crashing.
+    const file = ensureProjectsInitialized(userDataDir, makeDeps())
+    expect(file.projects.length).toBeGreaterThan(0)
+    expect(file.activeProjectId).toBeTruthy()
+  })
+
+  it('renameProjectRecord with an empty or whitespace name is a no-op', () => {
+    const init = ensureProjectsInitialized(userDataDir, makeDeps())
+    const id = init.activeProjectId
+    const originalName = init.projects[0].name
+    expect(renameProjectRecord(userDataDir, id, '').projects[0].name).toBe(originalName)
+    expect(renameProjectRecord(userDataDir, id, '   ').projects[0].name).toBe(originalName)
+  })
+
+  it('setActiveProjectRecord with a nonexistent id leaves the file unchanged', () => {
+    const init = ensureProjectsInitialized(userDataDir, makeDeps())
+    const after = setActiveProjectRecord(userDataDir, 'does-not-exist', makeDeps('later'))
+    expect(after).toEqual(init)
+    expect(loadProjectsFile(userDataDir)).toEqual(init)
+  })
+
   it('applyGoalSaved updates goalText and only renames an untouched default-named project', () => {
     const deps = makeDeps()
     const base = ensureProjectsInitialized(userDataDir, deps)

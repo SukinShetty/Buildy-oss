@@ -222,6 +222,32 @@ export function stopAnalysisLoop(): void {
   void pushSendEligibility()
 }
 
+/**
+ * Stop watching because the ACTIVE PROJECT is about to change. MUST run BEFORE
+ * the memory layer is re-pointed (setActiveMemoryDir / nemp init / verifier
+ * namespace): the analysis loop reads memory context and writes observations,
+ * completions and pending outcomes through project-global state, and a project
+ * switch does not bump the loop's session token by itself — so a mid-flight or
+ * next cycle started under the OLD window would otherwise tee that window's
+ * activity into the NEW project's store. stopAnalysisLoop() bumps the session
+ * (any in-flight cycle discards its result before writing) and, unlike the
+ * renderer-initiated COMPANION_STOP path, the companion doesn't know yet — so
+ * we also tell it the watch ended and a window must be re-picked (same
+ * notification shape as haltWatchAsLost).
+ */
+export function stopWatchForProjectSwitch(): void {
+  const wasWatching = isRunning
+  const companion = companionRef
+  stopAnalysisLoop()
+  if (wasWatching && companion && !companion.isDestroyed()) {
+    companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+      windowName: null,
+      message: 'Project switched — pick a window to watch.',
+    })
+    notifyCompanionState(companion, 'idle')
+  }
+}
+
 export function pauseAnalysisLoop(): void { isPaused = true }
 export function resumeAnalysisLoop(): void { isPaused = false }
 export function setQuietMode(quiet: boolean): void { isQuietMode = quiet }

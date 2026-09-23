@@ -2,6 +2,8 @@
 // Electron-side owner of project-scoped memory. Thin wrapper over the pure
 // logic in projects-core.ts (naming / migration / projects.json CRUD), plus the
 // side-effects a project switch requires:
+//   - STOP any active watch first (see stopWatchForProjectSwitch — an old
+//     window's session must never write into the new project's store)
 //   - point memory.ts at the project's store dir (project-memory.json + goal)
 //   - re-init the Nemp bridge on userData/buildy-memory/<projectId>
 //   - reset the Verifier's pending outcomes to the project's namespace
@@ -13,6 +15,7 @@ import * as core from './projects-core'
 import { init as initNemp } from './nemp-bridge'
 import { setVerifierProject } from './verifier'
 import { setActiveMemoryDir } from './memory'
+import { stopWatchForProjectSwitch } from './analysis-loop'
 
 let projectsFile: core.ProjectsFile | null = null
 
@@ -24,11 +27,14 @@ function currentFile(): core.ProjectsFile | null {
   return projectsFile ?? core.loadProjectsFile(userDataDir())
 }
 
-/** Point every memory subsystem at `project`. */
+/** Point every memory subsystem at `project`. The store dir is resolved HERE
+ *  (projects-core.projectStoreDir) and handed to the Nemp bridge so there is
+ *  exactly one path derivation for stores, migration, and feature counts. */
 async function activate(project: ProjectRecord): Promise<void> {
-  setActiveMemoryDir(core.projectStoreDir(userDataDir(), project.id))
+  const storeDir = core.projectStoreDir(userDataDir(), project.id)
+  setActiveMemoryDir(storeDir)
   setVerifierProject(project.id)
-  await initNemp(project.id)
+  await initNemp(project.id, storeDir)
 }
 
 /**
@@ -64,6 +70,10 @@ export function listProjectSummaries(): ProjectSummary[] {
 export async function createProjectAndSwitch(
   input: { name?: string; goalText?: string }
 ): Promise<ProjectRecord> {
+  // Stop the watch BEFORE re-pointing memory: the analysis loop's session token
+  // is not bumped by a project switch, so an old-window cycle would otherwise
+  // write into the new project's store.
+  stopWatchForProjectSwitch()
   const { file, project } = core.createProject(userDataDir(), input)
   projectsFile = file
   await activate(project)
@@ -73,6 +83,12 @@ export async function createProjectAndSwitch(
 
 /** Switch the active project (memory, goal, Nemp store, verifier all follow). */
 export async function switchProject(projectId: string): Promise<ProjectRecord> {
+  const file = currentFile()
+  if (!file || !file.projects.some((p) => p.id === projectId)) {
+    throw new Error('Unknown project id') // validate BEFORE stopping the watch
+  }
+  // Stop the watch BEFORE re-pointing memory (see createProjectAndSwitch).
+  stopWatchForProjectSwitch()
   projectsFile = core.setActiveProjectRecord(userDataDir(), projectId)
   const active = getActiveProject()
   if (!active || active.id !== projectId) throw new Error('Unknown project id')

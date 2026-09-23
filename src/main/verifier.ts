@@ -27,6 +27,10 @@ const MAX_PENDING = 2
 let activeProjectId = 'default'
 const pendingByProject = new Map<string, PromptOutcome[]>()
 
+// Monotonic suffix so two outcomes recorded within the same millisecond can
+// never share an id (resolveOutcome looks outcomes up by id).
+let outcomeCounter = 0
+
 function getPending(): PromptOutcome[] {
   return pendingByProject.get(activeProjectId) ?? []
 }
@@ -52,7 +56,7 @@ export function recordPendingOutcome(promptText: string, expectedOutcome: string
   if (!p || !o) return null
 
   const outcome: PromptOutcome = {
-    id: `outcome:${Date.now()}`,
+    id: `outcome:${Date.now()}:${++outcomeCounter}`,
     suggestedAt: new Date().toISOString(),
     promptText: p,
     expectedOutcome: o,
