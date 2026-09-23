@@ -45,7 +45,7 @@ function snapshotDir(dir: string): DirSnapshot {
           snapshot.set(full, `${st.mtimeMs}:${st.size}`)
         }
       } catch {
-        // A file vanishing mid-walk (unrelated process) — record its absence.
+        // A file vanishing mid-walk (unrelated process) — record it as unreadable.
         snapshot.set(full, 'unreadable')
       }
     }
@@ -104,6 +104,15 @@ export async function launchBuildy(): Promise<BuildyApp> {
   }
 
   const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buildy-e2e-'))
+  const removeProfile = (): void => {
+    // Best effort — Windows may keep locks briefly; a leaked temp dir must
+    // never turn a teardown into a test failure.
+    try {
+      fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
+    } catch {
+      // Leave it for the OS temp cleaner.
+    }
+  }
   const realDirBefore = snapshotDir(realUserDataDir())
 
   const env: Record<string, string> = {
@@ -115,11 +124,17 @@ export async function launchBuildy(): Promise<BuildyApp> {
     ELECTRON_RENDERER_URL: '',
   }
 
-  const app = await _electron.launch(
-    IS_PACKAGED_RUN
-      ? { executablePath: PACKAGED_EXE!, env }
-      : { args: [DEV_MAIN_ENTRY], env }
-  )
+  let app: ElectronApplication
+  try {
+    app = await _electron.launch(
+      IS_PACKAGED_RUN
+        ? { executablePath: PACKAGED_EXE!, env }
+        : { args: [DEV_MAIN_ENTRY], env }
+    )
+  } catch (error) {
+    removeProfile() // launch failed — don't leak the throwaway profile
+    throw error
+  }
 
   // Collect renderer console errors / uncaught page errors for every window,
   // including windows that appear later.
@@ -134,34 +149,52 @@ export async function launchBuildy(): Promise<BuildyApp> {
   app.on('window', attach)
   for (const page of app.windows()) attach(page)
 
-  // Main-process error collector. Registered as early as evaluate() can reach;
-  // a crash before this point would fail the launch itself.
-  await app.evaluate(() => {
-    const errors: string[] = []
-    ;(globalThis as Record<string, unknown>)['__e2eMainErrors'] = errors
-    process.on('uncaughtException', (error) => errors.push(`uncaughtException: ${String(error)}`))
-    process.on('unhandledRejection', (reason) => errors.push(`unhandledRejection: ${String(reason)}`))
-  })
-
-  // Wait for all four windows to exist and finish loading.
-  const deadline = Date.now() + 30_000
+  // From here until the wrapper is handed to the caller, any failure must tear
+  // down the app AND the throwaway profile — otherwise a bad launch leaks both.
   const pages: Partial<Record<'main' | 'companion' | 'guidance' | 'voice', Page>> = {}
-  for (;;) {
-    for (const page of app.windows()) {
-      const kind = windowKind(page.url())
-      if (page.url() && !pages[kind]) pages[kind] = page
+  try {
+    // Main-process error collector. Registered as early as evaluate() can reach;
+    // a crash before this point would fail the launch itself. NOTE: installing an
+    // uncaughtException listener also suppresses Electron's default crash/dialog
+    // behavior — an acceptable tradeoff inside the test harness only.
+    await app.evaluate(() => {
+      const errors: string[] = []
+      ;(globalThis as Record<string, unknown>)['__e2eMainErrors'] = errors
+      process.on('uncaughtException', (error) => errors.push(`uncaughtException: ${String(error)}`))
+      process.on('unhandledRejection', (reason) => errors.push(`unhandledRejection: ${String(reason)}`))
+    })
+
+    // Wait for all four windows to exist and finish loading.
+    const deadline = Date.now() + 30_000
+    for (;;) {
+      for (const page of app.windows()) {
+        const kind = windowKind(page.url())
+        if (page.url() && !pages[kind]) pages[kind] = page
+      }
+      if (pages.main && pages.companion && pages.guidance && pages.voice) break
+      if (Date.now() > deadline) {
+        const seen = app.windows().map((w) => w.url()).join(', ')
+        throw new Error(`Not all four windows appeared within 30s. Seen: [${seen}]`)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    if (pages.main && pages.companion && pages.guidance && pages.voice) break
-    if (Date.now() > deadline) {
-      const seen = app.windows().map((w) => w.url()).join(', ')
-      await app.close().catch(() => undefined)
-      throw new Error(`Not all four windows appeared within 30s. Seen: [${seen}]`)
+    await Promise.all(
+      Object.values(pages).map((page) => page!.waitForLoadState('domcontentloaded'))
+    )
+  } catch (error) {
+    try {
+      await Promise.race([app.close(), new Promise((resolve) => setTimeout(resolve, 5_000))])
+    } catch {
+      // Hard kill below covers a wedged close.
     }
-    await new Promise((resolve) => setTimeout(resolve, 250))
+    try {
+      app.process().kill()
+    } catch {
+      // Already exited.
+    }
+    removeProfile()
+    throw error
   }
-  await Promise.all(
-    Object.values(pages).map((page) => page!.waitForLoadState('domcontentloaded'))
-  )
 
   const wrapped: BuildyApp = {
     app,
@@ -174,36 +207,46 @@ export async function launchBuildy(): Promise<BuildyApp> {
     mainErrors: async () =>
       app.evaluate(() => ((globalThis as Record<string, unknown>)['__e2eMainErrors'] as string[]) ?? []),
     close: async () => {
+      // Graceful steps are TIME-BOXED so a wedged main process can never keep
+      // us from reaching the hard kill below (which must always run — the
+      // suite's promise is: no Electron processes left behind).
+      const timeBoxed = async (step: () => Promise<unknown>, ms: number): Promise<void> => {
+        try {
+          await Promise.race([step(), new Promise((resolve) => setTimeout(resolve, ms))])
+        } catch {
+          // Step failed (app may already be gone) — the hard kill covers it.
+        }
+      }
       // The main window's close handler hides instead of closing (tray app), so
-      // ask the main process to exit outright — same guarantee the spec wants:
-      // never leave Electron processes running.
-      try {
-        await app.evaluate(({ app: electronApp }) => {
-          setTimeout(() => electronApp.exit(0), 100)
-        })
-      } catch {
-        // Evaluate can fail if the app already died — the kill below covers it.
-      }
-      try {
-        await app.close()
-      } catch {
-        // Fall through to the hard kill below.
-      }
+      // ask the main process to exit outright.
+      await timeBoxed(
+        () =>
+          app.evaluate(({ app: electronApp }) => {
+            setTimeout(() => electronApp.exit(0), 100)
+          }),
+        3_000
+      )
+      await timeBoxed(() => app.close(), 5_000)
       try {
         app.process().kill()
       } catch {
         // Already exited — good.
       }
-      // Give any straggling file handles a moment, then verify isolation:
+      // Give any straggling file handles a moment, then verify isolation.
       await new Promise((resolve) => setTimeout(resolve, 500))
-      const diffs = diffSnapshots(realDirBefore, snapshotDir(realUserDataDir()))
-      if (diffs.length > 0) {
-        throw new Error(
-          `ISOLATION FAILURE — the real userData folder changed during the e2e run:\n${diffs.join('\n')}`
-        )
+      try {
+        const diffs = diffSnapshots(realDirBefore, snapshotDir(realUserDataDir()))
+        if (diffs.length > 0) {
+          throw new Error(
+            `ISOLATION FAILURE — the real userData folder changed during the e2e run:\n${diffs.join('\n')}`
+          )
+        }
+      } finally {
+        // Always reclaim the throwaway profile, even on an isolation failure —
+        // the interesting evidence in that case is the REAL userData diff
+        // (printed in the error), not the temp profile.
+        removeProfile()
       }
-      // Best-effort cleanup of the throwaway profile (Windows may keep locks briefly).
-      fs.rmSync(profileDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
     },
   }
   return wrapped

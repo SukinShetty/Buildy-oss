@@ -25,4 +25,7 @@ if (process.env['BUILDY_E2E'] === '1' && process.env['BUILDY_USER_DATA_DIR']) {
 }
 
 // Deferred on purpose — see the header comment. Never convert to a static import.
-import('./index')
+import('./index').catch((error) => {
+  console.error('[Bootstrap] failed to load the app:', error)
+  process.exit(1)
+})

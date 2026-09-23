@@ -28,7 +28,8 @@ function allPages(): Array<[string, Page]> {
 test('every window has sandbox + contextIsolation on and nodeIntegration off', async () => {
   const prefs = await buildy.app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((win) => {
-      // getLastWebPreferences: the WebPreferences the renderer was created with.
+      // getLastWebPreferences (undocumented API): the WebPreferences the
+      // renderer was created with.
       const wc = win.webContents as unknown as {
         getURL(): string
         getLastWebPreferences?: () => {
