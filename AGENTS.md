@@ -10,10 +10,10 @@ Inspired by Clicky's screen-aware companion model — adapted to a different pro
 
 ## Architecture
 
-- **App shell**: Electron 31
+- **App shell**: Electron 44
 - **UI**: React 19 + TypeScript (no framework, plain CSS custom properties)
 - **State**: Zustand 5 — single store, all screens read from it
-- **Build tool**: electron-vite 2 (Vite 6 for renderer, separate bundles for main/preload/renderer)
+- **Build tool**: electron-vite 5 (Vite 7 for renderer, separate bundles for main/preload/renderer)
 - **Screen capture**: Electron `desktopCapturer` — built-in, works on Windows and macOS
 - **AI**: multi-provider via a registry in `src/main/ai/` — Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints. All API calls happen in the main process; keys are stored locally in the OS user-data dir.
 - **Voice**: ElevenLabs TTS with a Web Speech fallback. Playback is owned by a dedicated hidden voice window created with `backgroundThrottling: false`, driven by a serial voice queue (`voice-queue.ts`) that chunks long guidance and never cuts off mid-sentence.
