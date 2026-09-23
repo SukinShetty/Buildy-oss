@@ -65,6 +65,7 @@ export function VoicePlayer(): null {
       window.buildy.voice.onPlayTts((_, d) => {
         stopCurrent('new-tts')
         vlog(`play-tts ${d.id} len=${d.text.length}`)
+        // @ts-expect-error TS narrows `window` to `never` inside this negated `in` guard, but window.buildy exists at runtime
         if (!('speechSynthesis' in window)) { window.buildy.voice.error(d.id); return }
         const utter = new SpeechSynthesisUtterance(d.text)
         utter.rate = 0.95

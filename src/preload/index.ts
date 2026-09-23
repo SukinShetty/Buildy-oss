@@ -322,10 +322,6 @@ const buildyAPI = {
 
 contextBridge.exposeInMainWorld('buildy', buildyAPI)
 
-// TypeScript global type declaration for the renderer
-// Import this declaration in renderer tsconfig if needed
-declare global {
-  interface Window {
-    buildy: typeof buildyAPI
-  }
-}
+// The renderer declares `window.buildy` in src/renderer/src/env.d.ts via a
+// type-only import of this alias — keep it in sync by construction.
+export type BuildyAPI = typeof buildyAPI

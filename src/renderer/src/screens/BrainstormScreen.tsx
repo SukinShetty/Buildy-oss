@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { PromptCard } from '../components/PromptCard'
+import { isApiConfigured } from '../types'
 import type { ChatMessage, ExtractedProjectData } from '../types'
 
 export function BrainstormScreen(): React.ReactElement {
@@ -61,8 +62,8 @@ export function BrainstormScreen(): React.ReactElement {
     }
   }, [])
 
-  // Check if API is configured
-  const apiIsConfigured = settings.apiKey || settings.baseUrl || (settings.useProxy && settings.proxyUrl)
+  // Check if API is configured: a stored key, or a local provider with a baseUrl.
+  const apiIsConfigured = isApiConfigured(settings)
 
   async function handleSendMessage(): Promise<void> {
     const trimmedInput = inputText.trim()

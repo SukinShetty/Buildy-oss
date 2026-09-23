@@ -156,6 +156,18 @@ export function defaultRedactedSettings(): RedactedSettings {
   return { ...defaultNonSecretSettings(), hasApiKey: false, hasElevenLabsKey: false, secretFlags: {} }
 }
 
+// Providers that run without an API key — they just need a reachable baseUrl.
+const LOCAL_PROVIDERS: ReadonlySet<ProviderType> = new Set(['ollama', 'lmstudio', 'custom'])
+
+// True when the app can actually reach a provider: either an API key is stored
+// for the selected provider, or the provider is local and a baseUrl is set.
+// A baseUrl alone on a cloud provider is NOT enough — those require a key.
+export function isApiConfigured(
+  settings: Pick<RedactedSettings, 'provider' | 'hasApiKey' | 'baseUrl'>
+): boolean {
+  return settings.hasApiKey || (LOCAL_PROVIDERS.has(settings.provider) && settings.baseUrl.trim() !== '')
+}
+
 // ─── Screen Capture ───────────────────────────────────────────────────────────
 
 export interface WindowSource {

@@ -14,13 +14,16 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # --legacy-peer-deps is required: npm 10+ crashes with an arborist "edgesOut"
       # error on a clean install without it, even though every peer resolves.
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Build
         run: npm run build
