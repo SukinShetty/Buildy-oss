@@ -3,6 +3,7 @@ import {
   parseAnalysisResponse,
   tryExtractProjectData,
   containsHumanDirectedQuestion,
+  toAgentName,
 } from './response-parser'
 
 // A representative model output for a routine coding step — Buildy can default it,
@@ -155,6 +156,54 @@ describe('containsHumanDirectedQuestion — detection heuristic', () => {
 
   it('does NOT flag an empty prompt', () => {
     expect(containsHumanDirectedQuestion('')).toBe(false)
+  })
+})
+
+// ─── Phase 5 Task B — agent-neutral analysis (agentName) ──────────────────────
+
+describe('toAgentName — normalization', () => {
+  it('keeps the three valid values', () => {
+    expect(toAgentName('claude_code')).toBe('claude_code')
+    expect(toAgentName('codex')).toBe('codex')
+    expect(toAgentName('other')).toBe('other')
+  })
+
+  it('tolerates case, spacing, and hyphen variants', () => {
+    expect(toAgentName('Claude Code')).toBe('claude_code')
+    expect(toAgentName('CLAUDE-CODE')).toBe('claude_code')
+    expect(toAgentName(' claude ')).toBe('claude_code')
+    expect(toAgentName('Codex CLI')).toBe('codex')
+    expect(toAgentName('codex-cli')).toBe('codex')
+  })
+
+  it('defaults to "other" when missing', () => {
+    expect(toAgentName(undefined)).toBe('other')
+    expect(toAgentName(null)).toBe('other')
+    expect(toAgentName('')).toBe('other')
+  })
+
+  it('defaults to "other" for garbage values', () => {
+    expect(toAgentName('gpt-magic')).toBe('other')
+    expect(toAgentName(42)).toBe('other')
+    expect(toAgentName({ agent: 'claude_code' })).toBe('other')
+    expect(toAgentName(true)).toBe('other')
+  })
+})
+
+describe('parseAnalysisResponse — agentName field', () => {
+  it('carries a valid agentName through the parse', () => {
+    const raw = JSON.stringify({ whatIsHappening: 'Codex CLI awaiting input', nextPrompt: 'x', agentName: 'codex' })
+    expect(parseAnalysisResponse(raw, Date.now()).agentName).toBe('codex')
+  })
+
+  it('defaults agentName to "other" when the model omits it', () => {
+    const r = parseAnalysisResponse(ROUTINE_STEP, Date.now())
+    expect(r.agentName).toBe('other')
+  })
+
+  it('defaults agentName to "other" for an unrecognized value', () => {
+    const raw = JSON.stringify({ whatIsHappening: 'x', nextPrompt: 'x', agentName: 'copilot-ultra' })
+    expect(parseAnalysisResponse(raw, Date.now()).agentName).toBe('other')
   })
 })
 

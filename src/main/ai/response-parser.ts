@@ -12,7 +12,7 @@
 //
 // This parser handles all of those cases gracefully.
 
-import type { AnalysisResult, ExtractedProjectData, GoalAlignment, TerminalState } from '../../renderer/src/types'
+import type { AgentName, AnalysisResult, ExtractedProjectData, GoalAlignment, TerminalState } from '../../renderer/src/types'
 
 /**
  * Parse raw model output text into a structured AnalysisResult.
@@ -279,9 +279,27 @@ function normalizeAnalysisResult(
     needsHumanJudgment: toBool(parsed.needsHumanJudgment, false),
     humanJudgmentReason: parsed.humanJudgmentReason != null ? toStr(parsed.humanJudgmentReason, '') : undefined,
     terminalState: toTerminalState(parsed.terminalState),
+    agentName: toAgentName(parsed.agentName),
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }
+}
+
+/**
+ * Coerce a value to a valid AgentName; 'other' when absent/unrecognized.
+ * Tolerates minor model variations like "Claude Code", "claude-code", or
+ * "Codex CLI".
+ */
+export function toAgentName(value: unknown): AgentName {
+  if (typeof value !== 'string') return 'other'
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (normalized === 'claude_code' || normalized === 'claudecode' || normalized === 'claude') {
+    return 'claude_code'
+  }
+  if (normalized === 'codex' || normalized === 'codex_cli' || normalized === 'codexcli') {
+    return 'codex'
+  }
+  return 'other'
 }
 
 /**
@@ -349,6 +367,7 @@ function buildFallbackAnalysisResult(rawText: string, startTime: number): Analys
     nextPrompt: '',
     builderNote: 'No worries — sometimes it takes a second try!',
     terminalState: 'unknown',
+    agentName: 'other',
     analyzedAt: new Date().toISOString(),
     analysisDurationMs: Date.now() - startTime,
   }

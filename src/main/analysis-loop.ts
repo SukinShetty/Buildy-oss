@@ -38,7 +38,7 @@ import {
   replacePendingOutcome, removePendingOutcome,
 } from './verifier'
 import type { PromptOutcome } from './verifier'
-import { evaluateSendEligibility, sanitizePromptForSend } from './prompt-sender-core'
+import { evaluateSendEligibility, sanitizePromptForSend, detectDestructivePrompt } from './prompt-sender-core'
 import { executeSend, isSendInFlight, isWatchedWindowPresent } from './prompt-sender'
 import { sendGuidanceSendState, showGuidanceWindow } from './guidance-window'
 import { recordProviderCall, getCallsThisHour, isAtHourlyCap } from './cost-guard'
@@ -749,6 +749,10 @@ async function runOneAnalysisCycle(
   // Seed the per-cycle display analysis, then send it to the companion. Parallel
   // background passes patch THIS object and re-send (never clobber each other).
   analysis.promptId = nextPromptId()
+  // Destructive-prompt guard (speed bump, not a sandbox): computed here so the
+  // renderer only renders the verdict; it drives the two-click "Review first"
+  // flow on the send button.
+  analysis.sendGuard = detectDestructivePrompt(analysis.nextPrompt || '')
   analysis.callsThisHour = getCallsThisHour() // guidance panel footer
   displayAnalysis = analysis
   displaySession = mySession
@@ -784,7 +788,8 @@ async function runOneAnalysisCycle(
   // and Buildy NEVER answers the permission prompt itself.
   let spokePermissionAlert = false
   if (analysis.terminalState === 'permission_prompt') {
-    const alertLine = permissionAlertLine(watchedWindowName)
+    // Prefer the model-reported agentName; the title heuristic is the fallback.
+    const alertLine = permissionAlertLine(watchedWindowName, analysis.agentName)
     if (!companionWindow.isDestroyed()) {
       companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
         windowName: watchedWindowName, message: alertLine,
@@ -1056,9 +1061,11 @@ function patchDisplayAndResend(
   displayAnalysis = { ...displayAnalysis, ...patch }
   // A patched nextPrompt (grader-improved or verifier corrective) is a NEW
   // displayed prompt — give it a fresh id so send requests for the old one are
-  // rejected as stale, and so the new one is itself sendable.
+  // rejected as stale, and so the new one is itself sendable. Re-run the
+  // destructive-prompt guard for the same reason (new text, new verdict).
   if ('nextPrompt' in patch) {
     displayAnalysis.promptId = nextPromptId()
+    displayAnalysis.sendGuard = detectDestructivePrompt(displayAnalysis.nextPrompt || '')
   }
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)

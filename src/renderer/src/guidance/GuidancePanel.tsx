@@ -130,6 +130,13 @@ export function GuidancePanel(): React.ReactElement | null {
 
 // ─── Analysis body ─────────────────────────────────────────────────────────────
 
+/** Display name for the model-reported agent; null means "unknown agent". */
+function agentDisplayName(agentName: AnalysisResult['agentName']): string | null {
+  if (agentName === 'claude_code') return 'Claude Code'
+  if (agentName === 'codex') return 'Codex'
+  return null
+}
+
 function AnalysisBody({
   analysis,
   sendEligibility,
@@ -140,8 +147,20 @@ function AnalysisBody({
   const [copied, setCopied] = useState(false)
   const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [sendError, setSendError] = useState<string | null>(null)
+  // Destructive-prompt guard (speed bump, not a sandbox — main computed the
+  // verdict): the first click only ARMS the send and shows the reason in red;
+  // a second deliberate click actually sends.
+  const [guardArmed, setGuardArmed] = useState(false)
 
   const isWindows = window.buildy.platform === 'win32'
+  const agentLabel = agentDisplayName(analysis.agentName)
+  const pasteTarget = agentLabel ?? 'the terminal'
+  const guard = analysis.sendGuard ?? null
+
+  // A different displayed prompt (fresh promptId) resets the armed state.
+  useEffect(() => {
+    setGuardArmed(false)
+  }, [analysis.promptId])
 
   async function copyPrompt(): Promise<void> {
     if (!analysis.nextPrompt) return
@@ -172,19 +191,28 @@ function AnalysisBody({
       console.warn('[GuidancePanel] Send failed:', result.reason)
       await window.buildy.copyText(analysis.nextPrompt)
       setSendState('idle')
-      setSendError('Copied instead. Press Ctrl+V then Enter in Claude Code.')
+      setSendError(`Copied instead. Press Ctrl+V then Enter in ${pasteTarget}.`)
       setTimeout(() => setSendError(null), 6000)
     } catch (e) {
       console.warn('[GuidancePanel] Send failed:', e)
       try { await window.buildy.copyText(analysis.nextPrompt) } catch { /* clipboard best-effort */ }
       setSendState('idle')
-      setSendError('Copied instead. Press Ctrl+V then Enter in Claude Code.')
+      setSendError(`Copied instead. Press Ctrl+V then Enter in ${pasteTarget}.`)
       setTimeout(() => setSendError(null), 6000)
     }
   }
 
+  // Windows: the guard demands a second, deliberate click when it matched.
+  function handleSendClick(): void {
+    if (guard && !guardArmed) {
+      setGuardArmed(true) // first click: arm + show the reason — never send
+      return
+    }
+    void sendPrompt()
+  }
+
   // macOS/Linux: the primary button only copies.
-  async function copyForClaudeCode(): Promise<void> {
+  async function copyForAgent(): Promise<void> {
     if (!analysis.nextPrompt) return
     try {
       await window.buildy.copyText(analysis.nextPrompt)
@@ -195,11 +223,15 @@ function AnalysisBody({
     }
   }
 
+  // Label follows the model-reported agent: "Send to Claude Code" / "Send to
+  // Codex" / plain "Send" when the agent is unknown ('other').
+  const sendActionLabel = agentLabel ? `Send to ${agentLabel}` : 'Send'
   const sendLabel = !isWindows
-    ? (sendState === 'sent' ? 'Copied!' : 'Copy for Claude Code')
+    ? (sendState === 'sent' ? 'Copied!' : agentLabel ? `Copy for ${agentLabel}` : 'Copy prompt')
     : sendState === 'sending' ? 'Sending…'
     : sendState === 'sent' ? 'Sent'
-    : 'Send to Claude Code'
+    : guard && !guardArmed ? 'Review first'
+    : sendActionLabel
   const sendDisabled = isWindows
     ? (!sendEligibility.canSend || sendState === 'sending')
     : false
@@ -247,7 +279,7 @@ function AnalysisBody({
                 {copied ? 'Copied!' : 'Copy'}
               </button>
               <button
-                onClick={isWindows ? sendPrompt : copyForClaudeCode}
+                onClick={isWindows ? handleSendClick : copyForAgent}
                 disabled={sendDisabled}
                 style={{ ...S.sendBtn, ...(sendDisabled ? S.sendBtnDisabled : {}) }}
                 title={sendDisabled && sendEligibility.sendBlockedReason ? sendEligibility.sendBlockedReason : sendLabel}
@@ -257,6 +289,11 @@ function AnalysisBody({
             </div>
           </div>
           <div style={S.promptText} data-selectable>{analysis.nextPrompt}</div>
+          {isWindows && guard && guardArmed && (
+            <div style={S.guardWarning}>
+              {guard.reason} Click {sendActionLabel} again to send anyway.
+            </div>
+          )}
           {sendError && <div style={S.sendError}>{sendError}</div>}
         </div>
       )}
@@ -615,6 +652,13 @@ const S = {
     fontSize: 11,
     fontStyle: 'italic' as const,
     color: '#FBBF24',
+    lineHeight: 1.5,
+  },
+  // Destructive-prompt guard reason — red, shown once the first click armed it.
+  guardWarning: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#EF4444',
     lineHeight: 1.5,
   },
   callsFooter: {

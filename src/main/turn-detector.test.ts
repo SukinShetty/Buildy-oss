@@ -200,4 +200,19 @@ describe('permissionAlertLine — agent name from the window title (heuristic un
     expect(permissionAlertLine(null)).toBe('Your coding agent is asking for your approval.')
     expect(permissionAlertLine('')).toBe('Your coding agent is asking for your approval.')
   })
+
+  // Phase 5 Task B: the model now reports agentName — prefer it over the title.
+  it('prefers the model-reported agentName over the title heuristic', () => {
+    expect(permissionAlertLine('Set up SQLite database', 'claude_code'))
+      .toBe('Claude Code is asking for your approval.')
+    expect(permissionAlertLine('claude — ~/project', 'codex'))
+      .toBe('Codex is asking for your approval.')
+  })
+
+  it('falls back to the title heuristic when agentName is "other" or absent', () => {
+    expect(permissionAlertLine('Codex CLI', 'other')).toBe('Codex is asking for your approval.')
+    expect(permissionAlertLine('plain task title', 'other'))
+      .toBe('Your coding agent is asking for your approval.')
+    expect(permissionAlertLine('aider: repo', undefined)).toBe('Aider is asking for your approval.')
+  })
 })

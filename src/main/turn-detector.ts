@@ -16,7 +16,7 @@
 // No timers, no Electron, no Date.now() — callers pass timestamps. This keeps
 // the whole policy unit-testable (see turn-detector.test.ts).
 
-import type { TerminalState } from '../renderer/src/types'
+import type { AgentName, TerminalState } from '../renderer/src/types'
 import { IMAGE_CHANGE_THRESHOLD } from './change-detector'
 
 /** Cadence of the low-res local poll while the agent is working. */
@@ -150,12 +150,19 @@ export function shouldAnnouncePermission(
 }
 
 /**
- * One short spoken line for a permission prompt. Until Task B adds real
- * agentName detection, the agent is derived heuristically from the window
- * title; agents rename the terminal every turn, so the generic fallback is
- * common and fine.
+ * One short spoken line for a permission prompt. Prefers the model-reported
+ * agentName (Phase 5 Task B) when it names a concrete agent; 'other' or a
+ * missing value falls back to the window-title heuristic — it still covers
+ * agents the model cannot report (Gemini, Aider), and agents rename the
+ * terminal every turn, so the generic fallback stays common and fine.
  */
-export function permissionAlertLine(windowTitle: string | null | undefined): string {
+export function permissionAlertLine(
+  windowTitle: string | null | undefined,
+  agentName?: AgentName
+): string {
+  if (agentName === 'claude_code') return 'Claude Code is asking for your approval.'
+  if (agentName === 'codex') return 'Codex is asking for your approval.'
+
   const title = (windowTitle || '').toLowerCase()
   if (title.includes('claude')) return 'Claude Code is asking for your approval.'
   if (title.includes('codex')) return 'Codex is asking for your approval.'

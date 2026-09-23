@@ -252,6 +252,12 @@ export type CaptureOutcome =
 // How the current activity relates to the user's goal.
 export type GoalAlignment = 'on-track' | 'drift' | 'blocked'
 
+// Model-reported identity of the AI coding agent visible in the watched window.
+// Drives the send-button label ("Send to Claude Code" / "Send to Codex" /
+// "Send") and the permission-alert wording. Parser defaults to 'other' when
+// the model omits it or returns something unrecognized.
+export type AgentName = 'claude_code' | 'codex' | 'other'
+
 // Model-classified state of any AI coding agent (Claude Code, Codex CLI or
 // similar) visible in the watched window. Gates the "Send to Claude Code"
 // button: sending is only allowed when the agent is idle and awaiting input.
@@ -306,6 +312,13 @@ export interface AnalysisResult {
   // Model-classified coding-agent state (see TerminalState). Parser defaults to
   // 'unknown' when the model omits it.
   terminalState?: TerminalState
+  // Which coding agent the model saw on screen (see AgentName). Parser defaults
+  // to 'other' when missing/invalid.
+  agentName?: AgentName
+  // Destructive-prompt guard (speed bump, not a sandbox): computed by MAIN from
+  // the displayed nextPrompt via detectDestructivePrompt. Non-null arms the
+  // two-click "Review first" flow in the guidance panel.
+  sendGuard?: { reason: string } | null
   // Cost guard: provider calls in the current rolling hour, attached by MAIN
   // when the analysis is pushed (shown in the guidance panel footer).
   callsThisHour?: number
