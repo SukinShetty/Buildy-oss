@@ -25,6 +25,8 @@ import type {
   MemorySnapshot,
   SendEligibility,
   SendPromptResult,
+  ProjectRecord,
+  ProjectSummary,
 } from '../renderer/src/types'
 
 // The API exposed to window.buildy in the renderer
@@ -100,6 +102,23 @@ const buildyAPI = {
       ipcRenderer.invoke(IPC.GOAL_SET, goal),
     update: (partial: Partial<Goal>): Promise<Goal | null> =>
       ipcRenderer.invoke(IPC.GOAL_UPDATE, partial),
+  },
+
+  // ─── Projects (project-scoped memory) ─────────────────────────────────────
+  // One record per project; ALL memory (project memory, goal, Nemp store,
+  // verifier outcomes) follows the active project. create/switch re-point the
+  // whole memory layer; rename never touches memory.
+  projects: {
+    list: (): Promise<ProjectSummary[]> =>
+      ipcRenderer.invoke(IPC.PROJECTS_LIST),
+    create: (input: { name?: string; goalText?: string }): Promise<ProjectRecord> =>
+      ipcRenderer.invoke(IPC.PROJECTS_CREATE, input),
+    rename: (id: string, name: string): Promise<ProjectRecord> =>
+      ipcRenderer.invoke(IPC.PROJECTS_RENAME, { id, name }),
+    switch: (id: string): Promise<ProjectRecord> =>
+      ipcRenderer.invoke(IPC.PROJECTS_SWITCH, id),
+    getActive: (): Promise<ProjectRecord | null> =>
+      ipcRenderer.invoke(IPC.PROJECTS_GET_ACTIVE),
   },
 
   // ─── Provider info ────────────────────────────────────────────────────────

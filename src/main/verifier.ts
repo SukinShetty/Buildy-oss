@@ -19,7 +19,27 @@ export interface PromptOutcome {
 
 const MAX_PENDING = 2
 
-let pending: PromptOutcome[] = []
+// Pending outcomes are namespaced PER PROJECT (in-memory, keyed by project id)
+// so a prompt suggested in one project is never verified against another
+// project's screen. Switching projects starts the target project with a CLEAN
+// pending set — outcomes are transient session state, and anything suggested
+// before a switch belongs to a session that no longer exists.
+let activeProjectId = 'default'
+const pendingByProject = new Map<string, PromptOutcome[]>()
+
+function getPending(): PromptOutcome[] {
+  return pendingByProject.get(activeProjectId) ?? []
+}
+
+function setPending(outcomes: PromptOutcome[]): void {
+  pendingByProject.set(activeProjectId, outcomes)
+}
+
+/** Point the verifier at a project. Clears that project's pending set. */
+export function setVerifierProject(projectId: string): void {
+  activeProjectId = (projectId || '').trim() || 'default'
+  pendingByProject.set(activeProjectId, [])
+}
 
 /**
  * Record a newly-suggested prompt as a pending outcome. Only the most recent
@@ -38,9 +58,10 @@ export function recordPendingOutcome(promptText: string, expectedOutcome: string
     expectedOutcome: o,
     status: 'pending',
   }
-  pending.push(outcome)
+  let pending = [...getPending(), outcome]
   // Keep only the most recent few.
   if (pending.length > MAX_PENDING) pending = pending.slice(-MAX_PENDING)
+  setPending(pending)
   return outcome
 }
 
@@ -55,7 +76,7 @@ export function replacePendingOutcome(promptText: string, expectedOutcome: strin
   const p = (promptText || '').trim()
   const o = (expectedOutcome || '').trim()
   if (!p || !o) return null
-  pending = []
+  setPending([])
   return recordPendingOutcome(p, o)
 }
 
@@ -64,15 +85,16 @@ export function replacePendingOutcome(promptText: string, expectedOutcome: strin
  * null if there is nothing awaiting verification.
  */
 export function getMostRecentPending(): PromptOutcome | null {
+  const pending = getPending()
   for (let i = pending.length - 1; i >= 0; i--) {
     if (pending[i].status === 'pending') return pending[i]
   }
   return null
 }
 
-/** All tracked outcomes (mostly for tests / diagnostics). */
+/** All tracked outcomes for the ACTIVE project (mostly for tests / diagnostics). */
 export function getOutcomes(): readonly PromptOutcome[] {
-  return pending
+  return getPending()
 }
 
 /**
@@ -86,6 +108,7 @@ export function resolveOutcome(
   note?: string,
   correctivePrompt?: string
 ): void {
+  const pending = getPending()
   const found = pending.find((o) => o.id === id)
   if (!found) return
   found.status = status
@@ -93,11 +116,11 @@ export function resolveOutcome(
   found.note = note
   found.correctivePrompt = correctivePrompt
   if (status !== 'pending') {
-    pending = pending.filter((o) => o.id !== id)
+    setPending(pending.filter((o) => o.id !== id))
   }
 }
 
-/** Clear all tracked outcomes (called on watch start / stop / window switch). */
+/** Clear the active project's outcomes (called on watch start / stop / window switch). */
 export function clearOutcomes(): void {
-  pending = []
+  setPending([])
 }

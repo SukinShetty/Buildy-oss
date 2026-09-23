@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import {
   recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes, getOutcomes,
-  replacePendingOutcome,
+  replacePendingOutcome, setVerifierProject,
 } from './verifier'
 
 describe('verifier — pending prompt-outcome tracking', () => {
@@ -60,5 +60,31 @@ describe('verifier — pending prompt-outcome tracking', () => {
     expect(replacePendingOutcome('', 'outcome')).toBeNull()
     expect(replacePendingOutcome('prompt', '')).toBeNull()
     expect(getMostRecentPending()?.id).toBe(kept.id)
+  })
+})
+
+describe('verifier — per-project namespacing', () => {
+  afterAll(() => setVerifierProject('default'))
+
+  it('an outcome recorded in project A is not visible after switching to project B', () => {
+    setVerifierProject('proj-a')
+    recordPendingOutcome('prompt for project A', 'outcome for project A')
+    expect(getMostRecentPending()).not.toBeNull()
+
+    setVerifierProject('proj-b')
+    expect(getMostRecentPending()).toBeNull()
+    expect(getOutcomes()).toHaveLength(0)
+  })
+
+  it('switching projects starts a clean pending set (cleared on switch)', () => {
+    setVerifierProject('proj-a')
+    recordPendingOutcome('prompt one', 'outcome one')
+    setVerifierProject('proj-b')
+    recordPendingOutcome('prompt two', 'outcome two')
+    // Coming back to A after a switch starts clean — stale pre-switch outcomes
+    // are never verified against a different session.
+    setVerifierProject('proj-a')
+    expect(getMostRecentPending()).toBeNull()
+    expect(getOutcomes()).toHaveLength(0)
   })
 })

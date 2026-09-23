@@ -25,6 +25,24 @@ export function emptyGoal(): Goal {
   return { purpose: '', createdAt: now, lastReviewedAt: now }
 }
 
+// ─── Project records (project-scoped memory) ──────────────────────────────────
+// One record per project. ALL memory (Nemp store, project memory, goal,
+// verifier pending outcomes) is namespaced by `id`; the active project id is
+// persisted in userData/projects.json.
+
+export interface ProjectRecord {
+  id: string            // uuid
+  name: string          // display name (renameable)
+  goalText: string      // the goal's purpose text (kept in sync on goal save)
+  createdAt: string     // ISO timestamp
+  lastActiveAt: string  // ISO timestamp — bumped when the project becomes active
+}
+
+// Record + derived info for the project switcher UI.
+export interface ProjectSummary extends ProjectRecord {
+  featureCount: number  // completed features recorded in this project's memory
+}
+
 export interface ProjectMemory {
   projectName: string
   productSummary: string
@@ -367,6 +385,12 @@ export const IPC = {
   GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
   GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
   GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)
+  // ─── Projects (project-scoped memory) ────────────────────────────────────
+  PROJECTS_LIST:       'projects:list',            // renderer → main → ProjectSummary[]
+  PROJECTS_CREATE:     'projects:create',          // renderer → main (create + switch) → ProjectRecord
+  PROJECTS_RENAME:     'projects:rename',          // renderer → main → ProjectRecord
+  PROJECTS_SWITCH:     'projects:switch',          // renderer → main (set active) → ProjectRecord
+  PROJECTS_GET_ACTIVE: 'projects:get-active',      // renderer → main → ProjectRecord | null
   // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────
   MEMORY_GET:             'memory:get',                  // → MemorySnapshot
   MEMORY_GET_CONTEXT:     'memory:get-context-summary',  // → string

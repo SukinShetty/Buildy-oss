@@ -135,6 +135,17 @@ export const goalPartialSchema = z.object({
   lastReviewedAt: z.string().max(64).optional(),
 }).passthrough()
 
+// ─── Projects (project-scoped memory) ────────────────────────────────────────
+export const projectIdSchema = z.string().min(1).max(100)
+export const projectCreateSchema = z.object({
+  name: z.string().max(120).optional(),
+  goalText: z.string().max(5000).optional(),
+})
+export const projectRenameSchema = z.object({
+  id: projectIdSchema,
+  name: z.string().min(1).max(120),
+})
+
 export const shortText = z.string().max(10_000)
 // Displayed-prompt identity for send-to-terminal (main-generated, opaque).
 export const promptIdSchema = z.string().min(1).max(200)

@@ -5,6 +5,8 @@
 import { create } from 'zustand'
 import type {
   ProjectMemory,
+  ProjectRecord,
+  ProjectSummary,
   RedactedSettings,
   WindowSource,
   CaptureResult,
@@ -43,6 +45,10 @@ interface AppState {
   project: ProjectMemory
   projectIsLoaded: boolean
 
+  // ── Project records (project-scoped memory — switcher UI)
+  projects: ProjectSummary[]
+  activeProject: ProjectRecord | null
+
   // ── Settings (REDACTED — non-secret fields + has* booleans; never raw keys)
   settings: RedactedSettings
   settingsAreLoaded: boolean
@@ -71,6 +77,9 @@ interface AppState {
   setProject: (project: ProjectMemory) => void
   patchProject: (partial: Partial<ProjectMemory>) => void
   setProjectIsLoaded: (loaded: boolean) => void
+
+  setProjects: (projects: ProjectSummary[]) => void
+  setActiveProject: (activeProject: ProjectRecord | null) => void
 
   setSettings: (settings: RedactedSettings) => void
   setSettingsAreLoaded: (loaded: boolean) => void
@@ -104,6 +113,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   project: emptyProjectMemory(),
   projectIsLoaded: false,
 
+  // ── Project records
+  projects: [],
+  activeProject: null,
+
   // ── Settings
   settings: defaultRedactedSettings(),
   settingsAreLoaded: false,
@@ -134,6 +147,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   patchProject: (partial) =>
     set((state) => ({ project: { ...state.project, ...partial } })),
   setProjectIsLoaded: (projectIsLoaded) => set({ projectIsLoaded }),
+
+  setProjects: (projects) => set({ projects }),
+  setActiveProject: (activeProject) => set({ activeProject }),
 
   setSettings: (settings) => set({ settings }),
   setSettingsAreLoaded: (settingsAreLoaded) => set({ settingsAreLoaded }),

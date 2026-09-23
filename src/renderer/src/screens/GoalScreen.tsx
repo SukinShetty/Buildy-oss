@@ -3,15 +3,23 @@
 // Shown on first launch, from the "Set Goal" nav tab, and when starting a new
 // project. The goal is stored locally (project memory) and injected into every
 // analysis so Buildy can tell the user whether each step moves toward the goal.
+//
+// Also hosts the PROJECT SWITCHER: each project has its own memory, and
+// switching re-points the whole memory layer. Editing the goal text keeps the
+// current project (and its memory) — only "New project" starts a fresh one.
 
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../store/useAppStore'
+import type { ProjectMemory } from '../types'
 
 const PLACEHOLDER =
   'Example: I want to build a simple CRM for my small business to track customers and follow-ups. The main users are me and 2 employees who are not technical.'
 
 export function GoalScreen(): React.ReactElement {
-  const { project, patchProject, setCurrentScreen } = useAppStore()
+  const {
+    project, setProject, patchProject, setCurrentScreen,
+    projects, activeProject, setProjects, setActiveProject,
+  } = useAppStore()
 
   const existing = project.goal
   const [purpose, setPurpose] = useState(existing?.purpose ?? '')
@@ -23,13 +31,85 @@ export function GoalScreen(): React.ReactElement {
     !!(existing?.audience || existing?.mostImportant || existing?.successCriteria)
   )
   const [saving, setSaving] = useState(false)
+  const [switching, setSwitching] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
 
   const canSave = purpose.trim().length > 0
+
+  const refreshProjects = useCallback(async (): Promise<void> => {
+    try {
+      const [list, active] = await Promise.all([
+        window.buildy.projects.list(),
+        window.buildy.projects.getActive(),
+      ])
+      setProjects(list)
+      setActiveProject(active)
+    } catch (e) {
+      console.warn('[GoalScreen] failed to load projects:', e)
+    }
+  }, [setProjects, setActiveProject])
+
+  useEffect(() => { refreshProjects() }, [refreshProjects])
+
+  // After a switch/new-project the ACTIVE project's memory changed under us —
+  // reload it and reset the form fields from its goal.
+  function applyLoadedProject(pm: ProjectMemory): void {
+    setProject(pm)
+    setPurpose(pm.goal?.purpose ?? '')
+    setAudience(pm.goal?.audience ?? '')
+    setMostImportant(pm.goal?.mostImportant ?? '')
+    setSuccessCriteria(pm.goal?.successCriteria ?? '')
+    setShowMore(!!(pm.goal?.audience || pm.goal?.mostImportant || pm.goal?.successCriteria))
+  }
+
+  async function handleSwitchProject(id: string): Promise<void> {
+    if (switching || !id || id === activeProject?.id) return
+    setSwitching(true)
+    try {
+      await window.buildy.projects.switch(id)
+      applyLoadedProject(await window.buildy.loadProject())
+      await refreshProjects()
+    } catch (e) {
+      console.error('[GoalScreen] failed to switch project:', e)
+    } finally {
+      setSwitching(false)
+    }
+  }
+
+  async function handleNewProject(): Promise<void> {
+    if (switching) return
+    setSwitching(true)
+    try {
+      await window.buildy.projects.create({})
+      applyLoadedProject(await window.buildy.loadProject())
+      await refreshProjects()
+    } catch (e) {
+      console.error('[GoalScreen] failed to create project:', e)
+    } finally {
+      setSwitching(false)
+    }
+  }
+
+  async function handleRename(): Promise<void> {
+    const name = renameValue.trim()
+    if (!name || !activeProject) { setRenaming(false); return }
+    try {
+      await window.buildy.projects.rename(activeProject.id, name)
+      await refreshProjects()
+    } catch (e) {
+      console.error('[GoalScreen] failed to rename project:', e)
+    } finally {
+      setRenaming(false)
+    }
+  }
 
   async function handleSave(): Promise<void> {
     if (!canSave || saving) return
     setSaving(true)
     try {
+      // "Edit goal" KEEPS this project's memory: goal.set only replaces the goal
+      // on the active project — it never creates a project or wipes memory.
       const goal = await window.buildy.goal.set({
         purpose: purpose.trim(),
         audience: audience.trim() || undefined,
@@ -58,6 +138,63 @@ export function GoalScreen(): React.ReactElement {
   return (
     <div style={styles.container}>
       <div style={styles.inner}>
+        {/* Project switcher — each project has its own memory */}
+        <div style={styles.projectBar}>
+          <div style={styles.projectLabel}>PROJECT</div>
+          <div style={styles.projectRow}>
+            <select
+              value={activeProject?.id ?? ''}
+              onChange={(e) => handleSwitchProject(e.target.value)}
+              disabled={switching || projects.length === 0}
+              style={styles.projectSelect}
+            >
+              {projects.length === 0 && <option value="">Loading…</option>}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.featureCount} {p.featureCount === 1 ? 'feature' : 'features'})
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={handleNewProject}
+              disabled={switching}
+              style={styles.projectBtn}
+            >
+              + New project
+            </button>
+          </div>
+          {!renaming ? (
+            <button
+              type="button"
+              onClick={() => { setRenameValue(activeProject?.name ?? ''); setRenaming(true) }}
+              disabled={!activeProject}
+              style={styles.renameLink}
+            >
+              Rename
+            </button>
+          ) : (
+            <div style={styles.renameRow}>
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleRename() }}
+                placeholder="Project name"
+                autoFocus
+                style={styles.renameInput}
+              />
+              <button type="button" className="btn-ghost" onClick={handleRename} style={styles.projectBtn}>
+                Save
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setRenaming(false)} style={styles.projectBtn}>
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+
         <h1 style={styles.heading}>What are you building?</h1>
         <p style={styles.subheading}>
           Tell me in plain English. I will remember this and use it to guide every step.
@@ -150,6 +287,56 @@ const styles = {
     margin: '0 auto',
     display: 'flex',
     flexDirection: 'column' as const,
+  },
+  projectBar: {
+    marginBottom: 18,
+    padding: '10px 12px',
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-md)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 6,
+  },
+  projectLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+    color: 'var(--color-text-muted)',
+  },
+  projectRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  projectSelect: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+  },
+  projectBtn: {
+    fontSize: 12,
+    padding: '4px 10px',
+    whiteSpace: 'nowrap' as const,
+  },
+  renameLink: {
+    alignSelf: 'flex-start' as const,
+    background: 'none',
+    border: 'none',
+    color: 'var(--color-accent)',
+    cursor: 'pointer',
+    fontSize: 12,
+    padding: 0,
+  },
+  renameRow: {
+    display: 'flex',
+    gap: 6,
+    alignItems: 'center',
+  },
+  renameInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
   },
   heading: {
     fontSize: 24,

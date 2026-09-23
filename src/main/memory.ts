@@ -7,7 +7,7 @@
 
 import { app } from 'electron'
 import { promises as fs } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import type {
   ProjectMemory,
   AppSettings,
@@ -19,14 +19,32 @@ import { emptyProjectMemory, defaultNonSecretSettings } from '../renderer/src/ty
 import { getSecret, hasSecret, secretKeyForProvider, getAllRedacted } from './secure-store'
 
 const userDataDirectory = app.getPath('userData')
-const projectMemoryFilePath = join(userDataDirectory, 'project-memory.json')
 export const settingsFilePath = join(userDataDirectory, 'settings.json')
 
 // ─── Project memory ───────────────────────────────────────────────────────────
+// Project memory (and the goal stored on it) is NAMESPACED PER PROJECT: after
+// projects.ts activates a project, reads/writes go to that project's store dir
+// (userData/buildy-memory/<projectId>/project-memory.json). The legacy
+// un-namespaced userData/project-memory.json is only used as a fallback before
+// initialisation and is never written to after migration.
+
+let activeMemoryDirectory: string | null = null
+
+/** Point project-memory persistence at the ACTIVE project's store directory.
+ *  Called by projects.ts on startup and on every project switch. */
+export function setActiveMemoryDir(directory: string): void {
+  activeMemoryDirectory = directory
+}
+
+function projectMemoryFilePath(): string {
+  return activeMemoryDirectory
+    ? join(activeMemoryDirectory, 'project-memory.json')
+    : join(userDataDirectory, 'project-memory.json') // pre-init legacy fallback
+}
 
 export async function loadProjectMemory(): Promise<ProjectMemory> {
   try {
-    const fileContent = await fs.readFile(projectMemoryFilePath, 'utf-8')
+    const fileContent = await fs.readFile(projectMemoryFilePath(), 'utf-8')
     const raw = JSON.parse(fileContent) as Partial<ProjectMemory>
     // Merge over defaults so files written by older versions gain new fields
     // (goal, goalPromptSeen) without breaking.
@@ -38,16 +56,13 @@ export async function loadProjectMemory(): Promise<ProjectMemory> {
 }
 
 export async function saveProjectMemory(projectMemory: ProjectMemory): Promise<void> {
-  await ensureUserDataDirectoryExists()
+  const filePath = projectMemoryFilePath()
+  await fs.mkdir(dirname(filePath), { recursive: true })
   const updatedMemory: ProjectMemory = {
     ...projectMemory,
     updatedAt: new Date().toISOString(),
   }
-  await fs.writeFile(
-    projectMemoryFilePath,
-    JSON.stringify(updatedMemory, null, 2),
-    'utf-8'
-  )
+  await fs.writeFile(filePath, JSON.stringify(updatedMemory, null, 2), 'utf-8')
 }
 
 // ─── Goal ───────────────────────────────────────────────────────────────────

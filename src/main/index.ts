@@ -15,7 +15,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosition } from './companion-window'
 import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
-import { init as initNempMemory } from './nemp-bridge'
+import { initProjects } from './projects'
 import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
 import { migratePlaintextSecrets } from './secure-store'
 import { settingsFilePath } from './memory'
@@ -227,11 +227,17 @@ if (!gotInstanceLock) {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!gotInstanceLock) return  // second instance is quitting — don't create windows
 
   // One-time: move any plaintext API keys out of settings.json into encrypted storage.
   try { migratePlaintextSecrets(settingsFilePath) } catch (e) { console.error('[SecureStore] migration failed:', e) }
+
+  // Project-scoped memory: run the one-time legacy migration (idempotent, never
+  // deletes data) and activate the persisted active project BEFORE any window
+  // can read memory. Also initialises the Nemp layer for that project.
+  // Non-fatal if it can't load.
+  await initProjects().catch((e) => console.error('[Projects] init failed:', e))
 
   mainWindow = createMainWindow()
   companionWindow = createCompanionWindow()
@@ -242,9 +248,6 @@ app.whenReady().then(() => {
   // Register IPC handlers ONCE, with getters so they always target the current
   // window even if a window is recreated (see app.on('activate')).
   registerIpcHandlers(() => mainWindow!, () => companionWindow)
-
-  // Initialise the Nemp memory layer (local-only). Non-fatal if it can't load.
-  initNempMemory('default').catch((e) => console.error('[Nemp] init failed:', e))
 
   console.log('Buildy launched — companion only (panel hidden)')
 })

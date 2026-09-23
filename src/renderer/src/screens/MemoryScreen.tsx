@@ -19,23 +19,29 @@ const EMPTY_SNAPSHOT: MemorySnapshot = {
 }
 
 export function MemoryScreen(): React.ReactElement {
-  const { setCurrentScreen } = useAppStore()
+  const { setCurrentScreen, activeProject, setActiveProject } = useAppStore()
   const [snap, setSnap] = useState<MemorySnapshot>(EMPTY_SNAPSHOT)
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
 
+  // Snapshot, export and reset all act on the ACTIVE project only — the header
+  // names it so it's always clear whose memory this is.
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const s = await window.buildy.memory.get()
+      const [s, active] = await Promise.all([
+        window.buildy.memory.get(),
+        window.buildy.projects.getActive(),
+      ])
       setSnap(s)
+      setActiveProject(active)
     } catch (e) {
       console.warn('[MemoryScreen] load failed:', e)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setActiveProject])
 
   useEffect(() => { load() }, [load])
 
@@ -73,11 +79,13 @@ export function MemoryScreen(): React.ReactElement {
     <div style={S.container}>
       <div style={S.header}>
         <div style={S.headerRow}>
-          <div style={S.headerTitle}>🧠 Project Memory</div>
+          <div style={S.headerTitle}>
+            🧠 {activeProject?.name ? `${activeProject.name} — Memory` : 'Project Memory'}
+          </div>
           <button className="btn-ghost" onClick={load} style={S.smallBtn} title="Refresh">↻</button>
         </div>
         <div style={S.headerSub}>
-          What Buildy remembers about your project. 100% local — nothing leaves your device.
+          What Buildy remembers about this project. 100% local — nothing leaves your device.
         </div>
       </div>
 

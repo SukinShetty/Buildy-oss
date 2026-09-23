@@ -25,7 +25,12 @@ import {
   nonSecretSettingsSchema, setSecretSchema, captureResultSchema, projectMemorySchema,
   goalPartialSchema, shortText, sourceId as sourceIdSchema, windowName as windowNameSchema,
   confidenceEnum, chatHistorySchema, promptIdSchema,
+  projectIdSchema, projectCreateSchema, projectRenameSchema,
 } from './ipc-schemas'
+import {
+  listProjectSummaries, getActiveProject, createProjectAndSwitch, switchProject,
+  renameProject, noteGoalSaved,
+} from './projects'
 
 // Registered ONCE at startup. Window references are GETTERS so handlers always
 // target the current window even if a window is recreated (no re-registration,
@@ -169,9 +174,68 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.GOAL_SET, async (_event, goalRaw: unknown) => {
     try {
       const goal = parseInput(goalPartialSchema, 'GOAL_SET', goalRaw)
-      return await setGoal(goal)
+      const saved = await setGoal(goal)
+      // Keep the active project record's goalText in sync. Editing the goal
+      // NEVER creates a new project or touches memory — same project, new text.
+      noteGoalSaved(saved.purpose)
+      return saved
     } catch (error) {
       console.error('[IPC] GOAL_SET error:', error)
+      throw error
+    }
+  })
+
+  // ─── Projects (project-scoped memory) ────────────────────────────────────────
+  // Everything memory-related is namespaced by project id; these channels manage
+  // the records and the active project. Mutations are main-window-only.
+
+  ipcMain.handle(IPC.PROJECTS_LIST, async () => {
+    try {
+      return listProjectSummaries()
+    } catch (error) {
+      console.error('[IPC] PROJECTS_LIST error:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle(IPC.PROJECTS_GET_ACTIVE, async () => {
+    try {
+      return getActiveProject()
+    } catch (error) {
+      console.error('[IPC] PROJECTS_GET_ACTIVE error:', error)
+      return null
+    }
+  })
+
+  ipcMain.handle(IPC.PROJECTS_CREATE, async (event, inputRaw: unknown) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'PROJECTS_CREATE')
+      const input = parseInput(projectCreateSchema, 'PROJECTS_CREATE', inputRaw)
+      return await createProjectAndSwitch(input)
+    } catch (error) {
+      console.error('[IPC] PROJECTS_CREATE error:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle(IPC.PROJECTS_RENAME, async (event, renameRaw: unknown) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'PROJECTS_RENAME')
+      const { id, name } = parseInput(projectRenameSchema, 'PROJECTS_RENAME', renameRaw)
+      return renameProject(id, name)
+    } catch (error) {
+      console.error('[IPC] PROJECTS_RENAME error:', error)
+      throw error
+    }
+  })
+
+  ipcMain.handle(IPC.PROJECTS_SWITCH, async (event, idRaw: unknown) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'PROJECTS_SWITCH')
+      const id = parseInput(projectIdSchema, 'PROJECTS_SWITCH', idRaw)
+      return await switchProject(id)
+    } catch (error) {
+      console.error('[IPC] PROJECTS_SWITCH error:', error)
       throw error
     }
   })
