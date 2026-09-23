@@ -133,11 +133,17 @@ export type SecretName =
 // Non-secret settings — persisted to disk and safe to accept from / send to the renderer.
 export interface NonSecretSettings {
   provider: ProviderType         // Which AI provider to use
-  modelId: string                // Model identifier (e.g. "claude-sonnet-4-6", "gpt-4o")
+  modelId: string                // Model identifier chosen by the user ('' until they pick one)
   baseUrl: string                // Base URL — used by ollama, lmstudio, custom, openrouter
   autoAnalysisIntervalSeconds: number
   elevenLabsVoiceId: string      // ElevenLabs voice ID (default: Rachel — warm, friendly)
+  hourlyCallCap: number          // Cost guard: max provider calls per rolling hour (20–600)
 }
+
+// Cost guard bounds (Settings-editable).
+export const HOURLY_CALL_CAP_MIN = 20
+export const HOURLY_CALL_CAP_MAX = 600
+export const HOURLY_CALL_CAP_DEFAULT = 120
 
 // MAIN-internal full settings: non-secret fields + secrets injected from secure-store.
 // NEVER serialize this to the renderer.
@@ -159,10 +165,12 @@ const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM' // Rachel — warm, conversation
 export function defaultNonSecretSettings(): NonSecretSettings {
   return {
     provider: 'anthropic',
-    modelId: 'claude-opus-4-7',
+    // NO default model: the user must pick one from the live model list.
+    modelId: '',
     baseUrl: '',
     autoAnalysisIntervalSeconds: 30,
     elevenLabsVoiceId: DEFAULT_VOICE_ID,
+    hourlyCallCap: HOURLY_CALL_CAP_DEFAULT,
   }
 }
 
@@ -184,6 +192,33 @@ export function isApiConfigured(
   settings: Pick<RedactedSettings, 'provider' | 'hasApiKey' | 'baseUrl'>
 ): boolean {
   return settings.hasApiKey || (LOCAL_PROVIDERS.has(settings.provider) && settings.baseUrl.trim() !== '')
+}
+
+// True only when the app is fully usable: a reachable provider AND a chosen
+// model. With no key or no model, analysis and Brainstorm refuse with
+// "Choose a model in Settings".
+export function isModelConfigured(
+  settings: Pick<RedactedSettings, 'provider' | 'hasApiKey' | 'baseUrl' | 'modelId'>
+): boolean {
+  return isApiConfigured(settings) && settings.modelId.trim() !== ''
+}
+
+export const CHOOSE_MODEL_MESSAGE = 'Choose a model in Settings'
+
+// ─── Live model lists (fetched in MAIN with the stored key) ──────────────────
+
+export interface ModelChoice {
+  id: string
+  label: string
+  group?: string                   // e.g. "Open-weight models" / "Other models" (OpenRouter)
+  promptPricePerM?: number | null  // $ per million input tokens (when the provider reports it)
+  completionPricePerM?: number | null
+  suggested?: boolean              // rule-based tag; only ever set on a live-listed model
+}
+
+export interface ModelListResult {
+  models: ModelChoice[]
+  error: string | null   // plain-English error when the list could not be fetched
 }
 
 // ─── Screen Capture ───────────────────────────────────────────────────────────
@@ -271,6 +306,9 @@ export interface AnalysisResult {
   // Model-classified coding-agent state (see TerminalState). Parser defaults to
   // 'unknown' when the model omits it.
   terminalState?: TerminalState
+  // Cost guard: provider calls in the current rolling hour, attached by MAIN
+  // when the analysis is pushed (shown in the guidance panel footer).
+  callsThisHour?: number
   // Identity of the currently-displayed prompt, assigned by the MAIN process
   // (analysis-loop) whenever nextPrompt is set or patched. The renderer sends
   // ONLY this id back on "Send to Claude Code" — main resolves the text itself
@@ -348,7 +386,9 @@ export const IPC = {
   BRAINSTORM_DONE:     'buildy:brainstorm-done',     // main → renderer push
   BRAINSTORM_ERROR:    'buildy:brainstorm-error',    // main → renderer push
   GET_PROVIDER_INFOS:  'buildy:get-provider-infos',  // renderer → main (provider metadata)
-  TEST_CONNECTION:     'buildy:test-connection',     // renderer → main (connectivity check)
+  TEST_CONNECTION:     'buildy:test-connection',     // renderer → main (vision check with a red test image)
+  LIST_MODELS:         'buildy:list-models',         // renderer → main (live model list, stored key, 10-min cache)
+  VISION_STATUS:       'buildy:vision-status',       // renderer → main (has this provider+model passed the vision check?)
   COMPANION_ANALYSIS:  'buildy:companion-analysis',  // main → companion (new analysis result)
   COMPANION_STATE:     'buildy:companion-state',     // main → companion (idle/thinking/speaking)
   COMPANION_SPEAK:     'buildy:companion-speak',     // main → companion (trigger voice)

@@ -22,13 +22,7 @@ export const geminiProviderInfo: ProviderInfo = {
   requiresApiKey: true,
   requiresBaseUrl: false,
   defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-  defaultModel: 'gemini-2.5-flash',
   supportsStreaming: true,
-  models: [
-    { id: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', supportsVision: true, qualityTier: 'capable' },
-  ],
 }
 
 export class GeminiProvider implements AIProvider {

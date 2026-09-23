@@ -14,6 +14,7 @@
 import type { AnalysisResult, AppSettings, Goal } from '../../renderer/src/types'
 import { fetchWithTimeout } from './fetch-with-timeout'
 import { debugLog } from '../debug-log'
+import { recordProviderCall } from '../cost-guard'
 
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
 
@@ -184,11 +185,18 @@ async function callGrader(
     messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
   }
 
+  recordProviderCall() // cost guard: grader call
   const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
   })
+  if (response.status === 404) {
+    // Grader model not available on this account — skip grading entirely so
+    // the analysis proceeds ungraded (never fail the analysis over the grader).
+    console.warn('[PromptQuality] Grader model not found (404) — skipping grading')
+    return ''
+  }
   if (!response.ok) {
     console.warn(`[PromptQuality] Grader HTTP ${response.status} — skipping`)
     return ''

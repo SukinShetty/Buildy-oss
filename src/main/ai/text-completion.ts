@@ -26,8 +26,10 @@ export interface TextCompletionRequest {
   /** Override the model (e.g. use Haiku on Anthropic for a cheap grade). */
   modelOverride?: string
   maxTokens?: number
-  /** Optional screenshot to include (base64 JPEG). */
+  /** Optional image to include (base64). */
   imageBase64?: string | null
+  /** MIME type of imageBase64 (default image/jpeg; the vision check sends a PNG). */
+  imageMime?: string
 }
 
 /**
@@ -41,12 +43,13 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
   const model = req.modelOverride || settings.modelId
   const maxTokens = req.maxTokens ?? 500
   const image = req.imageBase64 || null
+  const imageMime = req.imageMime || 'image/jpeg'
   const isLocal = provider === 'ollama' || provider === 'lmstudio'
 
   if (provider === 'anthropic') {
     const content: Array<Record<string, unknown>> = []
     if (image) {
-      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } })
+      content.push({ type: 'image', source: { type: 'base64', media_type: imageMime, data: image } })
     }
     content.push({ type: 'text', text: user })
     const body = { model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }
@@ -67,7 +70,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
   if (provider === 'gemini') {
     const baseUrl = settings.baseUrl || getProviderInfo('gemini').defaultBaseUrl
     const parts: Array<Record<string, unknown>> = []
-    if (image) parts.push({ inline_data: { mime_type: 'image/jpeg', data: image } })
+    if (image) parts.push({ inline_data: { mime_type: imageMime, data: image } })
     parts.push({ text: user })
     const body = {
       system_instruction: { parts: [{ text: system }] },
@@ -94,9 +97,30 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
     headers['X-Title'] = 'Buildy'
   }
 
+  // Ollama's /v1 OpenAI-compatible endpoint has patchy image_url support, so
+  // its native /api/chat is used for images instead (see below).
+  if (provider === 'ollama' && image) {
+    const res = await fetchWithTimeout(`${(settings.baseUrl || getProviderInfo('ollama').defaultBaseUrl).replace(/\/$/, '')}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        options: { num_predict: maxTokens },
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user, images: [image] },
+        ],
+      }),
+    }, true)
+    if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    const json = (await res.json()) as { message?: { content?: string } }
+    return json.message?.content || ''
+  }
+
   const userContent: Array<Record<string, unknown>> = []
   if (image) {
-    userContent.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${image}`, detail: 'high' } })
+    userContent.push({ type: 'image_url', image_url: { url: `data:${imageMime};base64,${image}`, detail: 'high' } })
   }
   userContent.push({ type: 'text', text: user })
 

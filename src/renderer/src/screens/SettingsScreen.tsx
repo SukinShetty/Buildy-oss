@@ -1,11 +1,19 @@
 // SettingsScreen.tsx
-// Multi-provider configuration screen.
-// Lets the user pick a provider, model, and enter API key / base URL as needed.
-// Shows vision warnings, capability badges, and connection status.
+// Provider + model configuration.
+//   - Four "Recommended" providers (Anthropic, OpenAI, Google Gemini, OpenRouter)
+//     and a collapsed "Advanced: run models locally" section (Ollama, LM Studio,
+//     Custom endpoint).
+//   - NO hardcoded model catalog and NO default model: the model list is fetched
+//     LIVE in the main process with the stored key; nothing is pre-selected.
+//   - Key inputs are write-only: after save you see "Saved" + Replace/Remove —
+//     a stored key is never displayed.
+//   - Selecting a model automatically runs the vision check (Test connection):
+//     a red test image the model must identify. Watching is only unlocked by a pass.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
-import type { ProviderType, NonSecretSettings, SecretName } from '../types'
+import type { ProviderType, NonSecretSettings, SecretName, ModelChoice } from '../types'
+import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX } from '../types'
 
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
 
@@ -21,161 +29,78 @@ function secretNameForProvider(p: ProviderType): SecretName | null {
   }
 }
 
-// ─── Provider metadata (static, matches provider-registry on main side) ──────
-
-interface ModelOption {
-  id: string
-  label: string
-  supportsVision: boolean
-  qualityTier: 'recommended' | 'best-for-vision' | 'capable' | 'experimental'
-  description?: string  // Short capability blurb shown under the model name
-}
+// ─── Provider metadata (no models, no default model — lists are live) ────────
 
 interface ProviderMeta {
   type: ProviderType
   displayName: string
   description: string
-  requiresApiKey: boolean
-  requiresBaseUrl: boolean
+  needsApiKey: boolean       // cloud providers: key required
+  optionalApiKey?: boolean   // custom endpoint: key optional
+  needsBaseUrl: boolean
   defaultBaseUrl: string
-  defaultModel: string
-  models: ModelOption[]
+  keyHint?: string
 }
 
-const PROVIDERS: ProviderMeta[] = [
+const RECOMMENDED_PROVIDERS: ProviderMeta[] = [
   {
-    type: 'anthropic',
-    displayName: 'Anthropic',
-    description: 'Claude models. Best quality for screen analysis.',
-    requiresApiKey: true,
-    requiresBaseUrl: false,
-    defaultBaseUrl: 'https://api.anthropic.com',
-    defaultModel: 'claude-opus-4-7',
-    models: [
-      { id: 'claude-opus-4-8', label: 'Claude Opus 4.8', supportsVision: true, qualityTier: 'recommended', description: 'Latest and most capable model.' },
-      { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', supportsVision: true, qualityTier: 'best-for-vision', description: '3x higher image resolution than Opus 4.6, 98.5% visual acuity — ideal for dense terminal screenshots.' },
-      { id: 'claude-opus-4-6', label: 'Claude Opus 4.6', supportsVision: true, qualityTier: 'recommended', description: 'Previous flagship. Strong all-round quality.' },
-      { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended', description: 'Fast and balanced quality for the cost.' },
-      { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5', supportsVision: true, qualityTier: 'capable', description: 'Fastest and most affordable.' },
-    ],
+    type: 'anthropic', displayName: 'Anthropic',
+    description: 'Claude models via the Anthropic API.',
+    needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '',
+    keyHint: 'Get yours at console.anthropic.com.',
   },
   {
-    type: 'openai',
-    displayName: 'OpenAI',
-    description: 'GPT models. Strong vision and reasoning.',
-    requiresApiKey: true,
-    requiresBaseUrl: false,
-    defaultBaseUrl: 'https://api.openai.com/v1',
-    defaultModel: 'gpt-4o',
-    models: [
-      { id: 'gpt-4o', label: 'GPT-4o', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'gpt-4o-mini', label: 'GPT-4o Mini', supportsVision: true, qualityTier: 'capable' },
-      { id: 'gpt-4.1', label: 'GPT-4.1', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', supportsVision: true, qualityTier: 'capable' },
-      { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', supportsVision: true, qualityTier: 'experimental' },
-      { id: 'o3', label: 'o3', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'o4-mini', label: 'o4 Mini', supportsVision: true, qualityTier: 'capable' },
-    ],
+    type: 'openai', displayName: 'OpenAI',
+    description: 'GPT models via the OpenAI API.',
+    needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '',
+    keyHint: 'Get yours at platform.openai.com.',
   },
   {
-    type: 'gemini',
-    displayName: 'Google Gemini',
-    description: 'Gemini models. Strong vision and long context.',
-    requiresApiKey: true,
-    requiresBaseUrl: false,
-    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    defaultModel: 'gemini-2.5-flash',
-    models: [
-      { id: 'gemini-2.5-pro-preview-05-06', label: 'Gemini 2.5 Pro', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', supportsVision: true, qualityTier: 'capable' },
-    ],
+    type: 'gemini', displayName: 'Google Gemini',
+    description: 'Gemini models via the Google AI API.',
+    needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '',
+    keyHint: 'Get yours at aistudio.google.com.',
   },
   {
-    type: 'openrouter',
-    displayName: 'OpenRouter',
-    description: 'Hundreds of models, one API. Pay per token.',
-    requiresApiKey: true,
-    requiresBaseUrl: false,
-    defaultBaseUrl: 'https://openrouter.ai/api/v1',
-    defaultModel: 'anthropic/claude-sonnet-4-6',
-    models: [
-      { id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'openai/gpt-4o', label: 'GPT-4o', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro', supportsVision: true, qualityTier: 'recommended' },
-      { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick', supportsVision: true, qualityTier: 'capable' },
-      { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1', supportsVision: false, qualityTier: 'capable' },
-      { id: 'mistralai/mistral-large-latest', label: 'Mistral Large', supportsVision: true, qualityTier: 'capable' },
-    ],
-  },
-  {
-    type: 'ollama',
-    displayName: 'Ollama',
-    description: 'Local models. Free, private, no API key needed.',
-    requiresApiKey: false,
-    requiresBaseUrl: true,
-    defaultBaseUrl: 'http://localhost:11434',
-    defaultModel: 'llama3.1',
-    models: [
-      { id: 'llama3.1', label: 'Llama 3.1 8B', supportsVision: false, qualityTier: 'capable' },
-      { id: 'llama3.1:70b', label: 'Llama 3.1 70B', supportsVision: false, qualityTier: 'capable' },
-      { id: 'llava', label: 'LLaVA (Vision)', supportsVision: true, qualityTier: 'experimental' },
-      { id: 'llava-llama3', label: 'LLaVA Llama 3 (Vision)', supportsVision: true, qualityTier: 'experimental' },
-      { id: 'gemma3', label: 'Gemma 3', supportsVision: true, qualityTier: 'experimental' },
-      { id: 'mistral', label: 'Mistral 7B', supportsVision: false, qualityTier: 'experimental' },
-      { id: 'deepseek-r1', label: 'DeepSeek R1', supportsVision: false, qualityTier: 'capable' },
-      { id: 'qwen2.5', label: 'Qwen 2.5', supportsVision: false, qualityTier: 'capable' },
-    ],
-  },
-  {
-    type: 'lmstudio',
-    displayName: 'LM Studio',
-    description: 'Local models via LM Studio. Free, private.',
-    requiresApiKey: false,
-    requiresBaseUrl: true,
-    defaultBaseUrl: 'http://localhost:1234/v1',
-    defaultModel: 'local-model',
-    models: [
-      { id: 'local-model', label: 'Currently Loaded Model', supportsVision: false, qualityTier: 'experimental' },
-    ],
-  },
-  {
-    type: 'custom',
-    displayName: 'Custom Endpoint',
-    description: 'Any OpenAI-compatible API. Bring your own URL.',
-    requiresApiKey: false,
-    requiresBaseUrl: true,
-    defaultBaseUrl: 'http://localhost:8080/v1',
-    defaultModel: 'custom-model',
-    models: [
-      { id: 'custom-model', label: 'Custom Model', supportsVision: false, qualityTier: 'experimental' },
-    ],
+    type: 'openrouter', displayName: 'OpenRouter',
+    description: 'Open-source and other models, one key.',
+    needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '',
+    keyHint: 'Get yours at openrouter.ai/keys.',
   },
 ]
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+const ADVANCED_PROVIDERS: ProviderMeta[] = [
+  {
+    type: 'ollama', displayName: 'Ollama',
+    description: 'Local models via Ollama. Free and private.',
+    needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:11434',
+  },
+  {
+    type: 'lmstudio', displayName: 'LM Studio',
+    description: 'Local models via LM Studio. Free and private.',
+    needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:1234/v1',
+  },
+  {
+    type: 'custom', displayName: 'Custom Endpoint',
+    description: 'Any OpenAI-compatible API. Bring your own URL.',
+    needsApiKey: false, optionalApiKey: true, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:8080/v1',
+  },
+]
+
+const ALL_PROVIDERS = [...RECOMMENDED_PROVIDERS, ...ADVANCED_PROVIDERS]
 
 function getProviderMeta(type: ProviderType): ProviderMeta {
-  return PROVIDERS.find((p) => p.type === type) ?? PROVIDERS[0]
-}
-
-function tierBadge(tier: string): { label: string; color: string } {
-  switch (tier) {
-    case 'recommended':
-      return { label: 'RECOMMENDED', color: 'var(--color-success)' }
-    case 'best-for-vision':
-      return { label: 'BEST FOR VISION', color: 'var(--color-success)' }
-    case 'capable':
-      return { label: 'CAPABLE', color: 'var(--color-accent)' }
-    case 'experimental':
-      return { label: 'EXPERIMENTAL', color: 'var(--color-warning)' }
-    default:
-      return { label: tier.toUpperCase(), color: 'var(--color-text-muted)' }
-  }
+  return ALL_PROVIDERS.find((p) => p.type === type) ?? RECOMMENDED_PROVIDERS[0]
 }
 
 function isLocalProvider(type: ProviderType): boolean {
   return type === 'ollama' || type === 'lmstudio' || type === 'custom'
+}
+
+function formatPrice(perM: number | null | undefined): string | null {
+  if (perM == null || !Number.isFinite(perM)) return null
+  const rounded = perM >= 10 ? perM.toFixed(0) : perM >= 1 ? perM.toFixed(2) : perM.toFixed(3)
+  return `$${rounded}`
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -187,18 +112,23 @@ export function SettingsScreen(): React.ReactElement {
   const [modelId, setModelId] = useState(settings.modelId)
   // API keys are write-only from the renderer: a blank input keeps the stored key.
   const [apiKeyInput, setApiKeyInput] = useState('')
+  const [replacingKey, setReplacingKey] = useState(false)
   const [elevenKeyInput, setElevenKeyInput] = useState('')
+  const [replacingElevenKey, setReplacingElevenKey] = useState(false)
   const [baseUrl, setBaseUrl] = useState(settings.baseUrl)
-  const [customModelId, setCustomModelId] = useState('')
+  const [typedModelId, setTypedModelId] = useState('')
   const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState(settings.elevenLabsVoiceId ?? DEFAULT_VOICE_ID)
+  const [hourlyCallCap, setHourlyCallCap] = useState(settings.hourlyCallCap)
   const [savedAt, setSavedAt] = useState<string | null>(null)
-  const [showApiKey, setShowApiKey] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(isLocalProvider(settings.provider))
+  const [models, setModels] = useState<ModelChoice[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [visionPassed, setVisionPassed] = useState<boolean | null>(null)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [isTesting, setIsTesting] = useState(false)
 
   const meta = getProviderMeta(provider)
-  const selectedModel = meta.models.find((m) => m.id === modelId)
-  const showCustomModelInput = isLocalProvider(provider) || provider === 'openrouter'
 
   // Is a key already stored (encrypted in main) for the selected provider?
   const providerSecret = secretNameForProvider(provider)
@@ -210,30 +140,70 @@ export function SettingsScreen(): React.ReactElement {
     setModelId(settings.modelId)
     setBaseUrl(settings.baseUrl)
     setElevenLabsVoiceId(settings.elevenLabsVoiceId ?? DEFAULT_VOICE_ID)
+    setHourlyCallCap(settings.hourlyCallCap)
   }, [settings])
 
-  function handleProviderChange(newProvider: ProviderType): void {
-    const newMeta = getProviderMeta(newProvider)
-    setProvider(newProvider)
-    setModelId(newMeta.defaultModel)
-    setBaseUrl(newMeta.requiresBaseUrl ? newMeta.defaultBaseUrl : '')
-    setCustomModelId('')
-    setApiKeyInput('')
+  // ─── Live model list ─────────────────────────────────────────────────────
+
+  const fetchSeq = useRef(0)
+  const loadModels = useCallback(async (p: ProviderType, url: string) => {
+    const seq = ++fetchSeq.current
+    setModelsLoading(true)
+    setModelsError(null)
+    try {
+      const result = await window.buildy.listModels(p, url.trim())
+      if (seq !== fetchSeq.current) return // stale fetch
+      setModels(result.models)
+      setModelsError(result.error)
+    } catch (error) {
+      if (seq !== fetchSeq.current) return
+      setModels([])
+      setModelsError(String(error))
+    } finally {
+      if (seq === fetchSeq.current) setModelsLoading(false)
+    }
+  }, [])
+
+  // Fetch on mount + whenever provider or stored-key state changes.
+  useEffect(() => {
+    void loadModels(provider, baseUrl)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider, keySaved])
+
+  // Vision-gate status for the currently selected model.
+  useEffect(() => {
+    let cancelled = false
+    setVisionPassed(null)
+    const effective = typedModelId.trim() || modelId
+    if (!effective) return
+    window.buildy.getVisionStatus(provider, effective)
+      .then((r) => { if (!cancelled) setVisionPassed(r.passed) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [provider, modelId, typedModelId, settings.secretFlags])
+
+  // ─── Save / test ─────────────────────────────────────────────────────────
+
+  function clampCap(value: number): number {
+    if (!Number.isFinite(value)) return settings.hourlyCallCap
+    return Math.min(HOURLY_CALL_CAP_MAX, Math.max(HOURLY_CALL_CAP_MIN, Math.round(value)))
   }
 
-  function buildNonSecret(): NonSecretSettings {
+  function buildNonSecret(overrides?: Partial<NonSecretSettings>): NonSecretSettings {
     return {
       provider,
-      modelId: customModelId.trim() || modelId,
+      modelId: typedModelId.trim() || modelId,
       baseUrl: baseUrl.trim(),
       autoAnalysisIntervalSeconds: settings.autoAnalysisIntervalSeconds,
       elevenLabsVoiceId: elevenLabsVoiceId.trim() || DEFAULT_VOICE_ID,
+      hourlyCallCap: clampCap(hourlyCallCap),
+      ...overrides,
     }
   }
 
   // Persist non-secret settings + any newly-typed keys (one-way to encrypted store).
-  async function handleSave(): Promise<void> {
-    await window.buildy.saveSettings(buildNonSecret())
+  async function persistAll(overrides?: Partial<NonSecretSettings>): Promise<void> {
+    await window.buildy.saveSettings(buildNonSecret(overrides))
     if (providerSecret && apiKeyInput.trim()) {
       await window.buildy.setSecret(providerSecret, apiKeyInput.trim())
     }
@@ -245,16 +215,31 @@ export function SettingsScreen(): React.ReactElement {
     setSettings(redacted)
     setApiKeyInput('')
     setElevenKeyInput('')
+    setReplacingKey(false)
+    setReplacingElevenKey(false)
     setSavedAt(new Date().toLocaleTimeString())
   }
 
-  async function handleTestConnection(): Promise<void> {
+  async function handleSave(): Promise<void> {
+    await persistAll()
+  }
+
+  async function removeStoredKey(name: SecretName): Promise<void> {
+    await window.buildy.setSecret(name, '') // empty value deletes the secret
+    const redacted = await window.buildy.loadSettings()
+    setSettings(redacted)
+    setVisionPassed(null)
+  }
+
+  // The vision check IS the connection test: red image → the model must say "red".
+  async function runVisionCheck(overrides?: Partial<NonSecretSettings>): Promise<void> {
     setIsTesting(true)
     setTestResult(null)
-    await handleSave() // persist settings + secrets so the test uses the stored key
     try {
-      const result = await window.buildy.testConnection(buildNonSecret())
-      setTestResult(result)
+      await persistAll(overrides) // the check runs in main with the STORED key
+      const result = await window.buildy.testConnection(buildNonSecret(overrides))
+      setTestResult({ success: result.success, message: result.message })
+      setVisionPassed(result.visionPassed)
     } catch (error) {
       setTestResult({ success: false, message: String(error) })
     } finally {
@@ -262,20 +247,42 @@ export function SettingsScreen(): React.ReactElement {
     }
   }
 
+  // Selecting a model saves it and automatically runs the vision check.
+  async function selectModel(id: string): Promise<void> {
+    setModelId(id)
+    setTypedModelId('')
+    await runVisionCheck({ modelId: id })
+  }
+
+  function handleProviderChange(newProvider: ProviderType): void {
+    const newMeta = getProviderMeta(newProvider)
+    setProvider(newProvider)
+    setModelId('') // nothing pre-selected — the user picks from the live list
+    setBaseUrl(newMeta.needsBaseUrl ? newMeta.defaultBaseUrl : '')
+    setTypedModelId('')
+    setApiKeyInput('')
+    setReplacingKey(false)
+    setTestResult(null)
+    setVisionPassed(null)
+    setModels([])
+  }
+
   // ─── Validation ──────────────────────────────────────────────────────────
 
-  const hasApiKey = !meta.requiresApiKey || keySaved || apiKeyInput.trim().length > 0
-  const hasBaseUrl = !meta.requiresBaseUrl || baseUrl.trim().startsWith('http')
-  const configuredCorrectly = hasApiKey && hasBaseUrl
+  const hasApiKey = !meta.needsApiKey || keySaved || apiKeyInput.trim().length > 0
+  const hasBaseUrl = !meta.needsBaseUrl || baseUrl.trim().startsWith('http')
+  const effectiveModelId = typedModelId.trim() || modelId
+  const configuredCorrectly = hasApiKey && hasBaseUrl && effectiveModelId.length > 0
 
-  // Vision warning — warn when the selected model doesn't support vision,
-  // or when a custom model ID is typed (vision support is unknown)
-  const usingCustomModel = customModelId.trim().length > 0
-  const noVision = usingCustomModel
-    ? true  // unknown custom model — warn conservatively
-    : selectedModel
-      ? !selectedModel.supportsVision
-      : true  // no model selected at all
+  const showKeyField = meta.needsApiKey || meta.optionalApiKey
+  const showTypedModelInput = isLocalProvider(provider)
+
+  // Group the model list (OpenRouter groups; others come back ungrouped).
+  const groupNames: string[] = []
+  for (const m of models) {
+    const g = m.group ?? ''
+    if (!groupNames.includes(g)) groupNames.push(g)
+  }
 
   return (
     <div style={styles.container}>
@@ -285,161 +292,215 @@ export function SettingsScreen(): React.ReactElement {
       </div>
 
       <div style={styles.content}>
-        {/* Provider selector */}
+        {/* Recommended providers */}
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>AI Provider</div>
+          <div style={styles.sectionLabel}>Recommended providers</div>
           <div style={styles.providerGrid}>
-            {PROVIDERS.map((p) => (
-              <button
-                key={p.type}
-                onClick={() => handleProviderChange(p.type)}
-                style={{
-                  ...styles.providerCard,
-                  ...(provider === p.type ? styles.providerCardActive : styles.providerCardInactive),
-                }}
-              >
-                <div style={styles.providerCardTitle}>{p.displayName}</div>
-                <div style={styles.providerCardDesc}>{p.description}</div>
-                {isLocalProvider(p.type) && (
-                  <div style={styles.localBadge}>Local</div>
-                )}
-              </button>
+            {RECOMMENDED_PROVIDERS.map((p) => (
+              <ProviderCard key={p.type} meta={p} active={provider === p.type} onClick={() => handleProviderChange(p.type)} />
             ))}
           </div>
         </div>
 
-        {/* Model selector */}
+        {/* Advanced: local providers (collapsed by default) */}
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>Model</div>
-          <div style={styles.modelList}>
-            {meta.models.map((m) => {
-              const badge = tierBadge(m.qualityTier)
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => { setModelId(m.id); setCustomModelId('') }}
-                  style={{
-                    ...styles.modelRow,
-                    ...(modelId === m.id && !customModelId.trim() ? styles.modelRowActive : styles.modelRowInactive),
-                  }}
-                >
-                  <div style={styles.modelTopRow}>
-                    <div style={styles.modelRowLeft}>
-                      <span style={styles.modelLabel}>{m.label}</span>
-                      <span style={{ ...styles.badge, borderColor: badge.color, color: badge.color }}>
-                        {badge.label}
-                      </span>
-                      {m.supportsVision && (
-                        <span style={{ ...styles.badge, borderColor: 'var(--color-accent)', color: 'var(--color-accent)' }}>
-                          Vision
-                        </span>
-                      )}
-                    </div>
-                    <span style={styles.modelId}>{m.id}</span>
-                  </div>
-                  {m.description && <div style={styles.modelDescription}>{m.description}</div>}
-                </button>
-              )
-            })}
-          </div>
-          {/* Custom model ID input for local / openrouter */}
-          {showCustomModelInput && (
-            <div style={{ marginTop: 6 }}>
-              <div style={styles.sectionHint}>
-                Or type a custom model name (for models not listed above):
-              </div>
-              <input
-                type="text"
-                value={customModelId}
-                onChange={(e) => setCustomModelId(e.target.value)}
-                placeholder={provider === 'openrouter' ? 'e.g. meta-llama/llama-4-scout' : 'e.g. my-custom-model'}
-                style={styles.textInput}
-              />
+          <button style={styles.advancedToggle} onClick={() => setShowAdvanced(!showAdvanced)}>
+            <span style={{ display: 'inline-block', transform: showAdvanced ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
+            {' '}Advanced: run models locally
+          </button>
+          {showAdvanced && (
+            <div style={styles.providerGrid}>
+              {ADVANCED_PROVIDERS.map((p) => (
+                <ProviderCard key={p.type} meta={p} active={provider === p.type} onClick={() => handleProviderChange(p.type)} local />
+              ))}
             </div>
           )}
         </div>
 
-        {/* Vision warning */}
-        {noVision && (
-          <div style={styles.warningBox}>
-            <div style={styles.warningTitle}>Limited vision support</div>
-            <div style={styles.warningText}>
-              {usingCustomModel
-                ? 'Custom model — Buildy cannot verify vision support. Screen analysis may not work. Brainstorming (text-only) will still work fine.'
-                : 'This model does not support image input. Screen analysis will not work. Brainstorming (text-only) will still work fine.'}
-            </div>
-            <div style={styles.warningText}>
-              For best screen analysis, use a model marked "Vision" + "Recommended".
-            </div>
-          </div>
-        )}
-
-        {/* API key input */}
-        {meta.requiresApiKey && (
+        {/* API key (cloud providers; optional for custom endpoints) */}
+        {showKeyField && (
           <div style={styles.section}>
-            <div style={styles.sectionLabel}>API Key</div>
-            <div style={styles.sectionHint}>
-              {provider === 'anthropic' && 'Get yours at console.anthropic.com.'}
-              {provider === 'openai' && 'Get yours at platform.openai.com.'}
-              {provider === 'gemini' && 'Get yours at aistudio.google.com.'}
-              {provider === 'openrouter' && 'Get yours at openrouter.ai/keys.'}
+            <div style={styles.sectionLabel}>
+              API Key{meta.optionalApiKey ? ' (optional)' : ''}
             </div>
-            <div style={styles.inputWrapper}>
-              <input
-                type={showApiKey ? 'text' : 'password'}
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder={keySaved ? '•••••••••••• key saved — type to replace' : 'Paste your API key here'}
-                style={styles.textInput}
-              />
-              <button
-                className="btn-icon"
-                onClick={() => setShowApiKey(!showApiKey)}
-                title={showApiKey ? 'Hide key' : 'Show key'}
-              >
-                {showApiKey ? 'Hide' : 'Show'}
-              </button>
-            </div>
-            {keySaved && !apiKeyInput && (
-              <div style={styles.sectionHint}>
-                A key is securely stored for {meta.displayName} (encrypted on this device).
+            {meta.keyHint && <div style={styles.sectionHint}>{meta.keyHint}</div>}
+            {keySaved && !replacingKey ? (
+              <div style={styles.keySavedRow}>
+                <span style={styles.keySavedBadge}>Saved</span>
+                <span style={styles.sectionHint}>Key stored encrypted on this device — never shown.</span>
+                <button className="btn-icon" onClick={() => { setReplacingKey(true); setApiKeyInput('') }}>Replace</button>
+                <button className="btn-icon" onClick={() => { if (providerSecret) void removeStoredKey(providerSecret) }}>Remove</button>
+              </div>
+            ) : (
+              <div style={styles.inputWrapper}>
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="Paste your API key here"
+                  style={styles.textInput}
+                />
+                {keySaved && (
+                  <button className="btn-icon" onClick={() => { setReplacingKey(false); setApiKeyInput('') }}>Cancel</button>
+                )}
               </div>
             )}
           </div>
         )}
 
-        {/* Base URL input */}
-        {meta.requiresBaseUrl && (
+        {/* Base URL (local providers + custom endpoints only) */}
+        {meta.needsBaseUrl && (
           <div style={styles.section}>
             <div style={styles.sectionLabel}>Base URL</div>
             <div style={styles.sectionHint}>
               {provider === 'ollama' && 'Default: http://localhost:11434 — make sure Ollama is running.'}
-              {provider === 'lmstudio' && 'Default: http://localhost:1234/v1 — make sure LM Studio server is running.'}
+              {provider === 'lmstudio' && 'Default: http://localhost:1234/v1 — make sure the LM Studio server is running.'}
               {provider === 'custom' && 'Enter the base URL of your OpenAI-compatible API endpoint.'}
             </div>
             <input
               type="url"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
+              onBlur={() => void loadModels(provider, baseUrl)}
               placeholder={meta.defaultBaseUrl}
               style={styles.textInput}
             />
           </div>
         )}
 
+        {/* Model (live list — nothing pre-selected) */}
+        <div style={styles.section}>
+          <div style={styles.modelHeaderRow}>
+            <div style={styles.sectionLabel}>Model</div>
+            <button className="btn-icon" onClick={() => void loadModels(provider, baseUrl)} disabled={modelsLoading}>
+              {modelsLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {!modelsLoading && models.length === 0 && !modelsError && (
+            <div style={styles.sectionHint}>
+              {meta.needsApiKey && !keySaved
+                ? 'Save your API key to load the live model list.'
+                : 'No models found. Check your setup, then Refresh.'}
+            </div>
+          )}
+          {modelsError && <div style={styles.modelsError}>{modelsError}</div>}
+          {models.length > 0 && (
+            <div style={styles.modelList}>
+              {groupNames.map((group) => (
+                <React.Fragment key={group || 'ungrouped'}>
+                  {group && <div style={styles.groupLabel}>{group}</div>}
+                  {models.filter((m) => (m.group ?? '') === group).map((m) => {
+                    const inPrice = formatPrice(m.promptPricePerM)
+                    const outPrice = formatPrice(m.completionPricePerM)
+                    const active = modelId === m.id && !typedModelId.trim()
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => void selectModel(m.id)}
+                        style={{
+                          ...styles.modelRow,
+                          ...(active ? styles.modelRowActive : styles.modelRowInactive),
+                        }}
+                      >
+                        <div style={styles.modelTopRow}>
+                          <div style={styles.modelRowLeft}>
+                            <span style={styles.modelLabel}>{m.label}</span>
+                            {m.suggested && (
+                              <span style={{ ...styles.badge, borderColor: 'var(--color-success)', color: 'var(--color-success)' }}>
+                                Suggested
+                              </span>
+                            )}
+                            {active && visionPassed === true && (
+                              <span style={{ ...styles.badge, borderColor: 'var(--color-success)', color: 'var(--color-success)' }}>
+                                Vision check passed
+                              </span>
+                            )}
+                          </div>
+                          <span style={styles.modelId}>{m.id}</span>
+                        </div>
+                        {(inPrice || outPrice) && (
+                          <div style={styles.modelPrice}>
+                            {inPrice ? `${inPrice}/M in` : ''}{inPrice && outPrice ? ' · ' : ''}{outPrice ? `${outPrice}/M out` : ''}
+                          </div>
+                        )}
+                      </button>
+                    )
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+          {/* Free-typed model name for local/custom servers whose list may be incomplete */}
+          {showTypedModelInput && (
+            <div style={{ marginTop: 6 }}>
+              <div style={styles.sectionHint}>Or type a model name (it still has to pass the vision check):</div>
+              <input
+                type="text"
+                value={typedModelId}
+                onChange={(e) => setTypedModelId(e.target.value)}
+                placeholder="e.g. my-vision-model"
+                style={styles.textInput}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Vision-gate note */}
+        {effectiveModelId && visionPassed === false && !isTesting && (
+          <div style={styles.warningBox}>
+            <div style={styles.warningTitle}>Vision check required</div>
+            <div style={styles.warningText}>
+              Watching your screen is only enabled after this model passes the vision check
+              (it must correctly read a test image). Brainstorming (text-only) works either way.
+            </div>
+          </div>
+        )}
+
+        {/* Cost guard */}
+        <div style={styles.section}>
+          <div style={styles.sectionLabel}>API budget</div>
+          <div style={styles.sectionHint}>
+            Max provider calls per rolling hour ({HOURLY_CALL_CAP_MIN}–{HOURLY_CALL_CAP_MAX}).
+            Watching pauses automatically at the cap.
+          </div>
+          <input
+            type="number"
+            min={HOURLY_CALL_CAP_MIN}
+            max={HOURLY_CALL_CAP_MAX}
+            value={hourlyCallCap}
+            onChange={(e) => setHourlyCallCap(Number(e.target.value))}
+            onBlur={() => setHourlyCallCap(clampCap(hourlyCallCap))}
+            style={{ ...styles.textInput, maxWidth: 120 }}
+          />
+        </div>
+
         {/* ElevenLabs voice (optional) */}
         <div style={styles.section}>
           <div style={styles.sectionLabel}>Voice (ElevenLabs)</div>
           <div style={styles.sectionHint}>
-            Optional. Adds natural, warm voice to Buildy. Falls back to system voice if not set.
+            Optional. Adds natural, warm voice + the mic button. Falls back to system voice if not set.
           </div>
-          <input
-            type="password"
-            value={elevenKeyInput}
-            onChange={(e) => setElevenKeyInput(e.target.value)}
-            placeholder={settings.hasElevenLabsKey ? '•••••••••••• key saved — type to replace' : 'ElevenLabs API key'}
-            style={styles.textInput}
-          />
+          {settings.hasElevenLabsKey && !replacingElevenKey ? (
+            <div style={styles.keySavedRow}>
+              <span style={styles.keySavedBadge}>Saved</span>
+              <span style={styles.sectionHint}>ElevenLabs key stored encrypted — never shown.</span>
+              <button className="btn-icon" onClick={() => { setReplacingElevenKey(true); setElevenKeyInput('') }}>Replace</button>
+              <button className="btn-icon" onClick={() => void removeStoredKey('elevenLabsApiKey')}>Remove</button>
+            </div>
+          ) : (
+            <div style={styles.inputWrapper}>
+              <input
+                type="password"
+                value={elevenKeyInput}
+                onChange={(e) => setElevenKeyInput(e.target.value)}
+                placeholder="ElevenLabs API key"
+                style={styles.textInput}
+              />
+              {settings.hasElevenLabsKey && (
+                <button className="btn-icon" onClick={() => { setReplacingElevenKey(false); setElevenKeyInput('') }}>Cancel</button>
+              )}
+            </div>
+          )}
           <input
             type="text"
             value={elevenLabsVoiceId}
@@ -460,24 +521,26 @@ export function SettingsScreen(): React.ReactElement {
             />
             <span style={styles.statusText}>
               {configuredCorrectly
-                ? `Ready — ${meta.displayName} / ${customModelId.trim() || modelId}`
-                : 'Fill in the required fields above to use Buildy'}
+                ? `Ready — ${meta.displayName} / ${effectiveModelId}`
+                : effectiveModelId
+                  ? 'Fill in the required fields above to use Buildy'
+                  : 'Choose a model in Settings — pick one from the list above'}
             </span>
           </div>
         </div>
 
         {/* Save + Test buttons */}
         <div style={styles.saveRow}>
-          <button className="btn-primary" onClick={handleSave} style={{ flex: 1, justifyContent: 'center' }}>
+          <button className="btn-primary" onClick={() => void handleSave()} style={{ flex: 1, justifyContent: 'center' }}>
             Save Settings
           </button>
           <button
             className="btn-primary"
-            onClick={handleTestConnection}
+            onClick={() => void runVisionCheck()}
             disabled={isTesting || !configuredCorrectly}
             style={{ flex: 1, justifyContent: 'center', opacity: isTesting ? 0.6 : 1 }}
           >
-            {isTesting ? 'Testing...' : 'Test Connection'}
+            {isTesting ? 'Checking vision…' : 'Test Connection'}
           </button>
         </div>
         {savedAt && <span style={styles.savedAt}>Saved at {savedAt}</span>}
@@ -498,7 +561,7 @@ export function SettingsScreen(): React.ReactElement {
         <div style={styles.infoSection}>
           <div style={styles.infoTitle}>About Buildy</div>
           <div style={styles.infoText}>
-            Buildy v2.0.0 — multi-provider builder buddy for Claude Code.
+            Buildy — multi-provider builder buddy for Claude Code.
           </div>
           <div style={styles.infoText}>
             {isLocalProvider(provider)
@@ -508,6 +571,31 @@ export function SettingsScreen(): React.ReactElement {
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── Provider card ───────────────────────────────────────────────────────────
+
+function ProviderCard({
+  meta, active, onClick, local,
+}: {
+  meta: ProviderMeta
+  active: boolean
+  onClick: () => void
+  local?: boolean
+}): React.ReactElement {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...styles.providerCard,
+        ...(active ? styles.providerCardActive : styles.providerCardInactive),
+      }}
+    >
+      <div style={styles.providerCardTitle}>{meta.displayName}</div>
+      <div style={styles.providerCardDesc}>{meta.description}</div>
+      {local && <div style={styles.localBadge}>Local</div>}
+    </button>
   )
 }
 
@@ -560,6 +648,16 @@ const styles = {
     color: 'var(--color-text-dim)',
     lineHeight: 1.4,
   },
+  advancedToggle: {
+    background: 'transparent',
+    border: 'none',
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    padding: '2px 0',
+    fontSize: 12,
+    fontWeight: 600,
+    color: 'var(--color-text-muted)',
+  },
   providerGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
@@ -605,10 +703,33 @@ const styles = {
     textTransform: 'uppercase' as const,
     letterSpacing: '0.05em',
   },
+  modelHeaderRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   modelList: {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: 3,
+    maxHeight: 320,
+    overflowY: 'auto' as const,
+  },
+  groupLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
+    color: 'var(--color-text-muted)',
+    padding: '6px 2px 2px',
+  },
+  modelsError: {
+    fontSize: 12,
+    color: 'var(--color-danger)',
+    lineHeight: 1.4,
+    padding: '6px 8px',
+    background: 'rgba(255,69,58,0.08)',
+    borderRadius: 'var(--radius-sm)',
   },
   modelRow: {
     display: 'flex',
@@ -627,8 +748,9 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
+    gap: 8,
   },
-  modelDescription: {
+  modelPrice: {
     fontSize: 10.5,
     color: 'var(--color-text-muted)',
     lineHeight: 1.35,
@@ -645,6 +767,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'wrap' as const,
   },
   modelLabel: {
     fontSize: 12,
@@ -655,6 +778,8 @@ const styles = {
     fontSize: 10,
     fontFamily: 'var(--font-mono)',
     color: 'var(--color-text-dim)',
+    wordBreak: 'break-all' as const,
+    textAlign: 'right' as const,
   },
   badge: {
     fontSize: 9,
@@ -695,15 +820,21 @@ const styles = {
     gap: 6,
     alignItems: 'center',
   },
-  checkboxRow: {
+  keySavedRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
-    cursor: 'pointer',
+    gap: 8,
+    flexWrap: 'wrap' as const,
   },
-  checkboxLabel: {
-    fontSize: 12,
-    color: 'var(--color-text)',
+  keySavedBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    color: 'var(--color-success)',
+    border: '1px solid var(--color-success)',
+    borderRadius: 3,
+    padding: '1px 6px',
   },
   statusRow: {
     display: 'flex',

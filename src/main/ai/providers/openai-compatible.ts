@@ -25,36 +25,17 @@ export const openaiProviderInfo: ProviderInfo = {
   requiresApiKey: true,
   requiresBaseUrl: false,
   defaultBaseUrl: 'https://api.openai.com/v1',
-  defaultModel: 'gpt-4o',
   supportsStreaming: true,
-  models: [
-    { id: 'gpt-4o', label: 'GPT-4o', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'gpt-4o-mini', label: 'GPT-4o Mini', supportsVision: true, qualityTier: 'capable' },
-    { id: 'gpt-4.1', label: 'GPT-4.1', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'gpt-4.1-mini', label: 'GPT-4.1 Mini', supportsVision: true, qualityTier: 'capable' },
-    { id: 'gpt-4.1-nano', label: 'GPT-4.1 Nano', supportsVision: true, qualityTier: 'experimental' },
-    { id: 'o3', label: 'o3', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'o4-mini', label: 'o4 Mini', supportsVision: true, qualityTier: 'capable' },
-  ],
 }
 
 export const openrouterProviderInfo: ProviderInfo = {
   type: 'openrouter',
   displayName: 'OpenRouter',
-  description: 'Access hundreds of models through one API. Pay per token, pick any model.',
+  description: 'Open-source and other models, one key.',
   requiresApiKey: true,
   requiresBaseUrl: false,
   defaultBaseUrl: 'https://openrouter.ai/api/v1',
-  defaultModel: 'anthropic/claude-sonnet-4-6',
   supportsStreaming: true,
-  models: [
-    { id: 'anthropic/claude-sonnet-4-6', label: 'Claude Sonnet 4.6', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'openai/gpt-4o', label: 'GPT-4o', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'google/gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro', supportsVision: true, qualityTier: 'recommended' },
-    { id: 'meta-llama/llama-4-maverick', label: 'Llama 4 Maverick', supportsVision: true, qualityTier: 'capable' },
-    { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1', supportsVision: false, qualityTier: 'capable' },
-    { id: 'mistralai/mistral-large-latest', label: 'Mistral Large', supportsVision: true, qualityTier: 'capable' },
-  ],
 }
 
 export const lmstudioProviderInfo: ProviderInfo = {
@@ -64,11 +45,7 @@ export const lmstudioProviderInfo: ProviderInfo = {
   requiresApiKey: false,
   requiresBaseUrl: true,
   defaultBaseUrl: 'http://localhost:1234/v1',
-  defaultModel: 'local-model',
   supportsStreaming: true,
-  models: [
-    { id: 'local-model', label: 'Currently Loaded Model', supportsVision: false, qualityTier: 'experimental' },
-  ],
 }
 
 export const customProviderInfo: ProviderInfo = {
@@ -78,11 +55,7 @@ export const customProviderInfo: ProviderInfo = {
   requiresApiKey: false,
   requiresBaseUrl: true,
   defaultBaseUrl: 'http://localhost:8080/v1',
-  defaultModel: 'custom-model',
   supportsStreaming: true,
-  models: [
-    { id: 'custom-model', label: 'Custom Model', supportsVision: false, qualityTier: 'experimental' },
-  ],
 }
 
 // OpenAI reasoning models use max_completion_tokens instead of max_tokens.
@@ -117,31 +90,20 @@ export class OpenAICompatibleProvider implements AIProvider {
     const systemPrompt = buildAnalysisSystemPrompt(project, capture.windowTitle)
     const userPrompt = buildAnalysisUserPrompt(project, capture.windowTitle)
 
-    // Check if the model likely supports vision
-    const model = this.info.models.find((m) => m.id === settings.modelId)
-    const useVision = model ? model.supportsVision : false
-
-    const userContent: Array<Record<string, unknown>> = []
-
-    if (useVision) {
-      userContent.push({
+    // ALWAYS send the screenshot. Vision capability is proven up front by the
+    // vision check — a model that can't read images fails the gate before
+    // watching starts, so there is no text-only fallback here.
+    const userContent: Array<Record<string, unknown>> = [
+      {
         type: 'image_url',
         image_url: {
           url: `data:image/jpeg;base64,${capture.imageBase64}`,
           detail: 'high',
         },
-      })
-    }
-
-    userContent.push({ type: 'text', text: `Screenshot of: ${capture.windowTitle}` })
-    userContent.push({ type: 'text', text: userPrompt })
-
-    if (!useVision) {
-      userContent.push({
-        type: 'text',
-        text: '\n[Note: This model does not support image input. Please provide your best guidance based on the project context alone.]',
-      })
-    }
+      },
+      { type: 'text', text: `Screenshot of: ${capture.windowTitle}` },
+      { type: 'text', text: userPrompt },
+    ]
 
     const requestBody = {
       model: settings.modelId,

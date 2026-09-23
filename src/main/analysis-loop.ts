@@ -14,7 +14,7 @@
 
 import type { BrowserWindow } from 'electron'
 import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
-import { emptyProjectMemory } from '../renderer/src/types'
+import { emptyProjectMemory, CHOOSE_MODEL_MESSAGE } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
 import { captureWatchedWindow, listLiveWindowSources } from './capturer'
 import { getProvider } from './ai/provider-registry'
@@ -37,7 +37,10 @@ import {
 import type { PromptOutcome } from './verifier'
 import { evaluateSendEligibility, sanitizePromptForSend } from './prompt-sender-core'
 import { executeSend, isSendInFlight, isWatchedWindowPresent } from './prompt-sender'
-import { sendGuidanceSendState } from './guidance-window'
+import { sendGuidanceSendState, showGuidanceWindow } from './guidance-window'
+import { recordProviderCall, getCallsThisHour, isAtHourlyCap } from './cost-guard'
+import { mapProviderError, isAuthOrBillingError } from './ai/provider-errors'
+import { hasVisionPass } from './vision-approvals'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
 import { isStaleSession, startContinuity, pollContinuity } from './capture-guard'
@@ -127,6 +130,64 @@ const NORMAL_COOLDOWN_MS = 15_000
 const QUIET_COOLDOWN_MS = 30_000
 
 const EMPTY_PROJECT = emptyProjectMemory()
+
+// ─── Runtime provider-error / cost-guard state ───────────────────────────────
+
+// Providers that cannot work without a stored API key.
+const KEYED_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'openrouter'])
+
+const BUDGET_PAUSE_MESSAGE = 'Paused to protect your API budget. Click to resume.'
+const VISION_BLOCK_MESSAGE = "This model can't see your screen. Pick one that passes the check."
+const AUTH_PAUSE_MESSAGE = 'Paused after repeated key or billing errors. Fix it in Settings, then press play to resume.'
+
+// After 3 consecutive key/billing errors, watching pauses.
+let consecutiveAuthErrors = 0
+// Whether the mascot label currently shows an error message (so a following
+// successful cycle can clear it back to the watched-window name).
+let errorLabelShown = false
+
+/** Pause the watch and surface `message` on the mascot label + guidance panel. */
+function pauseWithMessage(companionWindow: BrowserWindow, message: string): void {
+  isPaused = true
+  errorLabelShown = true
+  if (!companionWindow.isDestroyed()) {
+    companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+      windowName: watchedWindowName, message,
+    })
+  }
+  showGuidanceWindow({ kind: 'message', message })
+  notifyCompanionState(companionWindow, 'idle')
+}
+
+/**
+ * Map a runtime provider failure to plain English and surface it on the mascot
+ * label + guidance panel. Three consecutive key/billing errors pause the watch.
+ */
+function surfaceProviderError(companionWindow: BrowserWindow, error: unknown): void {
+  const mapped = mapProviderError(String(error))
+  if (isAuthOrBillingError(mapped.kind)) consecutiveAuthErrors++
+  else consecutiveAuthErrors = 0
+
+  errorLabelShown = true
+  if (!companionWindow.isDestroyed()) {
+    companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+      windowName: watchedWindowName, message: mapped.message,
+    })
+  }
+  showGuidanceWindow({ kind: 'message', message: mapped.message })
+
+  if (consecutiveAuthErrors >= 3) {
+    console.log('[AnalysisLoop] 3 consecutive key/billing errors — pausing watch')
+    pauseWithMessage(companionWindow, AUTH_PAUSE_MESSAGE)
+  }
+}
+
+/** Clear a previously shown error label once a cycle succeeds again. */
+function clearErrorLabel(companionWindow: BrowserWindow): void {
+  if (!errorLabelShown) return
+  errorLabelShown = false
+  if (watchedWindowName) notifyWatchedSource(companionWindow, watchedWindowName)
+}
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
@@ -408,13 +469,13 @@ async function callProviderForAnswer(
     }
     userContent.push({ type: 'text', text: userPrompt })
     body = {
-      model: settings.modelId || 'claude-opus-4-7',
+      model: settings.modelId,
       max_tokens: 500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     }
   } else if (providerType === 'gemini') {
-    const modelId = settings.modelId || 'gemini-2.5-flash'
+    const modelId = settings.modelId
     // Key in a header, never the URL.
     url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent`
     headers = { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey }
@@ -453,7 +514,7 @@ async function callProviderForAnswer(
     userContent.push({ type: 'text', text: userPrompt })
 
     body = {
-      model: settings.modelId || 'gpt-4o',
+      model: settings.modelId,
       max_tokens: 500,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -504,6 +565,24 @@ async function runOneAnalysisCycle(
   watchedGoal = getGoalFn ? await getGoalFn() : watchedGoal
   if (isStaleSession(mySession, currentSession)) return
 
+  // Mid-watch gates (settings can change while watching):
+  //  1. No model / no key → refuse. There is no default model anywhere.
+  if (!settings.modelId.trim() || (KEYED_PROVIDERS.has(settings.provider) && !settings.apiKey)) {
+    pauseWithMessage(companionWindow, CHOOSE_MODEL_MESSAGE)
+    return
+  }
+  //  2. Vision gate: watching requires a PASSED vision check for this exact
+  //     provider+model (invalidated when the key changes).
+  if (!hasVisionPass(settings.provider, settings.modelId, settings.apiKey)) {
+    pauseWithMessage(companionWindow, VISION_BLOCK_MESSAGE)
+    return
+  }
+  //  3. Cost guard: at the rolling-hour cap, pause to protect the API budget.
+  if (isAtHourlyCap(settings.hourlyCallCap)) {
+    pauseWithMessage(companionWindow, BUDGET_PAUSE_MESSAGE)
+    return
+  }
+
   const thisIsFirstCycle = isFirstCycle
   isFirstCycle = false
 
@@ -546,13 +625,20 @@ async function runOneAnalysisCycle(
     memoryContext,
   }
   let analysis: AnalysisResult
+  recordProviderCall() // cost guard: analysis call
   try {
     analysis = await provider.analyzeScreen(capture, analysisProject, settings)
   } catch (error) {
     debugError('[AnalysisLoop] Analysis failed:', error)
+    if (!isStaleSession(mySession, currentSession)) {
+      // Same plain-English provider errors as the Settings check, on the
+      // mascot label + guidance panel; 3 key/billing errors in a row pause.
+      surfaceProviderError(companionWindow, error)
+    }
     notifyCompanionState(companionWindow, 'idle')
     return
   }
+  consecutiveAuthErrors = 0
 
   // ★ STALE-SESSION DISCARD: if the user switched/stopped the watched window while
   // this analysis was in flight, throw the result away — do NOT mutate state, send
@@ -561,6 +647,9 @@ async function runOneAnalysisCycle(
     console.log(`[AnalysisLoop] stale cycle discarded (session ${mySession} != ${currentSession})`)
     return
   }
+
+  // A successful cycle clears any stale error message from the mascot label.
+  clearErrorLabel(companionWindow)
 
   // Update session context
   updateSession(analysis)
@@ -572,6 +661,7 @@ async function runOneAnalysisCycle(
   // Seed the per-cycle display analysis, then send it to the companion. Parallel
   // background passes patch THIS object and re-send (never clobber each other).
   analysis.promptId = nextPromptId()
+  analysis.callsThisHour = getCallsThisHour() // guidance panel footer
   displayAnalysis = analysis
   displaySession = mySession
   if (!companionWindow.isDestroyed()) {
@@ -691,6 +781,8 @@ function clearStaleState(): void {
   // suggestion made for a different window.
   clearOutcomes()
   displayAnalysis = null
+  consecutiveAuthErrors = 0
+  errorLabelShown = false
 }
 
 function notifyCompanionState(w: BrowserWindow, state: 'idle' | 'thinking' | 'speaking'): void {

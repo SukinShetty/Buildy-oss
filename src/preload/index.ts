@@ -27,6 +27,8 @@ import type {
   SendPromptResult,
   ProjectRecord,
   ProjectSummary,
+  ProviderType,
+  ModelListResult,
 } from '../renderer/src/types'
 
 // The API exposed to window.buildy in the renderer
@@ -125,9 +127,17 @@ const buildyAPI = {
   getProviderInfos: (): Promise<unknown[]> =>
     ipcRenderer.invoke(IPC.GET_PROVIDER_INFOS),
 
-  // ─── Connection test ────────────────────────────────────────────────────
-  testConnection: (settings: NonSecretSettings): Promise<{ success: boolean; message: string; latencyMs: number | null }> =>
+  // ─── Connection test (= vision check with a red test image) ─────────────
+  testConnection: (settings: NonSecretSettings): Promise<{ success: boolean; message: string; latencyMs: number | null; visionPassed: boolean }> =>
     ipcRenderer.invoke(IPC.TEST_CONNECTION, settings),
+
+  // ─── Live model lists (fetched in MAIN with the stored key, 10-min cache) ─
+  listModels: (provider: ProviderType, baseUrl: string): Promise<ModelListResult> =>
+    ipcRenderer.invoke(IPC.LIST_MODELS, { provider, baseUrl }),
+
+  // Has this provider+model passed the vision check (with the current key)?
+  getVisionStatus: (provider: ProviderType, modelId: string): Promise<{ passed: boolean }> =>
+    ipcRenderer.invoke(IPC.VISION_STATUS, { provider, modelId }),
 
   // ─── Settings ─────────────────────────────────────────────────────────────
   // Returns REDACTED settings only (no raw keys — just has* booleans).

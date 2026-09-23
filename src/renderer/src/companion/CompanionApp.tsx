@@ -7,6 +7,7 @@ import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
 import type { MascotState } from '../components/Mascot'
 import type { AnalysisResult } from '../types'
+import { isModelConfigured } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
 
 interface WindowItem { id: string; name: string; thumbnailBase64: string }
@@ -23,7 +24,8 @@ export function CompanionApp(): React.ReactElement {
   } = useCompanionStore()
 
   const [windowList, setWindowList] = useState<WindowItem[]>([])
-  const [needsApiKey, setNeedsApiKey] = useState(false)
+  const [needsSetup, setNeedsSetup] = useState(false)
+  const [hasElevenKey, setHasElevenKey] = useState(false)
   const [sentFlash, setSentFlash] = useState(false)
   const isMutedRef = useRef(isMuted)
   isMutedRef.current = isMuted
@@ -31,12 +33,22 @@ export function CompanionApp(): React.ReactElement {
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
 
-  // ─── Check if API key is configured ─────────────────────────────────
+  // ─── Check if a provider key + model are configured ─────────────────
+  // Re-checked periodically so saving Settings updates the mascot label and
+  // the mic button without restarting the companion.
 
   useEffect(() => {
-    window.buildy.loadSettings().then((s) => {
-      setNeedsApiKey(!s.hasApiKey)
-    }).catch(() => {})
+    let alive = true
+    const check = (): void => {
+      window.buildy.loadSettings().then((s) => {
+        if (!alive) return
+        setNeedsSetup(!isModelConfigured(s))
+        setHasElevenKey(!!s.hasElevenLabsKey)
+      }).catch(() => {})
+    }
+    check()
+    const timer = setInterval(check, 5000)
+    return () => { alive = false; clearInterval(timer) }
   }, [])
 
   // ─── IPC listeners (once) ───────────────────────────────────────────
@@ -78,8 +90,9 @@ export function CompanionApp(): React.ReactElement {
 
   async function openPicker(): Promise<void> {
     const s = await window.buildy.loadSettings()
-    if (!s.hasApiKey) { setNeedsApiKey(true); return }
-    setNeedsApiKey(false)
+    setHasElevenKey(!!s.hasElevenLabsKey)
+    if (!isModelConfigured(s)) { setNeedsSetup(true); return }
+    setNeedsSetup(false)
     const wins = await window.buildy.listWindows()
     setWindowList(wins.map((w) => ({ id: w.id, name: w.name, thumbnailBase64: w.thumbnailBase64 })))
     setShowWindowPicker(true)
@@ -174,7 +187,7 @@ export function CompanionApp(): React.ReactElement {
   // ─── Handlers ───────────────────────────────────────────────────────
 
   function onOrbClick(): void {
-    if (needsApiKey) { window.buildy.openPanel(); return }
+    if (needsSetup) { window.buildy.openPanel(); return }
     if (!watchedWindowName) { openPicker(); return }
     // Re-show the latest guidance/answer in the guidance window.
     if (latestAnalysis) window.buildy.showGuidance(latestAnalysis)
@@ -206,8 +219,8 @@ export function CompanionApp(): React.ReactElement {
 
   const watchLabel = sentFlash
     ? 'Sent'
-    : needsApiKey
-      ? 'click orb to set up API key'
+    : needsSetup
+      ? 'Set me up: click the gear'
       : watchedSourceMessage
         ? watchedSourceMessage
         : watchedWindowName
@@ -250,11 +263,14 @@ export function CompanionApp(): React.ReactElement {
         <Btn icon={isPaused ? playIcon : pauseIcon} onClick={onPause} active={isPaused} title={isPaused ? 'Resume' : 'Pause'} />
         <Btn icon={quietIcon} onClick={onQuiet} active={isQuietMode} title={isQuietMode ? 'Normal' : 'Quiet'} />
         <div style={S.pillDivider} />
-        <MicBtn
-          micState={micState}
-          onClick={onMicToggle}
-          disabled={!watchedWindowName}
-        />
+        {/* Click-to-talk uses ElevenLabs STT — hidden unless a key is saved. */}
+        {hasElevenKey && (
+          <MicBtn
+            micState={micState}
+            onClick={onMicToggle}
+            disabled={!watchedWindowName}
+          />
+        )}
         <Btn icon={showLastIcon} onClick={onShowLast} active={false} title="Show last guidance" />
         <Btn icon={monitorIcon} onClick={openPicker} active={false} title="Pick window" />
         <Btn icon={gearIcon} onClick={onSettings} active={false} title="Settings" />

@@ -18,7 +18,8 @@ import { stopAnalysisLoop } from './analysis-loop'
 import { initProjects } from './projects'
 import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
 import { migratePlaintextSecrets } from './secure-store'
-import { settingsFilePath } from './memory'
+import { settingsFilePath, loadRedactedSettings } from './memory'
+import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
 
 // openExternal allowlist: only open safe protocols in the user's browser.
@@ -249,7 +250,21 @@ app.whenReady().then(async () => {
   // window even if a window is recreated (see app.on('activate')).
   registerIpcHandlers(() => mainWindow!, () => companionWindow)
 
-  console.log('Buildy launched — companion only (panel hidden)')
+  // First launch (or unconfigured install): there is NO default model, so open
+  // the Settings panel automatically. The mascot label says
+  // "Set me up: click the gear" until a provider key + model are chosen.
+  try {
+    const redacted = await loadRedactedSettings()
+    if (!isModelConfigured(redacted)) {
+      mainWindow.once('ready-to-show', () => { mainWindow?.show(); mainWindow?.focus() })
+      // ready-to-show may already have fired for a fast-loading window:
+      if (mainWindow.webContents.isLoading() === false) { mainWindow.show(); mainWindow.focus() }
+    }
+  } catch (e) {
+    console.warn('[App] first-launch settings check failed:', e)
+  }
+
+  console.log('Buildy launched — companion only (panel hidden unless setup is needed)')
 })
 
 // macOS: re-open when dock icon is clicked — show the companion, not the panel

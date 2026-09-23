@@ -103,12 +103,27 @@ export const secretNameEnum = z.enum([
 
 // Unknown keys are STRIPPED by zod's default object parse — so a renderer that tries
 // to sneak an `apiKey` field into a settings save has it silently dropped.
+// modelId may be EMPTY: there is no default model — the user must pick one
+// (handlers that need a model refuse with "Choose a model in Settings").
 export const nonSecretSettingsSchema = z.object({
   provider: providerEnum,
-  modelId: z.string().min(1).max(200),
+  modelId: z.string().max(200),
   baseUrl: z.string().max(2000),
   autoAnalysisIntervalSeconds: z.number().int().min(5).max(3600),
   elevenLabsVoiceId: z.string().max(200),
+  hourlyCallCap: z.number().int().min(20).max(600),
+})
+
+// Live model list request — main fetches with the STORED key, never a renderer key.
+export const listModelsSchema = z.object({
+  provider: providerEnum,
+  baseUrl: z.string().max(2000),
+})
+
+// Vision-gate status query for the Settings UI.
+export const visionStatusSchema = z.object({
+  provider: providerEnum,
+  modelId: z.string().min(1).max(200),
 })
 
 export const setSecretSchema = z.object({

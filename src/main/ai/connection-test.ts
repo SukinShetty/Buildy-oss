@@ -1,15 +1,34 @@
-// connection-test.ts
-// Lightweight connectivity check for each provider.
-// Sends a minimal request to verify API key, base URL, and model access.
-// Returns a user-friendly result — no stack traces.
+// connection-test.ts — main process
+// "Test connection" IS the vision check: a tiny solid-red test image is sent
+// to the selected provider+model and the model must answer "red". A pass is
+// persisted (vision-approvals.ts) and unlocks watching for that exact
+// provider+model until the API key changes. Failures map to the same
+// plain-English strings used at runtime (provider-errors.ts).
+//
+// Runs automatically when a model is selected, and on demand via the
+// Test connection button in Settings.
 
 import type { AppSettings } from '../../renderer/src/types'
-import { fetchWithTimeout } from './fetch-with-timeout'
+import { CHOOSE_MODEL_MESSAGE } from '../../renderer/src/types'
+import { callTextCompletion } from './text-completion'
+import { mapProviderError, PROVIDER_ERROR_MESSAGES } from './provider-errors'
+import { recordVisionPass, recordVisionFail } from '../vision-approvals'
+
+// 32x32 solid red PNG, constructed programmatically (scripts/one-off zlib PNG
+// encoder) and inlined as base64 — no fixture file needed at runtime.
+export const RED_TEST_IMAGE_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAJ0lEQVR42u3NsQkAAAjAsP7/tF7hIASyp6lTCQQCgUAgEAgEgi/BAjLD/C5w/SM9AAAAAElFTkSuQmCC'
+
+const VISION_QUESTION = 'What single colour is this image? Answer in one word.'
+
+const PROVIDERS_REQUIRING_KEY = new Set(['anthropic', 'openai', 'gemini', 'openrouter'])
 
 export interface ConnectionTestResult {
   success: boolean
   message: string
   latencyMs: number | null
+  /** True only when the model actually answered "red" for the test image. */
+  visionPassed: boolean
 }
 
 export async function testProviderConnection(
@@ -17,157 +36,49 @@ export async function testProviderConnection(
 ): Promise<ConnectionTestResult> {
   const startTime = Date.now()
 
+  if (!settings.modelId.trim()) {
+    return { success: false, message: CHOOSE_MODEL_MESSAGE, latencyMs: null, visionPassed: false }
+  }
+  if (PROVIDERS_REQUIRING_KEY.has(settings.provider) && !settings.apiKey) {
+    return { success: false, message: CHOOSE_MODEL_MESSAGE, latencyMs: null, visionPassed: false }
+  }
+
   try {
-    switch (settings.provider) {
-      case 'anthropic':
-        return await testAnthropic(settings, startTime)
-      case 'openai':
-        return await testOpenAICompatible(settings, startTime, 'https://api.openai.com/v1', 'OpenAI')
-      case 'gemini':
-        return await testGemini(settings, startTime)
-      case 'openrouter':
-        return await testOpenAICompatible(settings, startTime, 'https://openrouter.ai/api/v1', 'OpenRouter')
-      case 'ollama':
-        return await testOllama(settings, startTime)
-      case 'lmstudio':
-        return await testOpenAICompatible(settings, startTime, settings.baseUrl || 'http://localhost:1234/v1', 'LM Studio')
-      case 'custom':
-        return await testOpenAICompatible(settings, startTime, settings.baseUrl || 'http://localhost:8080/v1', 'Custom endpoint')
-      default:
-        return { success: false, message: `Unknown provider: ${settings.provider}`, latencyMs: null }
+    const answer = await callTextCompletion({
+      system: 'You answer in one word.',
+      user: VISION_QUESTION,
+      settings,
+      maxTokens: 10,
+      imageBase64: RED_TEST_IMAGE_BASE64,
+      imageMime: 'image/png',
+    })
+    const latency = Date.now() - startTime
+
+    if (answer.toLowerCase().includes('red')) {
+      recordVisionPass(settings.provider, settings.modelId, settings.apiKey)
+      return {
+        success: true,
+        message: `Vision check passed — this model can see your screen. (${latency}ms)`,
+        latencyMs: latency,
+        visionPassed: true,
+      }
     }
-  } catch (error) {
+
+    // The model responded but couldn't (or wouldn't) read the image.
+    recordVisionFail(settings.provider, settings.modelId)
     return {
       success: false,
-      message: friendlyError(error),
-      latencyMs: Date.now() - startTime,
-    }
-  }
-}
-
-// ─── Provider-specific tests ─────────────────────────────────────────────────
-
-async function testAnthropic(settings: AppSettings, startTime: number): Promise<ConnectionTestResult> {
-  // Send a minimal message to verify API key (proxy mode removed in v1).
-  const response = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': settings.apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: settings.modelId,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'test' }],
-    }),
-  })
-
-  const latency = Date.now() - startTime
-
-  if (response.ok) {
-    return { success: true, message: `Connected to Anthropic (${latency}ms)`, latencyMs: latency }
-  }
-
-  const errorBody = await response.text().catch(() => '')
-  if (response.status === 401) {
-    return { success: false, message: 'Invalid API key. Check your Anthropic API key.', latencyMs: latency }
-  }
-  if (response.status === 404) {
-    return { success: false, message: `Model "${settings.modelId}" not found. Check the model ID.`, latencyMs: latency }
-  }
-  return { success: false, message: `Anthropic error ${response.status}: ${errorBody.slice(0, 200)}`, latencyMs: latency }
-}
-
-async function testOpenAICompatible(
-  settings: AppSettings,
-  startTime: number,
-  defaultBaseUrl: string,
-  providerName: string
-): Promise<ConnectionTestResult> {
-  const baseUrl = (settings.baseUrl || defaultBaseUrl).replace(/\/$/, '')
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (settings.apiKey) headers['Authorization'] = `Bearer ${settings.apiKey}`
-
-  const isLocal = providerName === 'LM Studio' || providerName === 'Custom endpoint'
-
-  // Try listing models first — lightweight check
-  const response = await fetchWithTimeout(`${baseUrl}/models`, {
-    method: 'GET',
-    headers,
-  }, isLocal)
-
-  const latency = Date.now() - startTime
-
-  if (response.ok) {
-    return { success: true, message: `Connected to ${providerName} (${latency}ms)`, latencyMs: latency }
-  }
-
-  if (response.status === 401) {
-    return { success: false, message: `Invalid API key for ${providerName}.`, latencyMs: latency }
-  }
-  if (response.status === 403) {
-    return { success: false, message: `Access denied. Check your ${providerName} API key permissions.`, latencyMs: latency }
-  }
-  return { success: false, message: `${providerName} returned status ${response.status}`, latencyMs: latency }
-}
-
-async function testGemini(settings: AppSettings, startTime: number): Promise<ConnectionTestResult> {
-  const baseUrl = settings.baseUrl || 'https://generativelanguage.googleapis.com/v1beta'
-  const url = `${baseUrl}/models`
-
-  const response = await fetchWithTimeout(url, {
-    method: 'GET',
-    headers: { 'x-goog-api-key': settings.apiKey },
-  })
-  const latency = Date.now() - startTime
-
-  if (response.ok) {
-    return { success: true, message: `Connected to Gemini (${latency}ms)`, latencyMs: latency }
-  }
-
-  if (response.status === 400 || response.status === 403) {
-    return { success: false, message: 'Invalid API key. Check your Google AI API key.', latencyMs: latency }
-  }
-  return { success: false, message: `Gemini returned status ${response.status}`, latencyMs: latency }
-}
-
-async function testOllama(settings: AppSettings, startTime: number): Promise<ConnectionTestResult> {
-  const baseUrl = (settings.baseUrl || 'http://localhost:11434').replace(/\/$/, '')
-
-  // Ollama has a simple /api/tags endpoint to list models
-  const response = await fetchWithTimeout(`${baseUrl}/api/tags`, {
-    method: 'GET',
-  }, true)
-
-  const latency = Date.now() - startTime
-
-  if (response.ok) {
-    const data = (await response.json()) as { models?: Array<{ name: string }> }
-    const modelCount = data.models?.length ?? 0
-    return {
-      success: true,
-      message: `Connected to Ollama (${latency}ms). ${modelCount} model${modelCount === 1 ? '' : 's'} available.`,
+      message: PROVIDER_ERROR_MESSAGES.cannotReadImages,
       latencyMs: latency,
+      visionPassed: false,
     }
+  } catch (error) {
+    const latency = Date.now() - startTime
+    const mapped = mapProviderError(String(error))
+    // An image-rejection error is a definitive vision fail for this model.
+    if (mapped.kind === 'cannot-read-images') {
+      recordVisionFail(settings.provider, settings.modelId)
+    }
+    return { success: false, message: mapped.message, latencyMs: latency, visionPassed: false }
   }
-
-  return {
-    success: false,
-    message: `Cannot reach Ollama at ${baseUrl}. Is it running? Try: ollama serve`,
-    latencyMs: latency,
-  }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function friendlyError(error: unknown): string {
-  const msg = String(error)
-  if (msg.includes('fetch failed') || msg.includes('ECONNREFUSED')) {
-    return 'Cannot connect. Check the URL and make sure the server is running.'
-  }
-  if (msg.includes('timed out')) {
-    return msg
-  }
-  return msg.length > 300 ? msg.slice(0, 300) + '...' : msg
 }

@@ -4,7 +4,7 @@
 
 import { ipcMain, clipboard, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { IPC } from '../renderer/src/types'
+import { IPC, CHOOSE_MODEL_MESSAGE } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
 import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId, setGuidanceFocusable } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
@@ -12,13 +12,15 @@ import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import {
   loadProjectMemory, saveProjectMemory, loadGoal, setGoal, updateGoal,
-  loadSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
+  loadSettings, loadNonSecretSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
 } from './memory'
 import { setSecret } from './secure-store'
 import { debugLog, debugError } from './debug-log'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
+import { fetchModelsForProvider } from './ai/model-fetch'
+import { hasVisionPass } from './vision-approvals'
 import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion, handleSendPromptRequest } from './analysis-loop'
 import {
   parseInput, assertFromMainWindow, assertFromGuidanceWindow, isAllowedBaseUrl,
@@ -26,6 +28,7 @@ import {
   goalPartialSchema, shortText, sourceId as sourceIdSchema, windowName as windowNameSchema,
   confidenceEnum, chatHistorySchema, promptIdSchema,
   projectIdSchema, projectCreateSchema, projectRenameSchema,
+  listModelsSchema, visionStatusSchema,
 } from './ipc-schemas'
 import {
   listProjectSummaries, getActiveProject, createProjectAndSwitch, switchProject,
@@ -68,6 +71,16 @@ export function registerIpcHandlers(
     return resolveSettings(nonSecret)
   }
 
+  // Providers that cannot work without a stored API key.
+  const KEYED_PROVIDERS = new Set(['anthropic', 'openai', 'gemini', 'openrouter'])
+
+  // With no key or no model, analysis and Brainstorm refuse — there is no
+  // default model anywhere, so the user must pick one first.
+  function assertModelUsable(settings: AppSettings): void {
+    if (!settings.modelId.trim()) throw new Error(CHOOSE_MODEL_MESSAGE)
+    if (KEYED_PROVIDERS.has(settings.provider) && !settings.apiKey) throw new Error(CHOOSE_MODEL_MESSAGE)
+  }
+
   // ─── Window listing ─────────────────────────────────────────────────────────
 
   ipcMain.handle(IPC.LIST_WINDOWS, async () => {
@@ -99,6 +112,7 @@ export function registerIpcHandlers(
       const capture = parseInput(captureResultSchema, 'ANALYZE', captureRaw)
       const project = parseInput(projectMemorySchema, 'ANALYZE', projectRaw)
       const settings = resolveValidatedSettings('ANALYZE', settingsRaw)
+      assertModelUsable(settings)
       const provider = getProvider(settings.provider)
       return await provider.analyzeScreen(capture as never, project as never, settings)
     } catch (error) {
@@ -114,6 +128,7 @@ export function registerIpcHandlers(
       const userMessage = parseInput(shortText, 'BRAINSTORM_START', userMessageRaw)
       const history = parseInput(chatHistorySchema, 'BRAINSTORM_START', historyRaw)
       const settings = resolveValidatedSettings('BRAINSTORM_START', settingsRaw)
+      assertModelUsable(settings)
       const provider = getProvider(settings.provider)
       await provider.streamBrainstorm(getMainWindow().webContents, userMessage, history as never, settings)
     } catch (error) {
@@ -128,14 +143,52 @@ export function registerIpcHandlers(
     return allProviderInfos
   })
 
-  // ─── Connection test ─────────────────────────────────────────────────────────
+  // ─── Connection test (= vision check) ────────────────────────────────────────
+  // Sends the red test image to the selected provider+model; a pass is persisted
+  // and unlocks watching. Only the main (Settings) window may run it, because it
+  // records vision approvals.
 
-  ipcMain.handle(IPC.TEST_CONNECTION, async (_event, settingsRaw: unknown) => {
+  ipcMain.handle(IPC.TEST_CONNECTION, async (event, settingsRaw: unknown) => {
     try {
+      assertFromMainWindow(event, mainWcId(), 'TEST_CONNECTION')
       const settings = resolveValidatedSettings('TEST_CONNECTION', settingsRaw)
       return await testProviderConnection(settings)
     } catch (error) {
-      return { success: false, message: String(error) }
+      return { success: false, message: String(error), latencyMs: null, visionPassed: false }
+    }
+  })
+
+  // ─── Live model lists (fetched in MAIN with the stored key) ──────────────────
+
+  ipcMain.handle(IPC.LIST_MODELS, async (event, raw: unknown) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'LIST_MODELS')
+      const { provider, baseUrl } = parseInput(listModelsSchema, 'LIST_MODELS', raw)
+      if (!isAllowedBaseUrl(provider, baseUrl)) {
+        console.warn(`[IPC] rejected invalid input on channel LIST_MODELS: baseUrl not allowed for provider ${provider}`)
+        throw new Error('Disallowed base URL on LIST_MODELS')
+      }
+      // Use the on-disk settings but target the REQUESTED provider/baseUrl so
+      // the Settings UI can browse models before saving. Keys stay main-owned.
+      const nonSecret = await loadNonSecretSettings()
+      const settings = resolveSettings({ ...nonSecret, provider, baseUrl })
+      return await fetchModelsForProvider(settings)
+    } catch (error) {
+      console.error('[IPC] LIST_MODELS error:', error)
+      return { models: [], error: String(error) }
+    }
+  })
+
+  // ─── Vision-gate status (has this provider+model passed the check?) ──────────
+
+  ipcMain.handle(IPC.VISION_STATUS, async (_event, raw: unknown) => {
+    try {
+      const { provider, modelId } = parseInput(visionStatusSchema, 'VISION_STATUS', raw)
+      const settings = resolveSettings({ ...(await loadNonSecretSettings()), provider })
+      return { passed: hasVisionPass(provider, modelId, settings.apiKey) }
+    } catch (error) {
+      console.error('[IPC] VISION_STATUS error:', error)
+      return { passed: false }
     }
   })
 
@@ -309,6 +362,27 @@ export function registerIpcHandlers(
       try {
         const sid = parseInput(sourceIdSchema, 'SELECT_WATCH_SOURCE', sourceIdRaw)
         const wname = parseInput(windowNameSchema, 'SELECT_WATCH_SOURCE', windowNameRaw)
+
+        // Gate 1: no key / no model → refuse (no default model exists).
+        const settings = await loadSettings()
+        const missingModel = !settings.modelId.trim() ||
+          (KEYED_PROVIDERS.has(settings.provider) && !settings.apiKey)
+        if (missingModel) {
+          companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+            windowName: null, message: CHOOSE_MODEL_MESSAGE,
+          })
+          return
+        }
+        // Gate 2: watching is allowed ONLY after the vision check passed for
+        // this exact provider+model (with the current key).
+        if (!hasVisionPass(settings.provider, settings.modelId, settings.apiKey)) {
+          companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+            windowName: null,
+            message: "This model can't see your screen. Pick one that passes the check.",
+          })
+          return
+        }
+
         // The loop reloads settings + goal at the START of each cycle (async getters),
         // so editing the goal or settings mid-watch takes effect without restarting.
         startWatching(companion, sid, wname, () => loadSettings(), () => loadGoal())

@@ -23,19 +23,11 @@ export type ProviderType =
   | 'lmstudio'
   | 'custom'
 
-// ─── Model capabilities ─────────────────────────────────────────────────────
-
-export type QualityTier = 'recommended' | 'best-for-vision' | 'capable' | 'experimental'
-
-export interface ModelOption {
-  id: string
-  label: string
-  supportsVision: boolean
-  qualityTier: QualityTier
-  description?: string  // Short capability blurb shown under the model name
-}
-
 // ─── Provider metadata ───────────────────────────────────────────────────────
+// NOTE: there is deliberately NO hardcoded model catalog and NO default model.
+// Model lists are fetched LIVE from each provider (see model-fetch.ts) and the
+// user must explicitly pick one. Vision capability is proven by the vision
+// check (connection-test.ts), never assumed from a static list.
 
 export interface ProviderInfo {
   type: ProviderType
@@ -44,8 +36,6 @@ export interface ProviderInfo {
   requiresApiKey: boolean
   requiresBaseUrl: boolean
   defaultBaseUrl: string
-  defaultModel: string
-  models: ModelOption[]
   supportsStreaming: boolean
 }
 
@@ -76,48 +66,8 @@ export interface AIProvider {
   ): Promise<void>
 }
 
-// ─── Vision warning ──────────────────────────────────────────────────────────
-
-export interface VisionWarning {
-  shouldWarn: boolean
-  message: string
-  canProceed: boolean   // true = text-only fallback available; false = won't work at all
-}
-
-/**
- * Check whether the selected model supports vision well enough for screen analysis.
- * Returns a warning object if the model is suboptimal.
- */
-export function checkVisionSupport(
-  providerInfo: ProviderInfo,
-  modelId: string
-): VisionWarning {
-  const model = providerInfo.models.find((m) => m.id === modelId)
-
-  // Unknown model (e.g. user-typed custom model) — warn but allow
-  if (!model) {
-    return {
-      shouldWarn: true,
-      message: `Unknown model "${modelId}". Vision support is uncertain. Screen analysis may not work well.`,
-      canProceed: true,
-    }
-  }
-
-  if (!model.supportsVision) {
-    return {
-      shouldWarn: true,
-      message: `${model.label} does not support image input. Buildy will use text-only mode — you can still brainstorm but screen analysis won't work.`,
-      canProceed: true,
-    }
-  }
-
-  if (model.qualityTier === 'experimental') {
-    return {
-      shouldWarn: true,
-      message: `${model.label} has experimental vision support. Screen analysis quality may vary. For best results, use a recommended model.`,
-      canProceed: true,
-    }
-  }
-
-  return { shouldWarn: false, message: '', canProceed: true }
-}
+// The old checkVisionSupport() heuristic (guess vision from a hardcoded list,
+// let non-vision models proceed in text-only mode) is REPLACED by the real
+// vision check in connection-test.ts + the persisted vision gate
+// (vision-gate.ts / vision-approvals.ts): watching is only allowed after the
+// exact provider+model has actually answered a test image correctly.

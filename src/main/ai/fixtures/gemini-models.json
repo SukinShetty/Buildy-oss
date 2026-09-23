@@ -1,0 +1,46 @@
+{
+  "models": [
+    {
+      "name": "models/gemini-2.5-pro",
+      "displayName": "Gemini 2.5 Pro",
+      "description": "Stable release of Gemini 2.5 Pro",
+      "supportedGenerationMethods": ["generateContent", "countTokens"]
+    },
+    {
+      "name": "models/gemini-2.5-flash",
+      "displayName": "Gemini 2.5 Flash",
+      "description": "Stable release of Gemini 2.5 Flash",
+      "supportedGenerationMethods": ["generateContent", "countTokens"]
+    },
+    {
+      "name": "models/gemini-2.0-flash",
+      "displayName": "Gemini 2.0 Flash",
+      "description": "Gemini 2.0 Flash",
+      "supportedGenerationMethods": ["generateContent", "countTokens", "bidiGenerateContent"]
+    },
+    {
+      "name": "models/text-embedding-004",
+      "displayName": "Text Embedding 004",
+      "description": "Obtain a distributed representation of a text.",
+      "supportedGenerationMethods": ["embedContent"]
+    },
+    {
+      "name": "models/gemini-embedding-001",
+      "displayName": "Gemini Embedding 001",
+      "description": "Embedding model",
+      "supportedGenerationMethods": ["embedContent", "generateContent"]
+    },
+    {
+      "name": "models/aqa",
+      "displayName": "Model that performs Attributed Question Answering",
+      "description": "AQA model",
+      "supportedGenerationMethods": ["generateAnswer", "generateContent"]
+    },
+    {
+      "name": "models/imagen-3.0-generate-002",
+      "displayName": "Imagen 3.0",
+      "description": "Image generation",
+      "supportedGenerationMethods": ["predict"]
+    }
+  ]
+}

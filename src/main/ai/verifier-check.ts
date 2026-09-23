@@ -14,6 +14,7 @@ import type { AnalysisResult, AppSettings, Goal } from '../../renderer/src/types
 import type { PromptOutcome } from '../verifier'
 import { callTextCompletion } from './text-completion'
 import { debugLog } from '../debug-log'
+import { recordProviderCall } from '../cost-guard'
 
 // Haiku is only used when the user's provider IS Anthropic (cheap grade).
 const HAIKU_MODEL = 'claude-haiku-4-5-20251001'
@@ -45,6 +46,7 @@ export async function verifyPromptOutcome(
   try {
     // On Anthropic, grade cheaply with Haiku; otherwise use the user's own model.
     const modelOverride = settings.provider === 'anthropic' ? HAIKU_MODEL : undefined
+    recordProviderCall() // cost guard: verifier call
     const text = await callTextCompletion({ system, user, settings, modelOverride, maxTokens: 400 })
     const result = parseVerifierResponse(text)
     debugLog(`[Verifier] status=${result.status} note="${result.note.slice(0, 80)}"`)

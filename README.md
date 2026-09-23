@@ -121,12 +121,12 @@ All configuration is done in the in-app **Settings** screen and stored locally i
 
 | Setting | Notes |
 |---|---|
-| **Provider** | `anthropic` · `openai` · `gemini` · `openrouter` · `ollama` · `lmstudio` · `custom` |
-| **Model** | e.g. `claude-opus-4-7`, `gpt-4o`, `gemini-2.5-flash`, or any local model id |
-| **API key** | Used for cloud providers. Stored locally, never committed. |
+| **Provider** | Recommended: `anthropic` · `openai` · `gemini` · `openrouter` — plus local: `ollama` · `lmstudio` · `custom` |
+| **Model** | Picked from the LIVE model list fetched from your provider. There is no default model — you must choose one, and it must pass the vision check before watching is enabled. |
+| **API key** | Used for cloud providers. Stored locally (encrypted), write-only — never shown again. |
 | **Base URL** | For Ollama / LM Studio / custom OpenAI-compatible endpoints |
-| **ElevenLabs key + voice** | Optional — enables premium TTS; otherwise the system voice is used |
-| **Proxy URL** | Optional Cloudflare Worker proxy for Anthropic (see `worker/`) |
+| **API budget** | Max provider calls per rolling hour (20–600, default 120). Watching pauses at the cap. |
+| **ElevenLabs key + voice** | Optional — enables premium TTS and the mic button; otherwise the system voice is used |
 
 > 💡 **Fully offline:** select `ollama` (or `lmstudio`), point the Base URL at your local server, pick a vision-capable local model, and skip the ElevenLabs key to use the built-in system voice.
 

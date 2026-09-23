@@ -260,6 +260,13 @@ function AnalysisBody({
           {sendError && <div style={S.sendError}>{sendError}</div>}
         </div>
       )}
+
+      {/* Cost-guard footer: provider calls in the current rolling hour. */}
+      {typeof analysis.callsThisHour === 'number' && (
+        <div style={S.callsFooter}>
+          {analysis.callsThisHour} {analysis.callsThisHour === 1 ? 'call' : 'calls'} this hour
+        </div>
+      )}
     </>
   )
 }
@@ -609,6 +616,14 @@ const S = {
     fontStyle: 'italic' as const,
     color: '#FBBF24',
     lineHeight: 1.5,
+  },
+  callsFooter: {
+    marginTop: 12,
+    fontSize: 10,
+    fontWeight: 500,
+    letterSpacing: '0.04em',
+    color: 'rgba(255,255,255,0.35)',
+    textAlign: 'right' as const,
   },
   questionLabel: {
     fontSize: 10,

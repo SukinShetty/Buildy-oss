@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { PromptCard } from '../components/PromptCard'
-import { isApiConfigured } from '../types'
+import { isModelConfigured } from '../types'
 import type { ChatMessage, ExtractedProjectData } from '../types'
 
 export function BrainstormScreen(): React.ReactElement {
@@ -62,8 +62,9 @@ export function BrainstormScreen(): React.ReactElement {
     }
   }, [])
 
-  // Check if API is configured: a stored key, or a local provider with a baseUrl.
-  const apiIsConfigured = isApiConfigured(settings)
+  // Usable = a reachable provider (key or local baseUrl) AND a chosen model.
+  // There is no default model — with either missing, Brainstorm refuses.
+  const apiIsConfigured = isModelConfigured(settings)
 
   async function handleSendMessage(): Promise<void> {
     const trimmedInput = inputText.trim()
@@ -142,19 +143,19 @@ export function BrainstormScreen(): React.ReactElement {
         )}
       </div>
 
-      {/* No API key warning */}
+      {/* No key / no model warning */}
       {!apiIsConfigured && (
         <div style={styles.warningBanner}>
           <span>⚠️</span>
           <span>
-            Add your Anthropic API key in{' '}
+            Choose a model in{' '}
             <button
               style={styles.inlineLink}
               onClick={() => setCurrentScreen('settings')}
             >
               Settings
-            </button>{' '}
-            to use Buildy.
+            </button>
+            {' '}to use Buildy.
           </span>
         </div>
       )}

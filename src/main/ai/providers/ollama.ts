@@ -23,18 +23,7 @@ export const ollamaProviderInfo: ProviderInfo = {
   requiresApiKey: false,
   requiresBaseUrl: true,
   defaultBaseUrl: 'http://localhost:11434',
-  defaultModel: 'llama3.1',
   supportsStreaming: true,
-  models: [
-    { id: 'llama3.1', label: 'Llama 3.1 8B', supportsVision: false, qualityTier: 'capable' },
-    { id: 'llama3.1:70b', label: 'Llama 3.1 70B', supportsVision: false, qualityTier: 'capable' },
-    { id: 'llava', label: 'LLaVA (Vision)', supportsVision: true, qualityTier: 'experimental' },
-    { id: 'llava-llama3', label: 'LLaVA Llama 3 (Vision)', supportsVision: true, qualityTier: 'experimental' },
-    { id: 'gemma3', label: 'Gemma 3', supportsVision: true, qualityTier: 'experimental' },
-    { id: 'mistral', label: 'Mistral 7B', supportsVision: false, qualityTier: 'experimental' },
-    { id: 'deepseek-r1', label: 'DeepSeek R1', supportsVision: false, qualityTier: 'capable' },
-    { id: 'qwen2.5', label: 'Qwen 2.5', supportsVision: false, qualityTier: 'capable' },
-  ],
 }
 
 export class OllamaProvider implements AIProvider {
@@ -49,13 +38,10 @@ export class OllamaProvider implements AIProvider {
     const systemPrompt = buildAnalysisSystemPrompt(project, capture.windowTitle)
     const userPrompt = buildAnalysisUserPrompt(project, capture.windowTitle)
 
-    const model = this.info.models.find((m) => m.id === settings.modelId)
-    const useVision = model ? model.supportsVision : false
-
-    // Ollama uses its own /api/chat format with images as base64 array
-    const userContent = useVision
-      ? `Screenshot of: ${capture.windowTitle}\n\n${userPrompt}`
-      : `Screenshot of: ${capture.windowTitle}\n\n${userPrompt}\n\n[Note: This model does not support image input. Please provide your best guidance based on the project context alone.]`
+    // ALWAYS send the screenshot (Ollama /api/chat takes images as a base64
+    // array). Vision capability is proven up front by the vision check — a
+    // model that can't read images fails the gate before watching starts.
+    const userContent = `Screenshot of: ${capture.windowTitle}\n\n${userPrompt}`
 
     const requestBody: Record<string, unknown> = {
       model: settings.modelId,
@@ -65,7 +51,7 @@ export class OllamaProvider implements AIProvider {
         {
           role: 'user',
           content: userContent,
-          ...(useVision ? { images: [capture.imageBase64] } : {}),
+          images: [capture.imageBase64],
         },
       ],
     }

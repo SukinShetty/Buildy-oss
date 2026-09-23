@@ -15,7 +15,10 @@ import type {
   RedactedSettings,
   Goal,
 } from '../renderer/src/types'
-import { emptyProjectMemory, defaultNonSecretSettings } from '../renderer/src/types'
+import {
+  emptyProjectMemory, defaultNonSecretSettings,
+  HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX,
+} from '../renderer/src/types'
 import { getSecret, hasSecret, secretKeyForProvider, getAllRedacted } from './secure-store'
 
 const userDataDirectory = app.getPath('userData')
@@ -116,12 +119,17 @@ export async function loadNonSecretSettings(): Promise<NonSecretSettings> {
   const d = defaultNonSecretSettings()
   try {
     const raw = JSON.parse(await fs.readFile(settingsFilePath, 'utf-8')) as Record<string, unknown>
+    const rawCap = Number(raw.hourlyCallCap ?? d.hourlyCallCap)
+    const hourlyCallCap = Number.isFinite(rawCap)
+      ? Math.min(HOURLY_CALL_CAP_MAX, Math.max(HOURLY_CALL_CAP_MIN, Math.round(rawCap)))
+      : d.hourlyCallCap
     return {
       provider: (raw.provider as NonSecretSettings['provider']) ?? d.provider,
       modelId: String(raw.modelId ?? d.modelId),
       baseUrl: String(raw.baseUrl ?? ''),
       autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? d.autoAnalysisIntervalSeconds),
       elevenLabsVoiceId: String(raw.elevenLabsVoiceId ?? d.elevenLabsVoiceId),
+      hourlyCallCap,
     }
   } catch {
     return d
@@ -168,6 +176,7 @@ export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void>
     baseUrl: s.baseUrl,
     autoAnalysisIntervalSeconds: s.autoAnalysisIntervalSeconds,
     elevenLabsVoiceId: s.elevenLabsVoiceId,
+    hourlyCallCap: s.hourlyCallCap,
   }
   await fs.writeFile(settingsFilePath, JSON.stringify(clean, null, 2), 'utf-8')
 }

@@ -1,0 +1,7 @@
+{
+  "models": [
+    { "name": "llava:latest", "model": "llava:latest", "size": 4733363377, "details": { "family": "llama", "parameter_size": "7B" } },
+    { "name": "gemma3:4b", "model": "gemma3:4b", "size": 3338801804, "details": { "family": "gemma3", "parameter_size": "4.3B" } },
+    { "name": "qwen2.5:7b", "model": "qwen2.5:7b", "size": 4683087332, "details": { "family": "qwen2", "parameter_size": "7.6B" } }
+  ]
+}
