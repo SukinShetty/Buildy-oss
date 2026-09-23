@@ -17,8 +17,8 @@ git clone https://github.com/SukinShetty/Buildy-oss.git
 cd Buildy-oss
 
 # NOTE: --legacy-peer-deps is required.
-# electron-vite pins an older Vite peer range than the Vite 6 we use,
-# so a plain `npm install` fails with peer-dependency errors.
+# npm 10+ crashes with an arborist "edgesOut" error on a clean install
+# without it, even though every peer dependency resolves.
 npm install --legacy-peer-deps
 
 npm run dev        # start the app (Electron + Vite HMR)

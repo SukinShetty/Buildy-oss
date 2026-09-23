@@ -99,7 +99,8 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 ## Development setup
 
 ```bash
-# --legacy-peer-deps is required (electron-vite pins an older Vite peer range)
+# --legacy-peer-deps is required: npm 10+ crashes with an arborist "edgesOut" error
+# on a clean install without it, even though every peer dependency resolves.
 npm install --legacy-peer-deps
 
 npm run dev        # dev server (Electron + Vite HMR)

@@ -93,7 +93,8 @@ Buildy is an **Electron + React + TypeScript** app split across three windows, a
 git clone https://github.com/SukinShetty/Buildy-oss.git
 cd Buildy-oss
 
-# NOTE: --legacy-peer-deps is required (electron-vite pins an older Vite peer range)
+# NOTE: --legacy-peer-deps is required — npm 10+ crashes with an arborist "edgesOut"
+# error on a clean install without it, even though every peer resolves.
 npm install --legacy-peer-deps
 
 npm run dev
@@ -178,8 +179,8 @@ For a deeper technical walkthrough, see [`AGENTS.md`](./AGENTS.md).
 
 ## 🧯 Troubleshooting / FAQ
 
-**`npm install` fails with peer-dependency errors.**
-Use `npm install --legacy-peer-deps` — electron-vite pins an older Vite peer range, so the flag is required.
+**`npm install` fails or crashes.**
+Use `npm install --legacy-peer-deps` — npm 10+ crashes with an arborist "edgesOut" error on a clean install without the flag, even though every peer dependency resolves.
 
 **Buildy lists no windows to watch (macOS).**
 Grant Screen Recording permission to Buildy (or to your terminal in dev) under System Settings → Privacy & Security → Screen Recording, then restart the app.
