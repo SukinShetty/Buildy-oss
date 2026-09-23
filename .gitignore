@@ -19,3 +19,15 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# local plan and memory
+*.local.md
+.nemp/
+BUILDY.md
+
+# test output
+playwright-report/
+test-results/
+
+# local claude settings
+.claude/settings.local.json
