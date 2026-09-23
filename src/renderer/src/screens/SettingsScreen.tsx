@@ -136,6 +136,10 @@ export function SettingsScreen(): React.ReactElement {
   const [visionPassed, setVisionPassed] = useState<boolean | null>(null)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   const [isTesting, setIsTesting] = useState(false)
+  // Delete-all-data flow (privacy): confirm → wipe in main → app restarts.
+  const [confirmWipe, setConfirmWipe] = useState(false)
+  const [isWiping, setIsWiping] = useState(false)
+  const [wipeError, setWipeError] = useState<string | null>(null)
 
   const meta = getProviderMeta(provider)
 
@@ -206,6 +210,7 @@ export function SettingsScreen(): React.ReactElement {
       autoAnalysisIntervalSeconds: settings.autoAnalysisIntervalSeconds,
       elevenLabsVoiceId: elevenLabsVoiceId.trim() || DEFAULT_VOICE_ID,
       hourlyCallCap: clampCap(hourlyCallCap),
+      captureNoticeAccepted: settings.captureNoticeAccepted,
       ...overrides,
     }
   }
@@ -259,6 +264,21 @@ export function SettingsScreen(): React.ReactElement {
       setTestResult({ success: false, message: friendlySaveError(error) })
     } finally {
       setIsTesting(false)
+    }
+  }
+
+  // Delete all Buildy data: keys, settings, every project's memory — then the
+  // app relaunches to first run. Main performs the wipe (main-window-only IPC).
+  async function handleDeleteAllData(): Promise<void> {
+    setIsWiping(true)
+    setWipeError(null)
+    try {
+      await window.buildy.deleteAllData()
+      // The app restarts here — nothing more to do on success.
+    } catch (error) {
+      setIsWiping(false)
+      setConfirmWipe(false)
+      setWipeError(String(error))
     }
   }
 
@@ -585,7 +605,52 @@ export function SettingsScreen(): React.ReactElement {
               : 'Your API key is encrypted on this device (OS keychain) and is never exposed to the app UI.'}
           </div>
         </div>
+
+        {/* Danger zone: delete everything and restart to first run */}
+        <div style={styles.section}>
+          <div style={styles.sectionLabel}>Danger zone</div>
+          <div style={styles.sectionHint}>
+            Remove everything Buildy stores on this computer and start over.
+          </div>
+          <button
+            onClick={() => { setWipeError(null); setConfirmWipe(true) }}
+            style={styles.dangerOutlineBtn}
+          >
+            Delete all Buildy data
+          </button>
+          {wipeError && <div style={styles.modelsError}>{wipeError}</div>}
+        </div>
       </div>
+
+      {confirmWipe && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modalCard}>
+            <div style={styles.modalTitle}>Delete all Buildy data?</div>
+            <div style={styles.modalText}>
+              This deletes your keys, settings and all project memory from this
+              computer. This cannot be undone. Buildy will restart as if freshly
+              installed.
+            </div>
+            <div style={styles.modalButtons}>
+              <button
+                className="btn-ghost"
+                onClick={() => setConfirmWipe(false)}
+                disabled={isWiping}
+                style={{ flex: 1, justifyContent: 'center' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleDeleteAllData()}
+                disabled={isWiping}
+                style={{ ...styles.dangerFillBtn, opacity: isWiping ? 0.6 : 1 }}
+              >
+                {isWiping ? 'Deleting…' : 'Delete everything'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -899,5 +964,65 @@ const styles = {
     fontSize: 11,
     color: 'var(--color-text-dim)',
     lineHeight: 1.5,
+  },
+  dangerOutlineBtn: {
+    alignSelf: 'flex-start' as const,
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 12px',
+    borderRadius: 'var(--radius-sm)',
+    background: 'transparent',
+    border: '1px solid var(--color-danger)',
+    color: 'var(--color-danger)',
+    cursor: 'pointer',
+  },
+  dangerFillBtn: {
+    flex: 1,
+    justifyContent: 'center',
+    display: 'flex',
+    alignItems: 'center',
+    background: 'var(--color-danger)',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 'var(--radius-sm)',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  modalOverlay: {
+    position: 'fixed' as const,
+    inset: 0,
+    background: 'rgba(0,0,0,0.55)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: 24,
+  },
+  modalCard: {
+    background: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-lg)',
+    padding: 20,
+    maxWidth: 360,
+    width: '100%',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+  },
+  modalTitle: {
+    fontSize: 15,
+    fontWeight: 700,
+    color: 'var(--color-text)',
+    marginBottom: 8,
+  },
+  modalText: {
+    fontSize: 13,
+    color: 'var(--color-text-muted)',
+    lineHeight: 1.5,
+    marginBottom: 16,
+  },
+  modalButtons: {
+    display: 'flex',
+    gap: 8,
   },
 }

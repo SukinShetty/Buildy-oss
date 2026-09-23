@@ -8,7 +8,7 @@ import { Mascot } from '../components/Mascot'
 import type { MascotState, MascotAlignment, MascotReaction, MascotReactionType } from '../components/Mascot'
 import { deriveMascotSignals } from './mascot-signals'
 import type { AnalysisResult } from '../types'
-import { isModelConfigured } from '../types'
+import { isModelConfigured, CAPTURE_NOTICE_MESSAGE } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
 
 interface WindowItem { id: string; name: string; thumbnailBase64: string }
@@ -28,6 +28,11 @@ export function CompanionApp(): React.ReactElement {
   const [needsSetup, setNeedsSetup] = useState(false)
   const [hasElevenKey, setHasElevenKey] = useState(false)
   const [sentFlash, setSentFlash] = useState(false)
+  // One-time privacy disclosure (first window pick). The accepted flag is
+  // persisted in main; while it's false the chosen window is parked in
+  // pendingPick until the user hits Continue (Cancel aborts the pick).
+  const [captureNoticeAccepted, setCaptureNoticeAccepted] = useState(true)
+  const [pendingPick, setPendingPick] = useState<{ id: string; name: string } | null>(null)
   const isMutedRef = useRef(isMuted)
   isMutedRef.current = isMuted
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -69,6 +74,7 @@ export function CompanionApp(): React.ReactElement {
         if (!alive) return
         setNeedsSetup(!isModelConfigured(s))
         setHasElevenKey(!!s.hasElevenLabsKey)
+        setCaptureNoticeAccepted(s.captureNoticeAccepted)
       }).catch(() => {})
     }
     check()
@@ -136,12 +142,39 @@ export function CompanionApp(): React.ReactElement {
 
   async function pickWindow(id: string, name: string): Promise<void> {
     setShowWindowPicker(false)
+    // First-ever pick: show the one-time privacy disclosure before anything
+    // is captured. Continue proceeds with this pick; Cancel aborts it.
+    if (!captureNoticeAccepted) {
+      setPendingPick({ id, name })
+      return
+    }
+    await startWatchingWindow(id, name)
+  }
+
+  async function startWatchingWindow(id: string, name: string): Promise<void> {
     clearAnalysis()
     resetMascotSignals()  // fresh session: no stale glow/badge from the old window
     window.buildy.hideGuidance()  // drop any stale guidance from the previous window
     window.buildy.voice.resetDedup()  // fresh watching session can speak anything
     setWatchedSource(name, null)
     await window.buildy.selectWatchSource(id, name)
+  }
+
+  async function onCaptureNoticeContinue(): Promise<void> {
+    const pick = pendingPick
+    setPendingPick(null)
+    try {
+      await window.buildy.acceptCaptureNotice()
+      setCaptureNoticeAccepted(true)
+    } catch (e) {
+      console.warn('[Companion] could not persist capture-notice acceptance:', e)
+      // Proceed anyway for this session — the notice will simply show again.
+    }
+    if (pick) await startWatchingWindow(pick.id, pick.name)
+  }
+
+  function onCaptureNoticeCancel(): void {
+    setPendingPick(null) // abort the window pick entirely
   }
 
   // ─── Click-to-talk (MediaRecorder → ElevenLabs STT) ─────────────────
@@ -349,6 +382,18 @@ export function CompanionApp(): React.ReactElement {
             ))}
           </div>
           <button onClick={() => setShowWindowPicker(false)} style={S.pickerCancel}>Cancel</button>
+        </div>
+      )}
+
+      {/* One-time privacy disclosure — shown before the FIRST watch ever starts */}
+      {pendingPick && (
+        <div style={S.picker}>
+          <div style={S.noticeTitle}>Before Buildy starts watching</div>
+          <div style={S.noticeText}>{CAPTURE_NOTICE_MESSAGE}</div>
+          <div style={S.noticeButtons}>
+            <button onClick={onCaptureNoticeCancel} style={S.noticeCancel}>Cancel</button>
+            <button onClick={() => void onCaptureNoticeContinue()} style={S.noticeContinue}>Continue</button>
+          </div>
         </div>
       )}
     </div>
@@ -583,5 +628,44 @@ const S = {
     width: '100%',
     textAlign: 'center' as const,
     padding: 3,
+  },
+  noticeTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 6,
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+    lineHeight: 1.5,
+    overflowY: 'auto' as const,
+  },
+  noticeButtons: {
+    display: 'flex',
+    gap: 6,
+    marginTop: 8,
+  },
+  noticeCancel: {
+    flex: 1,
+    fontSize: 11,
+    padding: '6px 8px',
+    borderRadius: 8,
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'rgba(255,255,255,0.7)',
+    cursor: 'pointer',
+  },
+  noticeContinue: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '6px 8px',
+    borderRadius: 8,
+    background: '#FF6B2B',
+    border: 'none',
+    color: '#fff',
+    cursor: 'pointer',
   },
 }

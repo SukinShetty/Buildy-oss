@@ -31,6 +31,19 @@ export function assertFromMainWindow(
   }
 }
 
+/** Sender check: the sender must be one of the given windows (null ids are
+ *  ignored — e.g. a window that doesn't exist right now). */
+export function assertFromWindowIds(
+  event: IpcMainInvokeEvent | IpcMainEvent,
+  allowedWebContentsIds: Array<number | null>,
+  channel: string
+): void {
+  if (!allowedWebContentsIds.some((id) => id !== null && event.sender.id === id)) {
+    console.warn(`[IPC] rejected ${channel}: sender is not an allowed window`)
+    throw new Error(`Unauthorized sender on ${channel}`)
+  }
+}
+
 /** Sender check: only the guidance window (Send button host) may request a send. */
 export function assertFromGuidanceWindow(
   event: IpcMainInvokeEvent | IpcMainEvent,
@@ -112,6 +125,9 @@ export const nonSecretSettingsSchema = z.object({
   autoAnalysisIntervalSeconds: z.number().int().min(5).max(3600),
   elevenLabsVoiceId: z.string().max(200),
   hourlyCallCap: z.number().int().min(20).max(600),
+  // One-time privacy-disclosure flag. Defaulted so callers built before the
+  // flag existed still validate; missing means "not accepted yet".
+  captureNoticeAccepted: z.boolean().default(false),
 })
 
 // Live model list request — main fetches with the STORED key, never a renderer key.

@@ -130,6 +130,7 @@ export async function loadNonSecretSettings(): Promise<NonSecretSettings> {
       autoAnalysisIntervalSeconds: Number(raw.autoAnalysisIntervalSeconds ?? d.autoAnalysisIntervalSeconds),
       elevenLabsVoiceId: String(raw.elevenLabsVoiceId ?? d.elevenLabsVoiceId),
       hourlyCallCap,
+      captureNoticeAccepted: raw.captureNoticeAccepted === true,
     }
   } catch {
     return d
@@ -170,6 +171,10 @@ export async function loadRedactedSettings(): Promise<RedactedSettings> {
 /** Persist ONLY non-secret fields. Any stray secret/proxy fields are dropped. */
 export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void> {
   await ensureUserDataDirectoryExists()
+  // captureNoticeAccepted is STICKY-TRUE: once the user has accepted the
+  // one-time disclosure, a stale settings save from another window can't
+  // silently reset it. Only "Delete all Buildy data" clears it (fresh file).
+  const onDisk = await loadNonSecretSettings()
   const clean: NonSecretSettings = {
     provider: s.provider,
     modelId: s.modelId,
@@ -177,8 +182,35 @@ export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void>
     autoAnalysisIntervalSeconds: s.autoAnalysisIntervalSeconds,
     elevenLabsVoiceId: s.elevenLabsVoiceId,
     hourlyCallCap: s.hourlyCallCap,
+    captureNoticeAccepted: s.captureNoticeAccepted || onDisk.captureNoticeAccepted,
   }
   await fs.writeFile(settingsFilePath, JSON.stringify(clean, null, 2), 'utf-8')
+}
+
+// ─── Delete all Buildy data (Settings → restart to first run) ─────────────────
+// Deletes ONLY Buildy's own files inside its userData directory: encrypted
+// keys, settings, project records, every project's memory (buildy-memory/*,
+// including each project's Nemp store), the legacy un-namespaced memory file,
+// and the vision-check approvals. Nothing outside userData is ever touched.
+// The caller relaunches the app afterwards (first-run experience).
+export async function deleteAllBuildyData(): Promise<void> {
+  const targets = [
+    'secrets.enc',           // encrypted API keys
+    'settings.json',         // non-secret settings (incl. captureNoticeAccepted)
+    'projects.json',         // project records + active project id
+    'project-memory.json',   // legacy un-namespaced project memory
+    'vision-approvals.json', // vision-check passes (keyed to key fingerprints)
+    'buildy-memory',         // every project's memory + Nemp stores (recursive)
+  ]
+  for (const name of targets) {
+    const target = join(userDataDirectory, name)
+    try {
+      await fs.rm(target, { recursive: true, force: true })
+    } catch (error) {
+      console.warn(`[DataWipe] could not delete ${name}:`, error)
+    }
+  }
+  console.log('[DataWipe] Buildy data deleted (keys, settings, all project memory)')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -85,7 +85,8 @@ export function MemoryScreen(): React.ReactElement {
           <button className="btn-ghost" onClick={load} style={S.smallBtn} title="Refresh">↻</button>
         </div>
         <div style={S.headerSub}>
-          What Buildy remembers about this project. 100% local — nothing leaves your device.
+          What Buildy remembers about this project. Stored only on this computer.
+          Relevant entries are sent to your AI provider with each analysis.
         </div>
       </div>
 

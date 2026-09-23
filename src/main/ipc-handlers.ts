@@ -2,7 +2,7 @@
 // All IPC channels registered in one place.
 // Every channel name is defined in types.ts (IPC constant) to prevent typos.
 
-import { ipcMain, clipboard, dialog } from 'electron'
+import { app, ipcMain, clipboard, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { IPC, CHOOSE_MODEL_MESSAGE } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
@@ -13,6 +13,7 @@ import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import {
   loadProjectMemory, saveProjectMemory, loadGoal, setGoal, updateGoal,
   loadSettings, loadNonSecretSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
+  deleteAllBuildyData,
 } from './memory'
 import { setSecret } from './secure-store'
 import { debugLog, debugError } from './debug-log'
@@ -23,7 +24,7 @@ import { fetchModelsForProvider } from './ai/model-fetch'
 import { hasVisionPass } from './vision-approvals'
 import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion, handleSendPromptRequest } from './analysis-loop'
 import {
-  parseInput, assertFromMainWindow, assertFromGuidanceWindow, isAllowedBaseUrl,
+  parseInput, assertFromMainWindow, assertFromGuidanceWindow, assertFromWindowIds, isAllowedBaseUrl,
   nonSecretSettingsSchema, setSecretSchema, captureResultSchema, projectMemorySchema,
   goalPartialSchema, shortText, sourceId as sourceIdSchema, windowName as windowNameSchema,
   confidenceEnum, chatHistorySchema, promptIdSchema,
@@ -321,7 +322,9 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.SAVE_SETTINGS, async (event, settingsRaw: unknown) => {
     try {
       assertFromMainWindow(event, mainWcId(), 'SAVE_SETTINGS')
-      const nonSecret = parseInput(nonSecretSettingsSchema, 'SAVE_SETTINGS', settingsRaw)
+      // Cast: zod fills captureNoticeAccepted via .default(false) at runtime,
+      // but ZodType<T> unification reports the (optional) input shape.
+      const nonSecret = parseInput(nonSecretSettingsSchema, 'SAVE_SETTINGS', settingsRaw) as NonSecretSettings
       if (!isAllowedBaseUrl(nonSecret.provider, nonSecret.baseUrl)) {
         console.warn(`[IPC] rejected invalid input on channel SAVE_SETTINGS: baseUrl not allowed for provider ${nonSecret.provider}`)
         throw new Error('Disallowed base URL on SAVE_SETTINGS')
@@ -330,6 +333,38 @@ export function registerIpcHandlers(
       invalidateSettingsCache()
     } catch (error) {
       console.error('[IPC] SAVE_SETTINGS error:', error)
+      throw error
+    }
+  })
+
+  // One-time privacy disclosure (first window pick): persist acceptance. The
+  // notice UI lives in the companion (window-picker host), so the companion —
+  // or the main settings window — may set the flag. It can only go TRUE here.
+  ipcMain.handle(IPC.CAPTURE_NOTICE_ACCEPT, async (event) => {
+    try {
+      const companionId = getCompanionWindow()?.webContents.id ?? null
+      assertFromWindowIds(event, [mainWcId(), companionId], 'CAPTURE_NOTICE_ACCEPT')
+      const nonSecret = await loadNonSecretSettings()
+      await saveNonSecretSettings({ ...nonSecret, captureNoticeAccepted: true })
+      invalidateSettingsCache()
+    } catch (error) {
+      console.error('[IPC] CAPTURE_NOTICE_ACCEPT error:', error)
+      throw error
+    }
+  })
+
+  // Delete ALL Buildy data (keys, settings, every project's memory) and restart
+  // to first run. User-confirmed in the Settings UI; main-window-only.
+  ipcMain.handle(IPC.DELETE_ALL_DATA, async (event) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'DELETE_ALL_DATA')
+      console.log('[IPC] DELETE_ALL_DATA — user-confirmed wipe, restarting to first run')
+      stopAnalysisLoop()
+      await deleteAllBuildyData()
+      app.relaunch()
+      app.exit(0)
+    } catch (error) {
+      console.error('[IPC] DELETE_ALL_DATA error:', error)
       throw error
     }
   })

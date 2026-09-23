@@ -152,6 +152,15 @@ const buildyAPI = {
   setSecret: (name: SecretName, value: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SET_SECRET, { name, value }),
 
+  // Persist the one-time privacy disclosure ("Buildy sends screenshots…") as accepted.
+  acceptCaptureNotice: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.CAPTURE_NOTICE_ACCEPT),
+
+  // Delete ALL Buildy data (keys, settings, every project's memory) and restart
+  // to first run. Main re-confirms nothing — the Settings UI owns the confirm.
+  deleteAllData: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.DELETE_ALL_DATA),
+
   // ─── Companion mode ───────────────────────────────────────────────────────
   startCompanion: (): Promise<void> =>
     ipcRenderer.invoke(IPC.COMPANION_START),

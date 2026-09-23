@@ -138,6 +138,7 @@ export interface NonSecretSettings {
   autoAnalysisIntervalSeconds: number
   elevenLabsVoiceId: string      // ElevenLabs voice ID (default: Rachel — warm, friendly)
   hourlyCallCap: number          // Cost guard: max provider calls per rolling hour (20–600)
+  captureNoticeAccepted: boolean // one-time privacy disclosure accepted (first window pick)
 }
 
 // Cost guard bounds (Settings-editable).
@@ -171,6 +172,7 @@ export function defaultNonSecretSettings(): NonSecretSettings {
     autoAnalysisIntervalSeconds: 30,
     elevenLabsVoiceId: DEFAULT_VOICE_ID,
     hourlyCallCap: HOURLY_CALL_CAP_DEFAULT,
+    captureNoticeAccepted: false,
   }
 }
 
@@ -209,6 +211,12 @@ export const CHOOSE_MODEL_MESSAGE = 'Choose a model in Settings'
 // Buildy REFUSES to write keys in plain text — saving fails with this message.
 export const NO_SECURE_STORAGE_MESSAGE =
   "This computer has no secure key storage, so Buildy won't save keys in plain text."
+
+// One-time privacy disclosure shown the FIRST time the user picks a window to
+// watch. Continue persists captureNoticeAccepted; Cancel aborts the pick.
+export const CAPTURE_NOTICE_MESSAGE =
+  "Buildy sends screenshots of the window you pick, plus this project's memory, " +
+  'to the AI provider you chose. Your keys and memory are stored only on this computer.'
 
 // ─── Live model lists (fetched in MAIN with the stored key) ──────────────────
 
@@ -442,6 +450,8 @@ export const IPC = {
   LOAD_SETTINGS:       'buildy:load-settings',     // → RedactedSettings (never raw keys)
   SAVE_SETTINGS:       'buildy:save-settings',     // non-secret settings only
   SET_SECRET:          'buildy:set-secret',        // renderer → main, one-way (store an API key)
+  CAPTURE_NOTICE_ACCEPT: 'buildy:capture-notice-accept', // companion/main → main (persist the one-time privacy disclosure)
+  DELETE_ALL_DATA:     'buildy:delete-all-data',   // main window → main (wipe keys/settings/memory, restart to first run)
   GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
   GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
   GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)
