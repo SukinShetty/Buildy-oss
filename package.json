@@ -1,7 +1,9 @@
 {
   "name": "buildy",
   "version": "1.0.0",
-  "description": "Your AI builder buddy — helps non-tech founders build with Claude Code",
+  "description": "Your AI builder buddy — a friendly desktop companion that watches your Claude Code session and guides non-tech founders in plain English",
+  "author": "Sukin Shetty",
+  "homepage": "https://github.com/SukinShetty/Buildy-oss",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -44,15 +46,27 @@
     "directories": {
       "output": "dist"
     },
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": "dmg"
-    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.png"
     },
-    "linux": {
-      "target": "AppImage"
-    }
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Buildy-Setup-${version}.exe",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "publish": null
   }
 }
