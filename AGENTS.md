@@ -4,7 +4,7 @@
 
 ## What is Buildy?
 
-A cross-platform desktop companion (Windows + macOS + Linux) that helps non-technical founders build products with AI coding tools (Claude Code, Cursor, a terminal, or any editor). Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt to paste — narrated out loud by an always-on-top voice mascot.
+A desktop companion (Windows-first; macOS/Linux run from source, untested) that helps non-technical builders work with AI coding tools (Claude Code primarily; Codex CLI experimental). Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. Buildy runs the loop; the user approves each step.
 
 Inspired by Clicky's screen-aware companion model — adapted to a different problem and a different tech stack.
 
@@ -15,9 +15,9 @@ Inspired by Clicky's screen-aware companion model — adapted to a different pro
 - **State**: Zustand 5 — single store, all screens read from it
 - **Build tool**: electron-vite 5 (Vite 7 for renderer, separate bundles for main/preload/renderer)
 - **Screen capture**: Electron `desktopCapturer` — built-in, works on Windows and macOS
-- **AI**: multi-provider via a registry in `src/main/ai/` — Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints. All API calls happen in the main process; keys are stored locally in the OS user-data dir.
+- **AI**: multi-provider via a registry in `src/main/ai/` — Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints. Live model lists, no default model, and a vision check (`ai/vision-gate.ts`) that gates watching until the chosen model proves it can read images. All API calls happen in the main process; keys are encrypted with Electron `safeStorage` (`secure-store.ts`) — plaintext saving is refused.
 - **Voice**: ElevenLabs TTS with a Web Speech fallback. Playback is owned by a dedicated hidden voice window created with `backgroundThrottling: false`, driven by a serial voice queue (`voice-queue.ts`) that chunks long guidance and never cuts off mid-sentence.
-- **Persistence**: local JSON in Electron `app.getPath('userData')`, plus project memory via the Nemp integration (`nemp-bridge.ts`, `.nemp/` directory, local-only).
+- **Persistence**: local JSON in Electron `app.getPath('userData')`, plus per-project memory via the Nemp integration (`nemp-bridge.ts`), namespaced under `userData/buildy-memory/<projectId>` — local-only.
   - Windows: `C:\Users\<user>\AppData\Roaming\Buildy\`
   - macOS: `~/Library/Application Support/Buildy/`
 
@@ -94,7 +94,11 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 | `src/renderer/src/types.ts` | Shared TypeScript interfaces + IPC channel name constants. |
 | `src/renderer/src/store/` | Zustand stores — all app state. |
 | `src/renderer/src/App.tsx` | Root component; routes windows by query param. |
-| `worker/` | Optional Cloudflare Worker proxy — **disabled in v1, see below**. |
+| `src/main/projects.ts`, `projects-core.ts` | Project system — per-project memory dirs under `userData/buildy-memory/<projectId>`. |
+| `src/main/turn-detector.ts` | Turn-end detection state machine (Electron-free, unit-tested). |
+| `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Send-to-watched-window (Windows) + destructive-prompt guard. |
+| `src/main/secure-store.ts` | Encrypted API-key storage (Electron `safeStorage`). |
+| `worker/` | Worker proxy — **not used in v1, see below**. |
 
 ## Development setup
 
@@ -103,17 +107,39 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 # on a clean install without it, even though every peer dependency resolves.
 npm install --legacy-peer-deps
 
-npm run dev        # dev server (Electron + Vite HMR)
-npm run build      # production build
-npm test           # vitest
-npm run package    # installers
+npm run dev             # dev server (Electron + Vite HMR)
+npm run build           # production build
+npm run typecheck       # tsc over main, renderer, and e2e configs
+npm test                # vitest unit suite
+npm run test:e2e        # Playwright e2e suite (builds first)
+npm run test:e2e:packaged  # e2e against a packaged build
+npm run package         # Windows installer (nsis) → dist/
 ```
 
-**First run**: open Settings, pick a provider, and enter an API key (cloud) or a Base URL (local). `npm run build` and `npm test` must stay green — CI enforces both on every PR.
+**First run**: open Settings, pick a provider, and enter an API key (cloud) or a Base URL (local). There is no default model — one must be chosen and pass the vision check. `npm run typecheck`, `npm run build`, and `npm test` must stay green — CI (Node 22) enforces them on every PR.
 
-## Worker (optional, DISABLED in v1)
+## Project system (per-project memory)
 
-The Cloudflare Worker proxy in `worker/` is **not used by the app in v1** and is kept for reference only. It is disabled pending authentication work (planned v1.1): as written it is an unauthenticated open relay for whoever holds the URL. **Do not deploy it or point the app at it** until per-user auth lands. See `worker/README.md` and `SECURITY.md`.
+Every project gets its own memory directory: `userData/buildy-memory/<projectId>` (see `projects-core.ts` for the path rules; `buildy-memory/default` is the fallback). `projects.ts` owns the project registry and re-initializes the Nemp bridge on the active project's directory when the user switches projects. Memory never leaks across projects — `e2e/memory-isolation.spec.ts` and the unit tests in `nemp-bridge.project-scope.test.ts` assert this. The Delete-all-data path (`memory.ts` → `deleteAllBuildyData`) removes keys, settings, project records, and every project's memory.
+
+## Turn detector
+
+`src/main/turn-detector.ts` is a pure, Electron-free state machine that decides *when an analysis is worth paying for*. While the coding agent is mid-turn, the loop takes a cheap low-resolution local capture every 5 s (never sent anywhere) and feeds the change fraction in. A turn end = the screen changed and then stayed stable for two consecutive polls — analyze then (within ~10 s of the agent stopping). Continuous change for 3 minutes forces one checkpoint analysis. "Working" mode comes from the last analysis's `terminalState` or from being within 3 minutes of a Send. No timers, no `Date.now()` — callers pass timestamps, which keeps the policy fully unit-testable (`turn-detector.test.ts`).
+
+## E2E testing
+
+The Playwright suite in `e2e/` launches the real Electron app. Isolation works via `src/main/bootstrap.ts` — the actual entry point — which honours `BUILDY_USER_DATA_DIR` **only when `BUILDY_E2E=1`** and overrides Electron's `userData`/`sessionData` paths *before* the app modules are evaluated (dynamic import; never convert it to a static import — path-at-import-time modules would break). `e2e/helpers.ts` creates a fresh throwaway profile per launch, snapshots the real userData dir, and asserts after close that it was untouched. No e2e test ever calls an AI provider: the fresh profile has no key and no model, so analysis paths refuse by design.
+
+- `npm run test:e2e` — builds, then runs against `out/`
+- `npm run test:e2e:packaged` — runs the same suite against the packaged exe (`scripts/e2e-packaged.mjs` sets `BUILDY_E2E_EXE`)
+
+## Release pipeline
+
+`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/Buildy-oss`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`Buildy-Setup-<version>.exe`, unsigned), writes `SHA256SUMS.txt`, and uploads both to a **draft** GitHub release — publishing is a manual step. v1 ships a Windows installer only; macOS/Linux stay "run from source, untested". `ci.yml` runs typecheck + build + test on Node 22 for every push/PR to main.
+
+## Worker (not used in v1)
+
+The proxy in `worker/` is **not used by the app in v1** and is kept only for a possible hosted option later. It is disabled pending authentication work: as written it is an unauthenticated open relay for whoever holds the URL. **Do not deploy it or point the app at it** until per-user auth lands. See `worker/README.md` and `SECURITY.md`.
 
 ## Code style
 
@@ -141,5 +167,5 @@ The Cloudflare Worker proxy in `worker/` is **not used by the app in v1** and is
 - `contextIsolation: true`, `nodeIntegration: false` — the renderer cannot access Node.js
 - All external API calls happen in the main process (API keys never reach the renderer; `buildy:set-secret` is one-way)
 - CSP in `index.html` restricts what the renderer can load
-- API keys stored in userData, never in the app bundle or version control
+- API keys stored encrypted (Electron `safeStorage`) in userData, never in the app bundle or version control; plaintext saving is refused
 - Buildy sends screen captures to the AI provider the user configures — treat capture contents as sensitive (see `SECURITY.md`)
