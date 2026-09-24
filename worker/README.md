@@ -1,8 +1,8 @@
-Not used by Buildy v1. Kept for a possible hosted option later.
+Not used by Buildy v0.1. Kept for a possible hosted option later.
 
-# Buildy Worker proxy — DISABLED in v1
+# Buildy Worker proxy — DISABLED in v0.1
 
-> ⚠️ **This Cloudflare Worker proxy is not used by the app in v1.** The "Use proxy"
+> ⚠️ **This Cloudflare Worker proxy is not used by the app in v0.1.** The "Use proxy"
 > option was removed from Settings and the Anthropic provider always calls the API
 > directly. The folder is kept for reference only.
 >

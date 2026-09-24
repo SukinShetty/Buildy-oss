@@ -1,6 +1,6 @@
 # release.yml — Windows installer on version tags (v*), as a DRAFT release.
 #
-# v1.0.0 ships a Windows installer only: macOS is untested (no Mac available;
+# v0.1.0 ships a Windows installer only: macOS is untested (no Mac available;
 # unsigned Apple-silicon apps open as "damaged"), so macOS and Linux stay
 # "run from source, untested". Guarded to the canonical repo so forks pushing
 # tags don't try to cut releases.

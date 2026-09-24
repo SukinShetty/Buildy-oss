@@ -115,7 +115,7 @@ Whatever you pick, the model must **pass the vision check** (Buildy sends it a t
 
 ### Windows (installer)
 
-1. Download **`Buildy-Setup-1.0.0.exe`** (~110 MB) from the [latest release](https://github.com/SukinShetty/Buildy-oss/releases/latest).
+1. Download **`Buildy-Setup-0.1.0.exe`** (~110 MB) from the [latest release](https://github.com/SukinShetty/Buildy-oss/releases/latest).
 2. Windows SmartScreen will warn you because the installer is **unsigned** (signing certificates are expensive; a signed installer is on the roadmap). Click **More info**, then **Run anyway**.
 3. The release page includes a `SHA256SUMS.txt` if you want to verify the download.
 

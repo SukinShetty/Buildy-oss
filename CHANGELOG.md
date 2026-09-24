@@ -4,7 +4,7 @@ All notable changes to Buildy are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] — 2026-09-23
+## [0.1.0] — 2026-09-23
 
 First public release (MIT). Windows installer via GitHub Releases; macOS and Linux run from source (untested).
 
@@ -21,4 +21,4 @@ First public release (MIT). Windows installer via GitHub Releases; macOS and Lin
 - **Mascot** — an animated, draggable, always-on-top companion with idle / watching / thinking / speaking states, plus the frosted-glass guidance panel.
 - **Security hardening** — API keys encrypted with Electron `safeStorage` (plaintext saving refused), sandboxed renderers (`contextIsolation`, no `nodeIntegration`), validated IPC payloads, strict CSP, navigation guards, and no telemetry. A Delete-all-data button removes keys, settings, and all project memory.
 - **End-to-end test suite** — Playwright-driven Electron runs (`npm run test:e2e`, `npm run test:e2e:packaged`) in isolated throwaway profiles, covering launch, security invariants, secrets, and memory isolation, alongside the vitest unit suite.
-- **Windows installer** — `Buildy-Setup-1.0.0.exe` built by a tag-triggered release workflow as a draft GitHub release with SHA256 checksums. The installer is unsigned in this release.
+- **Windows installer** — `Buildy-Setup-0.1.0.exe` built by a tag-triggered release workflow as a draft GitHub release with SHA256 checksums. The installer is unsigned in this release.

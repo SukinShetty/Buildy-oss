@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| 1.0.x (latest release) | ✅ |
-| < 1.0 | ❌ |
+| 0.1.x (latest release) | ✅ |
+| < 0.1 | ❌ |
 
 ## Reporting a vulnerability
 
@@ -34,6 +34,6 @@ Buildy reads the watched window, so text visible on that screen can influence th
 
 ### The `worker/` proxy is not used — do not deploy it without auth
 
-The proxy in `worker/` is **not used by Buildy v1** and is kept only for a possible hosted option later. In its current form it is an **unauthenticated open relay**: anyone with a deployed URL could spend your API key. Do not deploy it, and do not point the app at a deployment of it, until per-user authentication lands. See [`worker/README.md`](./worker/README.md).
+The proxy in `worker/` is **not used by Buildy v0.1** and is kept only for a possible hosted option later. In its current form it is an **unauthenticated open relay**: anyone with a deployed URL could spend your API key. Do not deploy it, and do not point the app at a deployment of it, until per-user authentication lands. See [`worker/README.md`](./worker/README.md).
 
 If you find that a deployment of this worker is live anywhere, please report it through the channels above.

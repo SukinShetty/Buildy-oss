@@ -74,5 +74,5 @@ Read [`AGENTS.md`](./AGENTS.md) for the full architecture, the IPC channel map, 
 
 ## What's out of scope for now
 
-- The `worker/` directory is not used by Buildy v1 (see [`worker/README.md`](./worker/README.md)). PRs that re-enable it will not be merged until the authentication work planned for a later release is in place.
+- The `worker/` directory is not used by Buildy v0.1 (see [`worker/README.md`](./worker/README.md)). PRs that re-enable it will not be merged until the authentication work planned for a later release is in place.
 - Bundled binaries or pre-built installers are not accepted as PR content.

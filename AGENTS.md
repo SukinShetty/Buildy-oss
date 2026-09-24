@@ -98,7 +98,7 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 | `src/main/turn-detector.ts` | Turn-end detection state machine (Electron-free, unit-tested). |
 | `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Send-to-watched-window (Windows) + destructive-prompt guard. |
 | `src/main/secure-store.ts` | Encrypted API-key storage (Electron `safeStorage`). |
-| `worker/` | Worker proxy — **not used in v1, see below**. |
+| `worker/` | Worker proxy — **not used in v0.1, see below**. |
 
 ## Development setup
 
@@ -137,9 +137,9 @@ The Playwright suite in `e2e/` launches the real Electron app. Isolation works v
 
 `.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/Buildy-oss`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`Buildy-Setup-<version>.exe`, unsigned), writes `SHA256SUMS.txt`, and uploads both to a **draft** GitHub release — publishing is a manual step. v1 ships a Windows installer only; macOS/Linux stay "run from source, untested". `ci.yml` runs typecheck + build + test on Node 22 for every push/PR to main.
 
-## Worker (not used in v1)
+## Worker (not used in v0.1)
 
-The proxy in `worker/` is **not used by the app in v1** and is kept only for a possible hosted option later. It is disabled pending authentication work: as written it is an unauthenticated open relay for whoever holds the URL. **Do not deploy it or point the app at it** until per-user auth lands. See `worker/README.md` and `SECURITY.md`.
+The proxy in `worker/` is **not used by the app in v0.1** and is kept only for a possible hosted option later. It is disabled pending authentication work: as written it is an unauthenticated open relay for whoever holds the URL. **Do not deploy it or point the app at it** until per-user auth lands. See `worker/README.md` and `SECURITY.md`.
 
 ## Code style
 
