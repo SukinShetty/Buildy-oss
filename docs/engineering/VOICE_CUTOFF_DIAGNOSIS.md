@@ -70,7 +70,7 @@ shared/module AbortController, and `synthesizeSpeech` is `await`‑ed sequential
 
 1. `analysis-loop.runOneAnalysisCycle` captures + analyzes.
 2. Sends `COMPANION_ANALYSIS` → companion renderer (`onCompanionAnalysis`) →
-   `setLatestAnalysis` + `window.buildy.showGuidance` (re‑render + guidance window show).
+   `setLatestAnalysis` + `window.mybuildy.showGuidance` (re‑render + guidance window show).
 3. If a significant change, `speakText` synthesizes and sends `COMPANION_AUDIO`
    (or `COMPANION_SPEAK`) → companion renderer.
 4. `onCompanionAudio` (`CompanionApp.tsx:53`) → `playAudio(base64, text)` in

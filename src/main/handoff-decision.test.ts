@@ -62,7 +62,7 @@ describe('hand-off answer → decision in the ACTIVE project (Phase 3B)', () => 
 
     expect(state.upserts).toHaveLength(1)
     expect(state.upserts[0].projectPath).toBe(projectStoreDir(state.userDataDir, 'project-two'))
-    expect(state.upserts[0].projectPath).not.toBe(join(state.userDataDir, 'buildy-memory', 'project-one'))
+    expect(state.upserts[0].projectPath).not.toBe(join(state.userDataDir, 'mybuildy-memory', 'project-one'))
   })
 
   it('ignores an empty answer (no decision written)', async () => {

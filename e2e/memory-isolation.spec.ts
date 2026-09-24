@@ -4,7 +4,7 @@
 // memory.*) from the main window, exactly as the UI does.
 
 import { test, expect } from '@playwright/test'
-import { launchBuildy, type BuildyApp } from './helpers'
+import { launchMyBuildy, type MyBuildyApp } from './helpers'
 
 const OBSERVATION_A = 'Sample observation that belongs only to project A'
 
@@ -20,47 +20,47 @@ interface ProjectsApi {
   }
 }
 
-let buildy: BuildyApp
+let mybuildy: MyBuildyApp
 
 test.beforeAll(async () => {
-  buildy = await launchBuildy()
+  mybuildy = await launchMyBuildy()
 })
 
 test.afterAll(async () => {
-  await buildy?.close()
+  await mybuildy?.close()
 })
 
 test('memories recorded in project A never leak into project B', async () => {
-  const page = buildy.main
+  const page = mybuildy.main
 
   // Project A: record an observation and see it in the snapshot.
   const projectAId = await page.evaluate(async (text) => {
-    const api = (window as unknown as { buildy: ProjectsApi }).buildy
+    const api = (window as unknown as { mybuildy: ProjectsApi }).mybuildy
     const projectA = await api.projects.create({ name: 'Isolation Project A' })
     await api.memory.addObservation(text)
     return projectA.id
   }, OBSERVATION_A)
 
   const snapshotA = await page.evaluate(async () => {
-    const api = (window as unknown as { buildy: ProjectsApi }).buildy
+    const api = (window as unknown as { mybuildy: ProjectsApi }).mybuildy
     return api.memory.get()
   })
   expect(JSON.stringify(snapshotA)).toContain(OBSERVATION_A)
 
   // Project B: brand new memory store — the observation must not be there.
   await page.evaluate(async () => {
-    const api = (window as unknown as { buildy: ProjectsApi }).buildy
+    const api = (window as unknown as { mybuildy: ProjectsApi }).mybuildy
     await api.projects.create({ name: 'Isolation Project B' })
   })
   const snapshotB = await page.evaluate(async () => {
-    const api = (window as unknown as { buildy: ProjectsApi }).buildy
+    const api = (window as unknown as { mybuildy: ProjectsApi }).mybuildy
     return api.memory.get()
   })
   expect(JSON.stringify(snapshotB)).not.toContain(OBSERVATION_A)
 
   // Switch back to A: the observation is still there (nothing was lost).
   const snapshotAAgain = await page.evaluate(async (id) => {
-    const api = (window as unknown as { buildy: ProjectsApi }).buildy
+    const api = (window as unknown as { mybuildy: ProjectsApi }).mybuildy
     await api.projects.switch(id)
     return api.memory.get()
   }, projectAId)

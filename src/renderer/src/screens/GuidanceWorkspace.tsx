@@ -1,6 +1,6 @@
 // GuidanceWorkspace.tsx
 // The main analysis screen. User clicks "Analyze Now" (or enables auto),
-// Buildy captures the Claude Code window and returns 7-section guidance.
+// My Buildy captures the Claude Code window and returns 7-section guidance.
 //
 // State flow:
 //   idle → listing-windows → awaiting-window-selection → capturing → analyzing → done
@@ -73,7 +73,7 @@ export function GuidanceWorkspace(): React.ReactElement {
       // window is gone (or its id was reused by another window), HALT — never
       // capture a different window or the desktop.
       setAnalysisPhase('capturing')
-      const outcome = await window.buildy.captureWindow(sourceId, expectedName)
+      const outcome = await window.mybuildy.captureWindow(sourceId, expectedName)
       if (!outcome.ok) {
         setSelectedWindow(null, null)
         setAnalysisError(
@@ -87,7 +87,7 @@ export function GuidanceWorkspace(): React.ReactElement {
 
       // Step 2: Send to the provider
       setAnalysisPhase('analyzing')
-      const result = await window.buildy.analyze(outcome.capture, project, settings)
+      const result = await window.mybuildy.analyze(outcome.capture, project, settings)
 
       // Step 3: Show results
       setLatestAnalysis(result)
@@ -113,7 +113,7 @@ export function GuidanceWorkspace(): React.ReactElement {
     // Otherwise, show the window picker (the user always chooses — no auto-detect)
     setAnalysisPhase('listing-windows')
     try {
-      const windows = await window.buildy.listWindows()
+      const windows = await window.mybuildy.listWindows()
       setAvailableWindows(windows)
       setPendingWindowId(windows[0]?.id ?? null)
       setWindowPickerVisible(true)
@@ -312,7 +312,7 @@ function CurrentGoalCard({
         {hasGoal ? (
           <div style={styles.goalCardText}>{goalPurpose}</div>
         ) : (
-          <div style={styles.goalCardEmpty}>No goal set yet — set one so Buildy can keep you on track.</div>
+          <div style={styles.goalCardEmpty}>No goal set yet — set one so My Buildy can keep you on track.</div>
         )}
       </div>
       <button
@@ -339,7 +339,7 @@ function EmptyState({
       <div style={styles.emptyStateIcon}>👁️</div>
       <div style={styles.emptyStateTitle}>Ready to watch Claude Code</div>
       <p style={styles.emptyStateText}>
-        Open Claude Code, start working, then click Analyze Now. Buildy will look at your
+        Open Claude Code, start working, then click Analyze Now. My Buildy will look at your
         screen and tell you exactly what's happening and what to do next.
       </p>
       {apiConfigured ? (
@@ -359,7 +359,7 @@ function LoadingCard({ phase }: { phase: string }): React.ReactElement {
   const message =
     phase === 'capturing'
       ? '📸 Taking a screenshot of Claude Code…'
-      : '🤖 Buildy is reading your screen and thinking…'
+      : '🤖 My Buildy is reading your screen and thinking…'
 
   return (
     <div style={styles.loadingCard}>

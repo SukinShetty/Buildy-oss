@@ -7,11 +7,11 @@
 //
 // Run modes:
 //   npm run test:e2e           — dev build (out/main/index.js; builds first)
-//   npm run test:e2e:packaged  — packaged exe (dist/win-unpacked/Buildy.exe via
-//                                BUILDY_E2E_EXE); dev-only tests self-skip.
+//   npm run test:e2e:packaged  — packaged exe (dist/win-unpacked/MyBuildy.exe via
+//                                MYBUILDY_E2E_EXE); dev-only tests self-skip.
 //
-// Isolation: every launch uses a throwaway profile (BUILDY_USER_DATA_DIR,
-// honoured only under BUILDY_E2E=1 — see src/main/bootstrap.ts) and the shared
+// Isolation: every launch uses a throwaway profile (MYBUILDY_USER_DATA_DIR,
+// honoured only under MYBUILDY_E2E=1 — see src/main/bootstrap.ts) and the shared
 // helper asserts the REAL userData folder is byte-untouched after every run.
 // No e2e test ever calls an AI provider.
 

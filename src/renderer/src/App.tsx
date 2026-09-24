@@ -72,8 +72,8 @@ function MainPanel(): React.ReactElement {
     async function loadPersistedState(): Promise<void> {
       try {
         const [savedSettings, savedProject] = await Promise.all([
-          window.buildy.loadSettings(),
-          window.buildy.loadProject(),
+          window.mybuildy.loadSettings(),
+          window.mybuildy.loadProject(),
         ])
         if (cancelled) return
 
@@ -127,7 +127,7 @@ function MainPanel(): React.ReactElement {
   async function handleGoalLooksGood(): Promise<void> {
     setGoalNudgeVisible(false)
     try {
-      const updated = await window.buildy.goal.update({ lastReviewedAt: new Date().toISOString() })
+      const updated = await window.mybuildy.goal.update({ lastReviewedAt: new Date().toISOString() })
       if (updated) patchProject({ goal: updated })
     } catch (error) {
       console.warn('Failed to update goal review time:', error)

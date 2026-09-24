@@ -208,14 +208,14 @@ export function isModelConfigured(
 export const CHOOSE_MODEL_MESSAGE = 'Choose a model in Settings'
 
 // Shown when the OS offers no encrypted key storage (safeStorage unavailable).
-// Buildy REFUSES to write keys in plain text — saving fails with this message.
+// My Buildy REFUSES to write keys in plain text — saving fails with this message.
 export const NO_SECURE_STORAGE_MESSAGE =
-  "This computer has no secure key storage, so Buildy won't save keys in plain text."
+  "This computer has no secure key storage, so My Buildy won't save keys in plain text."
 
 // One-time privacy disclosure shown the FIRST time the user picks a window to
 // watch. Continue persists captureNoticeAccepted; Cancel aborts the pick.
 export const CAPTURE_NOTICE_MESSAGE =
-  "Buildy sends screenshots of the window you pick, plus this project's memory, " +
+  "My Buildy sends screenshots of the window you pick, plus this project's memory, " +
   'to the AI provider you chose. Your keys and memory are stored only on this computer.'
 
 // ─── Live model lists (fetched in MAIN with the stored key) ──────────────────
@@ -282,7 +282,7 @@ export type TerminalState =
   | 'unknown'
 
 // ─── Verifier (loop engineering Block 4) ──────────────────────────────────────
-// After Buildy suggests a prompt, the NEXT analysis verifies whether the pasted
+// After My Buildy suggests a prompt, the NEXT analysis verifies whether the pasted
 // prompt achieved its intended outcome. This verdict is computed in the main
 // process (verifier-check.ts) and attached transiently to the following analysis.
 export type VerificationStatus = 'success' | 'failed' | 'partial'
@@ -305,18 +305,18 @@ export interface AnalysisResult {
   // Verifier (Block 4): a one-sentence description of what success looks like for
   // nextPrompt. Present whenever nextPrompt is non-empty; the next cycle checks it.
   expectedOutcome?: string
-  builderNote: string               // Encouraging, buddy-style note from Buildy
+  builderNote: string               // Encouraging, buddy-style note from My Buildy
   // Goal alignment — present only when the user has set a goal (see Goal type).
   goalAlignment?: GoalAlignment | null
   alignmentNote?: string            // One-sentence plain-English reason for the alignment judgment
-  // One sentence: what Buildy currently understands the user is building (memory + screen).
+  // One sentence: what My Buildy currently understands the user is building (memory + screen).
   projectUnderstandingNote?: string
   // True only for a NEW, fundamentally different blocker. When true the voice
   // queue truncates after the current chunk so the alert is spoken next.
   isCriticalOverride?: boolean
   // Hand-off detection (Block 6): true ONLY for genuine human-judgment moments
   // (architectural tradeoffs, irreversible commitments, legal/compliance, or two
-  // equally-valid approaches). Never for routine coding choices Buildy can default.
+  // equally-valid approaches). Never for routine coding choices My Buildy can default.
   needsHumanJudgment?: boolean
   humanJudgmentReason?: string      // one plain-English sentence describing the decision
   // Verifier (Block 4): verdict on the PREVIOUS suggested prompt, attached by the
@@ -404,54 +404,54 @@ export interface ExtractedProjectData {
 // Centralized so typos don't cause silent failures.
 
 export const IPC = {
-  LIST_WINDOWS:        'buildy:list-windows',
-  CAPTURE_WINDOW:      'buildy:capture-window',
-  ANALYZE:             'buildy:analyze',
-  BRAINSTORM_START:    'buildy:brainstorm-start',
-  BRAINSTORM_CHUNK:    'buildy:brainstorm-chunk',    // main → renderer push
-  BRAINSTORM_DONE:     'buildy:brainstorm-done',     // main → renderer push
-  BRAINSTORM_ERROR:    'buildy:brainstorm-error',    // main → renderer push
-  GET_PROVIDER_INFOS:  'buildy:get-provider-infos',  // renderer → main (provider metadata)
-  TEST_CONNECTION:     'buildy:test-connection',     // renderer → main (vision check with a red test image)
-  LIST_MODELS:         'buildy:list-models',         // renderer → main (live model list, stored key, 10-min cache)
-  VISION_STATUS:       'buildy:vision-status',       // renderer → main (has this provider+model passed the vision check?)
-  COMPANION_ANALYSIS:  'buildy:companion-analysis',  // main → companion (new analysis result)
-  COMPANION_STATE:     'buildy:companion-state',     // main → companion (idle/thinking/speaking)
-  COMPANION_SPEAK:     'buildy:companion-speak',     // main → companion (trigger voice)
-  COMPANION_START:     'buildy:companion-start',     // renderer → main (start watching)
-  COMPANION_STOP:      'buildy:companion-stop',      // renderer → main (stop watching)
-  COMPANION_PAUSE:     'buildy:companion-pause',     // renderer → main (pause analysis)
-  COMPANION_RESUME:    'buildy:companion-resume',    // renderer → main (resume analysis)
-  COMPANION_QUIET:     'buildy:companion-quiet',     // renderer → main (quiet mode toggle)
-  OPEN_PANEL:          'buildy:open-panel',          // companion → main (open full panel)
-  RESET_COMPANION:     'buildy:reset-companion',    // any → main (reset companion position)
-  SHOW_COMPANION:      'buildy:show-companion',     // any → main (bring companion to front)
-  COMPANION_SHUTDOWN:  'buildy:companion-shutdown',  // main → companion (stop everything, app is quitting)
-  COMPANION_AUDIO:     'buildy:companion-audio',    // main → companion (ElevenLabs audio buffer to play)
-  PUSH_TO_TALK:        'buildy:push-to-talk',       // companion → main (voice input audio)
-  ASK_QUESTION:        'buildy:ask-question',       // companion → main (spoken question text)
-  TRANSCRIBE_AUDIO:    'buildy:transcribe-audio',   // companion → main (audio buffer for Whisper STT)
-  COMPANION_ANSWER:    'buildy:companion-answer',   // main → companion (answer to spoken question)
-  SELECT_WATCH_SOURCE: 'buildy:select-watch-source', // companion → main (user picks a window)
-  COMPANION_WATCHED_SOURCE: 'buildy:companion-watched-source', // main → companion (what's being watched)
+  LIST_WINDOWS:        'mybuildy:list-windows',
+  CAPTURE_WINDOW:      'mybuildy:capture-window',
+  ANALYZE:             'mybuildy:analyze',
+  BRAINSTORM_START:    'mybuildy:brainstorm-start',
+  BRAINSTORM_CHUNK:    'mybuildy:brainstorm-chunk',    // main → renderer push
+  BRAINSTORM_DONE:     'mybuildy:brainstorm-done',     // main → renderer push
+  BRAINSTORM_ERROR:    'mybuildy:brainstorm-error',    // main → renderer push
+  GET_PROVIDER_INFOS:  'mybuildy:get-provider-infos',  // renderer → main (provider metadata)
+  TEST_CONNECTION:     'mybuildy:test-connection',     // renderer → main (vision check with a red test image)
+  LIST_MODELS:         'mybuildy:list-models',         // renderer → main (live model list, stored key, 10-min cache)
+  VISION_STATUS:       'mybuildy:vision-status',       // renderer → main (has this provider+model passed the vision check?)
+  COMPANION_ANALYSIS:  'mybuildy:companion-analysis',  // main → companion (new analysis result)
+  COMPANION_STATE:     'mybuildy:companion-state',     // main → companion (idle/thinking/speaking)
+  COMPANION_SPEAK:     'mybuildy:companion-speak',     // main → companion (trigger voice)
+  COMPANION_START:     'mybuildy:companion-start',     // renderer → main (start watching)
+  COMPANION_STOP:      'mybuildy:companion-stop',      // renderer → main (stop watching)
+  COMPANION_PAUSE:     'mybuildy:companion-pause',     // renderer → main (pause analysis)
+  COMPANION_RESUME:    'mybuildy:companion-resume',    // renderer → main (resume analysis)
+  COMPANION_QUIET:     'mybuildy:companion-quiet',     // renderer → main (quiet mode toggle)
+  OPEN_PANEL:          'mybuildy:open-panel',          // companion → main (open full panel)
+  RESET_COMPANION:     'mybuildy:reset-companion',    // any → main (reset companion position)
+  SHOW_COMPANION:      'mybuildy:show-companion',     // any → main (bring companion to front)
+  COMPANION_SHUTDOWN:  'mybuildy:companion-shutdown',  // main → companion (stop everything, app is quitting)
+  COMPANION_AUDIO:     'mybuildy:companion-audio',    // main → companion (ElevenLabs audio buffer to play)
+  PUSH_TO_TALK:        'mybuildy:push-to-talk',       // companion → main (voice input audio)
+  ASK_QUESTION:        'mybuildy:ask-question',       // companion → main (spoken question text)
+  TRANSCRIBE_AUDIO:    'mybuildy:transcribe-audio',   // companion → main (audio buffer for Whisper STT)
+  COMPANION_ANSWER:    'mybuildy:companion-answer',   // main → companion (answer to spoken question)
+  SELECT_WATCH_SOURCE: 'mybuildy:select-watch-source', // companion → main (user picks a window)
+  COMPANION_WATCHED_SOURCE: 'mybuildy:companion-watched-source', // main → companion (what's being watched)
   GUIDANCE_SHOW:       'guidance:show',             // companion → main (show guidance panel with payload)
   GUIDANCE_HIDE:       'guidance:hide',             // companion → main (hide guidance panel)
   GUIDANCE_DATA:       'guidance:data',             // main → guidance window (payload to render)
   GUIDANCE_RESIZE:     'guidance:resize',           // guidance window → main (report content height)
   GUIDANCE_SHOW_LAST:  'guidance:show-last',         // companion/tray → main (re-show cached guidance)
   GUIDANCE_SET_FOCUSABLE: 'guidance:set-focusable',  // guidance window → main (temporarily focusable while typing a hand-off answer)
-  COPY_TEXT:           'buildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
-  SEND_PROMPT:         'buildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)
-  SEND_ELIGIBILITY:    'buildy:send-eligibility',   // main → guidance window (canSend + sendBlockedReason)
-  SEND_STATUS:         'buildy:send-status',        // main → companion (transient "Sent" mascot label)
-  COMPANION_DRAG:      'buildy:companion-drag',     // main → companion (window drag started/ended — mascot squash)
-  LOAD_PROJECT:        'buildy:load-project',
-  SAVE_PROJECT:        'buildy:save-project',
-  LOAD_SETTINGS:       'buildy:load-settings',     // → RedactedSettings (never raw keys)
-  SAVE_SETTINGS:       'buildy:save-settings',     // non-secret settings only
-  SET_SECRET:          'buildy:set-secret',        // renderer → main, one-way (store an API key)
-  CAPTURE_NOTICE_ACCEPT: 'buildy:capture-notice-accept', // companion/main → main (persist the one-time privacy disclosure)
-  DELETE_ALL_DATA:     'buildy:delete-all-data',   // main window → main (wipe keys/settings/memory, restart to first run)
+  COPY_TEXT:           'mybuildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
+  SEND_PROMPT:         'mybuildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)
+  SEND_ELIGIBILITY:    'mybuildy:send-eligibility',   // main → guidance window (canSend + sendBlockedReason)
+  SEND_STATUS:         'mybuildy:send-status',        // main → companion (transient "Sent" mascot label)
+  COMPANION_DRAG:      'mybuildy:companion-drag',     // main → companion (window drag started/ended — mascot squash)
+  LOAD_PROJECT:        'mybuildy:load-project',
+  SAVE_PROJECT:        'mybuildy:save-project',
+  LOAD_SETTINGS:       'mybuildy:load-settings',     // → RedactedSettings (never raw keys)
+  SAVE_SETTINGS:       'mybuildy:save-settings',     // non-secret settings only
+  SET_SECRET:          'mybuildy:set-secret',        // renderer → main, one-way (store an API key)
+  CAPTURE_NOTICE_ACCEPT: 'mybuildy:capture-notice-accept', // companion/main → main (persist the one-time privacy disclosure)
+  DELETE_ALL_DATA:     'mybuildy:delete-all-data',   // main window → main (wipe keys/settings/memory, restart to first run)
   GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
   GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
   GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)
@@ -471,7 +471,7 @@ export const IPC = {
   MEMORY_RESOLVE_BLOCKER: 'memory:resolve-blocker',
   MEMORY_ADD_DECISION:    'memory:add-decision',
   MEMORY_ADD_PATTERN:     'memory:add-pattern',
-  MEMORY_EXPORT_BUILDYMD: 'memory:export-buildymd',
+  MEMORY_EXPORT_MYBUILDYMD: 'memory:export-mybuildymd',
   MEMORY_RESET:           'memory:reset',
   // ─── Voice player (audio owned by a hidden main-process window) ───────────
   VOICE_PLAY_AUDIO:    'voice:play-audio',     // main → voice window (base64 MP3)

@@ -1,5 +1,5 @@
 // Mascot.tsx
-// Buildy's character mascot. Renders one of five PNG poses with a soft,
+// My Buildy's character mascot. Renders one of five PNG poses with a soft,
 // state-colored glow layer, gentle idle motion (breathing + float + occasional
 // look-around), per-state effects (orbiting thinking dots, speaking bounce +
 // ripples, listening pings), and one-shot event reactions (hop + sparkles,
@@ -16,10 +16,10 @@
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion, useAnimationControls } from 'framer-motion'
 
-import idleImg from '../assets/buildy-idle.png'
-import watchingImg from '../assets/buildy-watching.png'
-import thinkingImg from '../assets/buildy-thinking.png'
-import speakingImg from '../assets/buildy-speaking.png'
+import idleImg from '../assets/mybuildy-idle.png'
+import watchingImg from '../assets/mybuildy-watching.png'
+import thinkingImg from '../assets/mybuildy-thinking.png'
+import speakingImg from '../assets/mybuildy-speaking.png'
 
 export type MascotState = 'idle' | 'watching' | 'thinking' | 'speaking' | 'listening'
 
@@ -241,7 +241,7 @@ export function Mascot({
                     <motion.img
                       key={poseSrc}
                       src={poseSrc}
-                      alt="Buildy"
+                      alt="My Buildy"
                       draggable={false}
                       style={styles.img}
                       initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.92 }}

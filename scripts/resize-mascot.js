@@ -7,14 +7,14 @@
 //
 //   npx electron scripts/resize-mascot.js
 //
-// buildy-logo.png is deliberately untouched (tray/app icon).
+// mybuildy-logo.png is deliberately untouched (tray/app icon).
 
 const { app, nativeImage } = require('electron')
 const { readFileSync, writeFileSync, statSync } = require('fs')
 const { join } = require('path')
 
 const ASSETS = join(__dirname, '..', 'src', 'renderer', 'src', 'assets')
-const POSES = ['buildy-idle.png', 'buildy-watching.png', 'buildy-thinking.png', 'buildy-speaking.png']
+const POSES = ['mybuildy-idle.png', 'mybuildy-watching.png', 'mybuildy-thinking.png', 'mybuildy-speaking.png']
 const TARGET = { width: 512, height: 768 }
 
 app.whenReady().then(() => {

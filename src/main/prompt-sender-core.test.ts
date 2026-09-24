@@ -163,22 +163,22 @@ describe('detectDestructivePrompt — normal build prompts pass', () => {
 })
 
 describe('buildSendCommand — no user content in the command string', () => {
-  const prompt = 'BUILDY_SECRET_PROMPT: build the /dashboard route with a table'
-  const title = 'BUILDY SECRET WINDOW TITLE — claude in ~/my-app'
+  const prompt = 'MYBUILDY_SECRET_PROMPT: build the /dashboard route with a table'
+  const title = 'MYBUILDY SECRET WINDOW TITLE — claude in ~/my-app'
 
   it('never interpolates the prompt text or the window title', () => {
     const cmd = buildSendCommand(prompt, title)
     const full = [cmd.exe, ...cmd.args].join(' ')
     expect(full).not.toContain(prompt)
-    expect(full).not.toContain('BUILDY_SECRET_PROMPT')
+    expect(full).not.toContain('MYBUILDY_SECRET_PROMPT')
     expect(full).not.toContain(title)
     expect(full).not.toContain('SECRET WINDOW TITLE')
   })
 
-  it('passes the title ONLY via the BUILDY_TARGET_TITLE environment variable', () => {
+  it('passes the title ONLY via the MYBUILDY_TARGET_TITLE environment variable', () => {
     const cmd = buildSendCommand(prompt, title)
-    expect(cmd.env.BUILDY_TARGET_TITLE).toBe(title)
-    expect(POWERSHELL_SEND_SCRIPT).toContain('$env:BUILDY_TARGET_TITLE')
+    expect(cmd.env.MYBUILDY_TARGET_TITLE).toBe(title)
+    expect(POWERSHELL_SEND_SCRIPT).toContain('$env:MYBUILDY_TARGET_TITLE')
   })
 
   it('uses the fixed powershell invocation and fixed keystrokes only', () => {

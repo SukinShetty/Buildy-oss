@@ -12,7 +12,7 @@ const tmp = vi.hoisted(() => {
   const { mkdtempSync } = require('fs') as typeof import('fs')
   const { tmpdir } = require('os') as typeof import('os')
   const { join } = require('path') as typeof import('path')
-  return { userDataDir: mkdtempSync(join(tmpdir(), 'buildy-nemp-scope-')) }
+  return { userDataDir: mkdtempSync(join(tmpdir(), 'mybuildy-nemp-scope-')) }
 })
 
 vi.mock('electron', () => ({
@@ -65,7 +65,7 @@ describe('nemp-bridge — per-project memory scope', () => {
     // Export from A → contains A's memory only.
     await nemp.init('project-a')
     const exportPath = join(tmp.userDataDir, 'export-a.md')
-    await nemp.exportToBuildyMd(exportPath)
+    await nemp.exportToMyBuildyMd(exportPath)
     const md = readFileSync(exportPath, 'utf-8')
     expect(md).toContain('Login screen finished')
     expect(md).not.toContain('Signup flow finished')

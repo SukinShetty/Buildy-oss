@@ -70,7 +70,7 @@ export function CompanionApp(): React.ReactElement {
   useEffect(() => {
     let alive = true
     const check = (): void => {
-      window.buildy.loadSettings().then((s) => {
+      window.mybuildy.loadSettings().then((s) => {
         if (!alive) return
         setNeedsSetup(!isModelConfigured(s))
         setHasElevenKey(!!s.hasElevenLabsKey)
@@ -86,7 +86,7 @@ export function CompanionApp(): React.ReactElement {
 
   useEffect(() => {
     const unsubs = [
-      window.buildy.onCompanionAnalysis((_: unknown, a: AnalysisResult) => {
+      window.mybuildy.onCompanionAnalysis((_: unknown, a: AnalysisResult) => {
         setLastAnswer(null)
         setLatestAnalysis(a)
         // Mascot signals: alignment glow + transition reactions + "!" badge.
@@ -98,24 +98,24 @@ export function CompanionApp(): React.ReactElement {
         if (signals.reaction) fireReaction(signals.reaction)
         if (signals.raiseAlertBadge) setShowAlertBadge(true)
         // Render guidance in its OWN window so it never overflows the mascot.
-        window.buildy.showGuidance(a)
+        window.mybuildy.showGuidance(a)
       }),
-      window.buildy.onCompanionState((_: unknown, s: string) => setAvatarState(s as CompanionState)),
+      window.mybuildy.onCompanionState((_: unknown, s: string) => setAvatarState(s as CompanionState)),
       // NOTE: audio is no longer played here. Playback lives in the main-process
       // voice player (hidden window) so it survives this window being backgrounded.
-      window.buildy.onWatchedSourceChanged((_: unknown, d: { windowName: string | null; message: string | null }) => {
+      window.mybuildy.onWatchedSourceChanged((_: unknown, d: { windowName: string | null; message: string | null }) => {
         setWatchedSource(d.windowName, d.message)
-        if (!d.windowName) { clearAnalysis(); resetMascotSignals(); window.buildy.hideGuidance() }
+        if (!d.windowName) { clearAnalysis(); resetMascotSignals(); window.mybuildy.hideGuidance() }
       }),
-      window.buildy.onCompanionAnswer((_: unknown, d: { question: string; answer: string }) => {
+      window.mybuildy.onCompanionAnswer((_: unknown, d: { question: string; answer: string }) => {
         setLastAnswer(d)
         setMicState('idle')
         // Show the spoken-question answer in the guidance window.
-        window.buildy.showGuidanceAnswer(d)
+        window.mybuildy.showGuidanceAnswer(d)
       }),
-      window.buildy.onCompanionShutdown(() => window.buildy.voice.stop()),
+      window.mybuildy.onCompanionShutdown(() => window.mybuildy.voice.stop()),
       // Brief "Sent" status after a successful Send to Claude Code.
-      window.buildy.onSendStatus((_: unknown, status: string) => {
+      window.mybuildy.onSendStatus((_: unknown, status: string) => {
         if (status === 'sent') {
           setSentFlash(true)
           setTimeout(() => setSentFlash(false), 2000)
@@ -123,7 +123,7 @@ export function CompanionApp(): React.ReactElement {
         }
       }),
       // Window drag (from main's 'move' events) — mascot squash while dragging.
-      window.buildy.onCompanionDrag((_: unknown, d: boolean) => setDragging(d)),
+      window.mybuildy.onCompanionDrag((_: unknown, d: boolean) => setDragging(d)),
     ]
     return () => { unsubs.forEach((u) => u()) }
   }, [])
@@ -131,7 +131,7 @@ export function CompanionApp(): React.ReactElement {
   // ─── Window picker ──────────────────────────────────────────────────
 
   async function openPicker(): Promise<void> {
-    const s = await window.buildy.loadSettings()
+    const s = await window.mybuildy.loadSettings()
     setHasElevenKey(!!s.hasElevenLabsKey)
     // Refresh the disclosure flag from the FRESH settings too: the state
     // starts true (fail-open), so a failed mount-time load must not let a
@@ -139,7 +139,7 @@ export function CompanionApp(): React.ReactElement {
     setCaptureNoticeAccepted(s.captureNoticeAccepted)
     if (!isModelConfigured(s)) { setNeedsSetup(true); return }
     setNeedsSetup(false)
-    const wins = await window.buildy.listWindows()
+    const wins = await window.mybuildy.listWindows()
     setWindowList(wins.map((w) => ({ id: w.id, name: w.name, thumbnailBase64: w.thumbnailBase64 })))
     setShowWindowPicker(true)
   }
@@ -158,17 +158,17 @@ export function CompanionApp(): React.ReactElement {
   async function startWatchingWindow(id: string, name: string): Promise<void> {
     clearAnalysis()
     resetMascotSignals()  // fresh session: no stale glow/badge from the old window
-    window.buildy.hideGuidance()  // drop any stale guidance from the previous window
-    window.buildy.voice.resetDedup()  // fresh watching session can speak anything
+    window.mybuildy.hideGuidance()  // drop any stale guidance from the previous window
+    window.mybuildy.voice.resetDedup()  // fresh watching session can speak anything
     setWatchedSource(name, null)
-    await window.buildy.selectWatchSource(id, name)
+    await window.mybuildy.selectWatchSource(id, name)
   }
 
   async function onCaptureNoticeContinue(): Promise<void> {
     const pick = pendingPick
     setPendingPick(null)
     try {
-      await window.buildy.acceptCaptureNotice()
+      await window.mybuildy.acceptCaptureNotice()
       setCaptureNoticeAccepted(true)
     } catch (e) {
       console.warn('[Companion] could not persist capture-notice acceptance:', e)
@@ -189,7 +189,7 @@ export function CompanionApp(): React.ReactElement {
 
     try {
       // NOTE: deliberately does NOT stop audio (Invariant 2). Starting the mic
-      // while Buildy is talking lets it finish; recording proceeds in parallel.
+      // while My Buildy is talking lets it finish; recording proceeds in parallel.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
@@ -219,7 +219,7 @@ export function CompanionApp(): React.ReactElement {
         try {
           const arrayBuffer = await blob.arrayBuffer()
           console.log('[Mic] Sending to ElevenLabs STT...')
-          const result = await window.buildy.transcribeAudio(arrayBuffer)
+          const result = await window.mybuildy.transcribeAudio(arrayBuffer)
 
           if (!result.success || !result.text) {
             console.error('[Mic] Transcription failed:', result.error)
@@ -232,7 +232,7 @@ export function CompanionApp(): React.ReactElement {
           console.log(`[Mic] Transcription received (${result.text.length} chars)`)
           setMicState('answering')
           setMicError(null)
-          await window.buildy.askQuestion(result.text)
+          await window.mybuildy.askQuestion(result.text)
         } catch (err) {
           console.error('[Mic] Error:', err)
           setMicState('idle')
@@ -262,31 +262,31 @@ export function CompanionApp(): React.ReactElement {
   // ─── Handlers ───────────────────────────────────────────────────────
 
   function onOrbClick(): void {
-    if (needsSetup) { window.buildy.openPanel(); return }
+    if (needsSetup) { window.mybuildy.openPanel(); return }
     if (!watchedWindowName) { openPicker(); return }
     // The user is opening the guidance panel — the "!" alert is now seen.
     setShowAlertBadge(false)
     // Re-show the latest guidance/answer in the guidance window.
-    if (latestAnalysis) window.buildy.showGuidance(latestAnalysis)
-    else if (lastAnswer) window.buildy.showGuidanceAnswer(lastAnswer)
+    if (latestAnalysis) window.mybuildy.showGuidance(latestAnalysis)
+    else if (lastAnswer) window.mybuildy.showGuidanceAnswer(lastAnswer)
     else openPicker()
   }
   function onStop(): void {
-    window.buildy.voice.stop(); window.buildy.voice.resetDedup(); stopRecording()
+    window.mybuildy.voice.stop(); window.mybuildy.voice.resetDedup(); stopRecording()
     setMicState('idle'); setAvatarState('idle')
     setShowAlertBadge(false)
-    window.buildy.hideGuidance()
+    window.mybuildy.hideGuidance()
   }
-  function onMute(): void { const m = !isMuted; setMuted(m); window.buildy.voice.setMuted(m) }
+  function onMute(): void { const m = !isMuted; setMuted(m); window.mybuildy.voice.setMuted(m) }
   function onPause(): void {
     const p = !isPaused; setPaused(p)
-    if (p) { window.buildy.pauseCompanion(); window.buildy.voice.stop() } else { window.buildy.resumeCompanion() }
+    if (p) { window.mybuildy.pauseCompanion(); window.mybuildy.voice.stop() } else { window.mybuildy.resumeCompanion() }
   }
-  function onQuiet(): void { const q = !isQuietMode; setQuietMode(q); window.buildy.setQuietMode(q) }
-  function onSettings(): void { window.buildy.openPanel() }
+  function onQuiet(): void { const q = !isQuietMode; setQuietMode(q); window.mybuildy.setQuietMode(q) }
+  function onSettings(): void { window.mybuildy.openPanel() }
   // Re-summon the most recent guidance even when no new analysis has arrived.
   // User-opened panel — clear the "!" alert badge.
-  function onShowLast(): void { setShowAlertBadge(false); window.buildy.showLastGuidance() }
+  function onShowLast(): void { setShowAlertBadge(false); window.mybuildy.showLastGuidance() }
 
   function onMicToggle(): void {
     if (micState === 'listening') { stopRecording(); return }
@@ -392,7 +392,7 @@ export function CompanionApp(): React.ReactElement {
       {/* One-time privacy disclosure — shown before the FIRST watch ever starts */}
       {pendingPick && (
         <div style={S.picker}>
-          <div style={S.noticeTitle}>Before Buildy starts watching</div>
+          <div style={S.noticeTitle}>Before My Buildy starts watching</div>
           <div style={S.noticeText}>{CAPTURE_NOTICE_MESSAGE}</div>
           <div style={S.noticeButtons}>
             <button onClick={onCaptureNoticeCancel} style={S.noticeCancel}>Cancel</button>

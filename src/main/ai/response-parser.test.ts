@@ -6,7 +6,7 @@ import {
   toAgentName,
 } from './response-parser'
 
-// A representative model output for a routine coding step — Buildy can default it,
+// A representative model output for a routine coding step — My Buildy can default it,
 // so needsHumanJudgment must be false.
 const ROUTINE_STEP = JSON.stringify({
   screenContentVisible: true,
@@ -211,21 +211,21 @@ describe('tryExtractProjectData — brainstorm firstPrompt (Part 3)', () => {
   it('extracts a non-empty firstPrompt once the product is defined', () => {
     const full = `Great, I think I understand your idea!
 
----BUILDY_PROJECT_SUMMARY---
+---MYBUILDY_PROJECT_SUMMARY---
 PROJECT_NAME: FreelanceCRM
 PRODUCT_SUMMARY: A simple CRM for freelancers to track customers.
 TARGET_USER: Solo freelancers.
 CORE_PROBLEM: Freelancers lose track of client conversations.
 MVP_FOCUS: A customer list page.
 FIRST_PROMPT: Set up a new Next.js + Tailwind app called FreelanceCRM and build a /customers page that lists customers in a table with an Add customer button.
----END_BUILDY_PROJECT_SUMMARY---`
+---END_MYBUILDY_PROJECT_SUMMARY---`
 
     const data = tryExtractProjectData(full)
     expect(data).not.toBeNull()
     expect(data!.projectName).toBe('FreelanceCRM')
     expect(data!.firstPrompt.length).toBeGreaterThan(0)
     expect(data!.firstPrompt).toMatch(/Next\.js/)
-    expect(data!.firstPrompt).not.toContain('END_BUILDY_PROJECT_SUMMARY')
+    expect(data!.firstPrompt).not.toContain('END_MYBUILDY_PROJECT_SUMMARY')
   })
 
   it('returns null when no summary block is present (product not yet defined)', () => {

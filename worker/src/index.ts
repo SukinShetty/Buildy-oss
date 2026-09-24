@@ -1,5 +1,5 @@
 /**
- * Buildy Proxy Worker
+ * My Buildy Proxy Worker
  *
  * Proxies requests to Claude (Anthropic) so the app never ships with
  * raw API keys. Keys are stored as Cloudflare Worker secrets.
@@ -7,7 +7,7 @@
  * Routes:
  *   POST /chat  → Anthropic Messages API (non-streaming, returns JSON)
  *
- * Simplified from Clicky's worker — Buildy doesn't use voice, so we
+ * Simplified from Clicky's worker — My Buildy doesn't use voice, so we
  * only need the /chat route. ElevenLabs and AssemblyAI routes removed.
  */
 
@@ -41,7 +41,7 @@ export default {
       }
 
       if (url.pathname === "/health") {
-        return new Response(JSON.stringify({ status: "ok", service: "buildy-proxy" }), {
+        return new Response(JSON.stringify({ status: "ok", service: "mybuildy-proxy" }), {
           status: 200,
           headers: { "content-type": "application/json", ...corsHeaders },
         });

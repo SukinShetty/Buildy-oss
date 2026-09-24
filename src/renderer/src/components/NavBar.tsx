@@ -1,5 +1,5 @@
 // NavBar.tsx
-// Top navigation bar with 4 tabs and the Buildy logo.
+// Top navigation bar with 5 tabs and the My Buildy name.
 // Stays fixed at the top of the app — screen content scrolls below it.
 
 import React from 'react'
@@ -27,7 +27,7 @@ export function NavBar(): React.ReactElement {
       {/* Logo */}
       <div style={styles.logo}>
         <span style={styles.logoIcon}>🔨</span>
-        <span style={styles.logoText}>Buildy</span>
+        <span style={styles.logoText}>My Buildy</span>
       </div>
 
       {/* Tab buttons */}
@@ -72,6 +72,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
     WebkitAppRegion: 'drag',
   } as React.CSSProperties,
 
@@ -84,6 +85,7 @@ const styles = {
     fontWeight: 700,
     color: 'var(--color-text)',
     letterSpacing: '-0.01em',
+    whiteSpace: 'nowrap',
   } as React.CSSProperties,
 
   tabs: {
@@ -97,7 +99,8 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 4,
-    padding: '4px 10px',
+    padding: '4px 6px',
+    whiteSpace: 'nowrap',
     background: 'transparent',
     borderRadius: 'var(--radius-sm)',
     fontSize: 12,
@@ -120,6 +123,6 @@ const styles = {
   } as React.CSSProperties,
 
   tabLabel: {
-    // Hide labels on very small widths if needed
+    whiteSpace: 'nowrap',
   } as React.CSSProperties,
 }

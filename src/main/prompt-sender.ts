@@ -3,7 +3,7 @@
 // clipboard, then runs the FIXED PowerShell script (see prompt-sender-core.ts)
 // that activates the watched window and sends Ctrl+V + Enter. The prompt text
 // and the window title are never part of the command string — text travels via
-// the clipboard, the title via the BUILDY_TARGET_TITLE environment variable.
+// the clipboard, the title via the MYBUILDY_TARGET_TITLE environment variable.
 //
 // Serialized: one send at a time. A second send while one is in flight is
 // rejected (not queued) by the caller via isSendInFlight().
@@ -96,7 +96,7 @@ export async function executeSend(
  */
 function runSendScript(targetWindowTitle: string): Promise<number | null> {
   const { exe, args, env } = buildSendCommand('', targetWindowTitle)
-  // Window titles can contain user content — gate behind BUILDY_DEBUG.
+  // Window titles can contain user content — gate behind MYBUILDY_DEBUG.
   debugLog(`[Send] activating target window "${targetWindowTitle}"`)
   console.log('[Send] spawning powershell (fixed script, title via env)')
 

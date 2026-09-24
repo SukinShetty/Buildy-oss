@@ -4,7 +4,7 @@
 //
 // Renders one of two payloads pushed from the main process:
 //   - kind 'analysis' — alignment pill + note + best next move + prompt-to-paste
-//   - kind 'answer'   — the user's spoken question + Buildy's answer
+//   - kind 'answer'   — the user's spoken question + My Buildy's answer
 //
 // Self-managing behaviour:
 //   - Reports its content height to main so the window resizes to fit (capped at
@@ -37,7 +37,7 @@ export function GuidancePanel(): React.ReactElement | null {
 
   // Which sentence is currently being spoken (Invariant 6 — keep voice + text in sync).
   useEffect(() => {
-    const unsub = window.buildy.onSpeechProgress((_: unknown, chunkText: string | null) => {
+    const unsub = window.mybuildy.onSpeechProgress((_: unknown, chunkText: string | null) => {
       setSpeakingChunk(chunkText)
     })
     return () => unsub()
@@ -45,7 +45,7 @@ export function GuidancePanel(): React.ReactElement | null {
 
   // Send eligibility — main decides, we only render (disabled button + tooltip).
   useEffect(() => {
-    const unsub = window.buildy.onSendEligibility((_: unknown, state: SendEligibility) => {
+    const unsub = window.mybuildy.onSendEligibility((_: unknown, state: SendEligibility) => {
       setSendEligibility(state)
     })
     return () => unsub()
@@ -56,14 +56,14 @@ export function GuidancePanel(): React.ReactElement | null {
   const resetHideTimer = useCallback(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
     hideTimerRef.current = setTimeout(() => {
-      window.buildy.hideGuidance()
+      window.mybuildy.hideGuidance()
     }, AUTO_HIDE_MS)
   }, [])
 
   // ─── Receive payloads from main ─────────────────────────────────────────────
 
   useEffect(() => {
-    const unsub = window.buildy.onGuidanceData((_: unknown, p: GuidancePayload) => {
+    const unsub = window.mybuildy.onGuidanceData((_: unknown, p: GuidancePayload) => {
       setPayload(p)
       setRenderKey((k) => k + 1) // re-trigger the entrance animation
       resetHideTimer()
@@ -81,7 +81,7 @@ export function GuidancePanel(): React.ReactElement | null {
     if (!el) return
     const report = (): void => {
       // scrollHeight includes padding and full content even when scrolling.
-      window.buildy.resizeGuidance(el.scrollHeight + 16)
+      window.mybuildy.resizeGuidance(el.scrollHeight + 16)
     }
     report()
     const ro = new ResizeObserver(report)
@@ -99,7 +99,7 @@ export function GuidancePanel(): React.ReactElement | null {
     <div style={S.root} onMouseMove={onInteract} onClick={onInteract} onKeyDown={onInteract}>
       <div ref={panelRef} style={S.panel} key={renderKey} className="guidance-appear">
         <button
-          onClick={() => window.buildy.hideGuidance()}
+          onClick={() => window.mybuildy.hideGuidance()}
           style={S.close}
           title="Dismiss"
           aria-label="Dismiss"
@@ -152,7 +152,7 @@ function AnalysisBody({
   // a second deliberate click actually sends.
   const [guardArmed, setGuardArmed] = useState(false)
 
-  const isWindows = window.buildy.platform === 'win32'
+  const isWindows = window.mybuildy.platform === 'win32'
   const agentLabel = agentDisplayName(analysis.agentName)
   const pasteTarget = agentLabel ?? 'the terminal'
   const guard = analysis.sendGuard ?? null
@@ -167,7 +167,7 @@ function AnalysisBody({
     try {
       // Route through main — this window is non-focusable, so navigator.clipboard
       // would reject with "Document is not focused".
-      await window.buildy.copyText(analysis.nextPrompt)
+      await window.mybuildy.copyText(analysis.nextPrompt)
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch (e) {
@@ -182,20 +182,20 @@ function AnalysisBody({
     setSendState('sending')
     setSendError(null)
     try {
-      const result = await window.buildy.sendPromptToWindow(analysis.promptId)
+      const result = await window.mybuildy.sendPromptToWindow(analysis.promptId)
       if (result.sent) {
         setSendState('sent')
         setTimeout(() => setSendState('idle'), 2000)
         return
       }
       console.warn('[GuidancePanel] Send failed:', result.reason)
-      await window.buildy.copyText(analysis.nextPrompt)
+      await window.mybuildy.copyText(analysis.nextPrompt)
       setSendState('idle')
       setSendError(`Copied instead. Press Ctrl+V then Enter in ${pasteTarget}.`)
       setTimeout(() => setSendError(null), 6000)
     } catch (e) {
       console.warn('[GuidancePanel] Send failed:', e)
-      try { await window.buildy.copyText(analysis.nextPrompt) } catch { /* clipboard best-effort */ }
+      try { await window.mybuildy.copyText(analysis.nextPrompt) } catch { /* clipboard best-effort */ }
       setSendState('idle')
       setSendError(`Copied instead. Press Ctrl+V then Enter in ${pasteTarget}.`)
       setTimeout(() => setSendError(null), 6000)
@@ -215,7 +215,7 @@ function AnalysisBody({
   async function copyForAgent(): Promise<void> {
     if (!analysis.nextPrompt) return
     try {
-      await window.buildy.copyText(analysis.nextPrompt)
+      await window.mybuildy.copyText(analysis.nextPrompt)
       setSendState('sent')
       setTimeout(() => setSendState('idle'), 2000)
     } catch (e) {
@@ -254,7 +254,7 @@ function AnalysisBody({
 
       {analysis.projectUnderstandingNote && (
         <div style={S.understanding}>
-          Buildy thinks you're building: {analysis.projectUnderstandingNote}
+          My Buildy thinks you're building: {analysis.projectUnderstandingNote}
         </div>
       )}
 
@@ -364,7 +364,7 @@ function AnswerBody({ answer }: { answer: QuestionAnswer }): React.ReactElement 
 
   async function copyAnswer(): Promise<void> {
     try {
-      await window.buildy.copyText(answer.answer)
+      await window.mybuildy.copyText(answer.answer)
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch (e) {

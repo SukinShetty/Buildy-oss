@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   windows-installer:
-    if: github.repository == 'SukinShetty/Buildy-oss'
+    if: github.repository == 'SukinShetty/mybuildy'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +47,7 @@ jobs:
       - name: Write SHA256SUMS.txt
         shell: pwsh
         run: |
-          $exe = Get-ChildItem dist -Filter 'Buildy-Setup-*.exe'
+          $exe = Get-ChildItem dist -Filter 'MyBuildy-Setup-*.exe'
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$hash  $($exe.Name)" | Out-File dist/SHA256SUMS.txt -Encoding ascii
           Get-Content dist/SHA256SUMS.txt
@@ -57,5 +57,5 @@ jobs:
         with:
           draft: true
           files: |
-            dist/Buildy-Setup-*.exe
+            dist/MyBuildy-Setup-*.exe
             dist/SHA256SUMS.txt

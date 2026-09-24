@@ -72,7 +72,7 @@ export function createVoicePlayerWindow(): BrowserWindow {
   win.setIgnoreMouseEvents(true)
 
   // The voice window is invisible and has no devtools. Forward its console to the
-  // main process stdout so `npm run dev` (with BUILDY_DEBUG) prints [Voice-Window]
+  // main process stdout so `npm run dev` (with MYBUILDY_DEBUG) prints [Voice-Window]
   // lines for debugging. These can include spoken-text fragments, so they are
   // gated — silent in production.
   win.webContents.on('console-message', (_e, _level, message) => {

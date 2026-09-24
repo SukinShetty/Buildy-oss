@@ -99,7 +99,7 @@ export function buildQualityPatch(
       humanJudgmentReason:
         (result.reason || '').trim() ||
         (analysis.humanJudgmentReason || '').trim() ||
-        'Buildy needs your answer before it can suggest the next prompt.',
+        'My Buildy needs your answer before it can suggest the next prompt.',
     }
   }
   if (result.valid) return null

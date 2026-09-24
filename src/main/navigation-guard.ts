@@ -19,7 +19,7 @@ export function isSafeExternalUrl(url: string): boolean {
 }
 
 /**
- * May a Buildy window navigate to `url`?
+ * May one of our windows navigate to `url`?
  *   - file:// is always allowed (the packaged renderer bundle)
  *   - when a dev server URL is configured (ELECTRON_RENDERER_URL), that exact
  *     origin is allowed too (http://localhost:<port> during `npm run dev`)

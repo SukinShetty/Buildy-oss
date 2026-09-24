@@ -1,6 +1,6 @@
 // MemoryScreen.tsx
-// Buildy's project memory, backed by the Nemp memory layer (loop engineering
-// Block 2). Shows what Buildy knows — completed work, blockers, decisions,
+// My Buildy's project memory, backed by the Nemp memory layer (loop engineering
+// Block 2). Shows what My Buildy knows — completed work, blockers, decisions,
 // patterns, and recent activity — plus export + reset.
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -31,8 +31,8 @@ export function MemoryScreen(): React.ReactElement {
     setLoading(true)
     try {
       const [s, active] = await Promise.all([
-        window.buildy.memory.get(),
-        window.buildy.projects.getActive(),
+        window.mybuildy.memory.get(),
+        window.mybuildy.projects.getActive(),
       ])
       setSnap(s)
       setActiveProject(active)
@@ -52,7 +52,7 @@ export function MemoryScreen(): React.ReactElement {
 
   async function onExport(): Promise<void> {
     try {
-      const res = await window.buildy.memory.exportBuildyMd()
+      const res = await window.mybuildy.memory.exportMyBuildyMd()
       flash(res.saved ? `Exported to ${res.path}` : 'Export cancelled')
     } catch (e) {
       console.warn('[MemoryScreen] export failed:', e)
@@ -63,7 +63,7 @@ export function MemoryScreen(): React.ReactElement {
   async function onReset(): Promise<void> {
     setConfirmReset(false)
     try {
-      await window.buildy.memory.reset()
+      await window.mybuildy.memory.reset()
       flash('Memory cleared')
       load()
     } catch (e) {
@@ -85,7 +85,7 @@ export function MemoryScreen(): React.ReactElement {
           <button className="btn-ghost" onClick={load} style={S.smallBtn} title="Refresh">↻</button>
         </div>
         <div style={S.headerSub}>
-          What Buildy remembers about this project. Stored only on this computer.
+          What My Buildy remembers about this project. Stored only on this computer.
           Relevant entries are sent to your AI provider with each analysis.
         </div>
       </div>
@@ -106,7 +106,7 @@ export function MemoryScreen(): React.ReactElement {
 
         {!loading && totalCount === 0 && snap.recent.length === 0 && (
           <div style={S.empty}>
-            Buildy hasn't learned anything yet. Start a watching session and it will
+            My Buildy hasn't learned anything yet. Start a watching session and it will
             remember what you build.
           </div>
         )}
@@ -131,7 +131,7 @@ export function MemoryScreen(): React.ReactElement {
           <EntryList items={snap.decisions} color="var(--color-accent)" />
         </Section>
 
-        <Section title="Patterns Buildy noticed" count={snap.patterns.length} color="var(--color-warning)">
+        <Section title="Patterns My Buildy noticed" count={snap.patterns.length} color="var(--color-warning)">
           <EntryList items={snap.patterns} color="var(--color-warning)" />
         </Section>
 
@@ -142,7 +142,7 @@ export function MemoryScreen(): React.ReactElement {
         {/* Actions */}
         <div style={S.actions}>
           <button className="btn-primary" onClick={onExport} style={{ flex: 1, justifyContent: 'center' }}>
-            Export BUILDY.md
+            Export MYBUILDY.md
           </button>
           <button className="btn-ghost" onClick={() => setConfirmReset(true)} style={S.resetBtn}>
             Reset memory
@@ -157,7 +157,7 @@ export function MemoryScreen(): React.ReactElement {
           <div style={S.modalCard}>
             <div style={S.modalTitle}>Reset all memory?</div>
             <div style={S.modalText}>
-              This permanently deletes everything Buildy has learned about this
+              This permanently deletes everything My Buildy has learned about this
               project (completed work, blockers, decisions, patterns). Your goal is
               kept. This cannot be undone.
             </div>

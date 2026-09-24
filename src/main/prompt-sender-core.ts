@@ -6,7 +6,7 @@
 //   - buildSendCommand: the FIXED PowerShell invocation. The prompt text and the
 //     window title are NEVER interpolated into the command string — the prompt
 //     travels via the clipboard only, and the title travels as an environment
-//     variable (BUILDY_TARGET_TITLE) read inside the script.
+//     variable (MYBUILDY_TARGET_TITLE) read inside the script.
 
 import type { SendEligibility, TerminalState } from '../renderer/src/types'
 
@@ -188,12 +188,12 @@ export function detectDestructivePrompt(promptText: string): { reason: string } 
 
 // Exit codes: 0 = sent; 2 = target window is not in the foreground; 3 = no
 // target title in the environment. The script contains NO user content: it
-// reads the target title from $env:BUILDY_TARGET_TITLE and sends only the
+// reads the target title from $env:MYBUILDY_TARGET_TITLE and sends only the
 // fixed keystrokes Ctrl+V then Enter (the prompt is already on the clipboard).
 // Foreground title matching mirrors AppActivate: case-insensitive exact, then
 // prefix, then suffix.
 export const POWERSHELL_SEND_SCRIPT = `
-$target = $env:BUILDY_TARGET_TITLE
+$target = $env:MYBUILDY_TARGET_TITLE
 if (-not $target) { exit 3 }
 $wshell = New-Object -ComObject WScript.Shell
 try { [void]$wshell.AppActivate($target) } catch { }
@@ -202,13 +202,13 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
-public static class BuildyForeground {
+public static class MyBuildyForeground {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 }
 "@
 $sb = New-Object System.Text.StringBuilder 1024
-[void][BuildyForeground]::GetWindowText([BuildyForeground]::GetForegroundWindow(), $sb, 1024)
+[void][MyBuildyForeground]::GetWindowText([MyBuildyForeground]::GetForegroundWindow(), $sb, 1024)
 $fg = $sb.ToString().ToLowerInvariant()
 $t = $target.ToLowerInvariant()
 if (-not (($fg -eq $t) -or $fg.StartsWith($t) -or $fg.EndsWith($t))) { exit 2 }
@@ -222,7 +222,7 @@ exit 0
 export interface SendCommand {
   exe: string
   args: string[]
-  env: { BUILDY_TARGET_TITLE: string }
+  env: { MYBUILDY_TARGET_TITLE: string }
 }
 
 /**
@@ -234,6 +234,6 @@ export function buildSendCommand(_promptText: string, targetWindowTitle: string)
   return {
     exe: 'powershell.exe',
     args: ['-NoProfile', '-NonInteractive', '-Command', POWERSHELL_SEND_SCRIPT],
-    env: { BUILDY_TARGET_TITLE: targetWindowTitle },
+    env: { MYBUILDY_TARGET_TITLE: targetWindowTitle },
   }
 }

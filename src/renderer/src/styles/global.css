@@ -1,5 +1,5 @@
 /* global.css
-   Design system for Buildy.
+   Design system for My Buildy.
    All color, spacing, and typography tokens defined as CSS custom properties.
    Components reference these variables — never hardcode values. */
 
@@ -86,7 +86,7 @@ body {
 }
 
 /* ─── Companion mode ─────────────────────────────────────────────────────────── */
-/* The floating companion is fully transparent so the Buildy mascot appears to
+/* The floating companion is fully transparent so the mascot appears to
    float freely on the desktop — no visible container box. */
 html.companion-mode,
 body.companion-mode,

@@ -37,7 +37,7 @@ function makeDeps(prefix = 'id'): MigrationDeps {
 let userDataDir = ''
 
 beforeEach(() => {
-  userDataDir = mkdtempSync(join(tmpdir(), 'buildy-projects-test-'))
+  userDataDir = mkdtempSync(join(tmpdir(), 'mybuildy-projects-test-'))
 })
 
 afterEach(() => {
@@ -55,10 +55,10 @@ function writeLegacyNempStore(): void {
       {
         key: 'completion:sample-feature',
         value: 'Sample feature finished',
-        tags: ['buildy', 'completion'],
+        tags: ['mybuildy', 'completion'],
         timestamp: '2025-12-01T00:00:00.000Z',
-        source: 'buildy',
-        agent_id: 'buildy',
+        source: 'mybuildy',
+        agent_id: 'mybuildy',
       },
     ]),
     'utf-8'
@@ -87,10 +87,10 @@ function writeCompletionInto(projectId: string, value: string): void {
       {
         key: `completion:${value.toLowerCase().replace(/\s+/g, '-')}`,
         value,
-        tags: ['buildy', 'completion'],
+        tags: ['mybuildy', 'completion'],
         timestamp: '2026-01-01T00:00:00.000Z',
-        source: 'buildy',
-        agent_id: 'buildy',
+        source: 'mybuildy',
+        agent_id: 'mybuildy',
       },
     ]),
     'utf-8'
@@ -128,11 +128,11 @@ describe('deriveProjectNameFromGoal', () => {
 // ─── Path namespacing ─────────────────────────────────────────────────────────
 
 describe('namespacing paths', () => {
-  it('gives every project its own store directory under buildy-memory/', () => {
+  it('gives every project its own store directory under mybuildy-memory/', () => {
     const a = projectStoreDir(userDataDir, 'proj-a')
     const b = projectStoreDir(userDataDir, 'proj-b')
     expect(a).not.toBe(b)
-    expect(a).toBe(join(userDataDir, 'buildy-memory', 'proj-a'))
+    expect(a).toBe(join(userDataDir, 'mybuildy-memory', 'proj-a'))
     expect(projectMemoryFilePath(userDataDir, 'proj-a')).toBe(join(a, 'project-memory.json'))
   })
 

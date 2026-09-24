@@ -1,6 +1,6 @@
 // make-app-icon.js — one-off installer/app icon generator (Phase 9).
-// The Buildy logo (src/renderer/src/assets/buildy-logo.png) is a 1536x1024
-// wordmark banner: a rounded orange mascot badge + white "Buildy" text on a
+// The My Buildy wordmark (src/renderer/src/assets/mybuildy-logo.png) is a 1536x1024
+// wordmark banner: a rounded orange mascot badge + white "My Buildy" text on a
 // black background. A letterboxed banner makes a terrible app icon, so this
 // script extracts the BADGE:
 //
@@ -23,7 +23,7 @@ const { app, nativeImage } = require('electron')
 const { readFileSync, writeFileSync, mkdirSync, statSync } = require('fs')
 const { join } = require('path')
 
-const SOURCE = join(__dirname, '..', 'src', 'renderer', 'src', 'assets', 'buildy-logo.png')
+const SOURCE = join(__dirname, '..', 'src', 'renderer', 'src', 'assets', 'mybuildy-logo.png')
 const OUT_DIR = join(__dirname, '..', 'build')
 const OUT = join(OUT_DIR, 'icon.png')
 const SIZE = 512

@@ -5,20 +5,20 @@
 
 import * as path from 'path'
 import { test, expect } from '@playwright/test'
-import { launchBuildy, type BuildyApp } from './helpers'
+import { launchMyBuildy, type MyBuildyApp } from './helpers'
 
-let buildy: BuildyApp
+let mybuildy: MyBuildyApp
 
 test.beforeAll(async () => {
-  buildy = await launchBuildy()
+  mybuildy = await launchMyBuildy()
 })
 
 test.afterAll(async () => {
-  await buildy?.close()
+  await mybuildy?.close()
 })
 
 test('desktopCapturer sees at least one window source', async () => {
-  const sourceCount = await buildy.app.evaluate(async ({ desktopCapturer }) => {
+  const sourceCount = await mybuildy.app.evaluate(async ({ desktopCapturer }) => {
     const sources = await desktopCapturer.getSources({ types: ['window'] })
     return sources.length
   })
@@ -26,7 +26,7 @@ test('desktopCapturer sees at least one window source', async () => {
 })
 
 test('safeStorage encryption is available (keys are never stored in plain text)', async () => {
-  const available = await buildy.app.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable())
+  const available = await mybuildy.app.evaluate(({ safeStorage }) => safeStorage.isEncryptionAvailable())
   expect(available).toBe(true)
 })
 
@@ -34,10 +34,10 @@ test('tray was created with a real icon; the icon file resolves in this mode', a
   // Same resolution rule as src/main/index.ts: packaged -> resources/icon.png
   // (shipped by electron-builder extraResources), dev -> repo build/icon.png.
   const devIconPath = path.resolve(__dirname, '..', 'build', 'icon.png')
-  const info = await buildy.app.evaluate(({ app, nativeImage }, devIcon) => {
+  const info = await mybuildy.app.evaluate(({ app, nativeImage }, devIcon) => {
     const iconPath = app.isPackaged ? `${process.resourcesPath}\\icon.png` : devIcon
     const image = nativeImage.createFromPath(iconPath)
-    const health = (globalThis as Record<string, unknown>)['__buildyTrayHealth'] as
+    const health = (globalThis as Record<string, unknown>)['__mybuildyTrayHealth'] as
       | { created: boolean; iconLoaded: boolean }
       | undefined
     return { iconPath, empty: image.isEmpty(), size: image.getSize(), health }

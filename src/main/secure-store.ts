@@ -65,7 +65,7 @@ function load(): SecretMap {
     if (encryptionAvailable()) {
       json = safeStorage.decryptString(raw)
     } else {
-      // READ-ONLY legacy fallback: an old Buildy version may have written this
+      // READ-ONLY legacy fallback: an old My Buildy version may have written this
       // file unencrypted when safeStorage was unavailable. Existing data keeps
       // loading — but persist() below never writes plaintext again.
       json = raw.toString('utf8')

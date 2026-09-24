@@ -23,7 +23,7 @@ npm-debug.log*
 # local plan and memory
 *.local.md
 .nemp/
-BUILDY.md
+MYBUILDY.md
 
 # test output
 playwright-report/

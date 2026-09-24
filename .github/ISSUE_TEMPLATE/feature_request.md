@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for Buildy
+about: Suggest an idea for My Buildy
 title: "[Feature] "
 labels: enhancement
 assignees: ''
@@ -9,7 +9,7 @@ assignees: ''
 **What problem does this solve?**
 Who is it for and what can't they do today?
 
-**What would you like Buildy to do?**
+**What would you like My Buildy to do?**
 Describe the behavior you'd like to see.
 
 **Alternatives considered**

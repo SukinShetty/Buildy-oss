@@ -1,74 +1,74 @@
 // screenshots.spec.ts — README screenshots (Phase 10 links them from docs/assets/).
 // DEV BUILD ONLY: the guidance fixture hook exists only under
-// BUILDY_E2E=1 && !app.isPackaged (src/main/e2e-hooks.ts), so this whole file
+// MYBUILDY_E2E=1 && !app.isPackaged (src/main/e2e-hooks.ts), so this whole file
 // self-skips in the packaged run. The guidance panel is rendered from a canned
 // fixture analysis — no AI provider is ever called.
 
 import { test, expect } from '@playwright/test'
 import * as fs from 'fs'
 import * as path from 'path'
-import { launchBuildy, IS_PACKAGED_RUN, type BuildyApp } from './helpers'
+import { launchMyBuildy, IS_PACKAGED_RUN, type MyBuildyApp } from './helpers'
 
 const ASSETS_DIR = path.resolve(__dirname, '..', 'docs', 'assets')
 
 test.skip(IS_PACKAGED_RUN, 'Screenshots + fixture hook are dev-build only')
 
-let buildy: BuildyApp
+let mybuildy: MyBuildyApp
 
 test.beforeAll(async () => {
   fs.mkdirSync(ASSETS_DIR, { recursive: true })
-  buildy = await launchBuildy()
+  mybuildy = await launchMyBuildy()
 })
 
 test.afterAll(async () => {
-  await buildy?.close()
+  await mybuildy?.close()
 })
 
 test('mascot (companion window)', async () => {
   // Wait for the mascot image to finish loading so the PNG isn't blank.
-  await buildy.companion.waitForFunction(() => {
+  await mybuildy.companion.waitForFunction(() => {
     const images = Array.from(document.querySelectorAll('img'))
     return images.length > 0 && images.every((img) => img.complete && img.naturalWidth > 0)
   })
-  await buildy.companion.waitForTimeout(500)
-  await buildy.companion.screenshot({
+  await mybuildy.companion.waitForTimeout(500)
+  await mybuildy.companion.screenshot({
     path: path.join(ASSETS_DIR, 'mascot.png'),
     omitBackground: true, // transparent floating window
   })
 })
 
 test('Settings screen (first-run default)', async () => {
-  await expect(buildy.main.getByText('Anthropic', { exact: true })).toBeVisible()
-  await buildy.main.screenshot({ path: path.join(ASSETS_DIR, 'settings.png') })
+  await expect(mybuildy.main.getByText('Anthropic', { exact: true })).toBeVisible()
+  await mybuildy.main.screenshot({ path: path.join(ASSETS_DIR, 'settings.png') })
 })
 
 test('Set Goal screen', async () => {
-  await buildy.main.getByTitle('Set Goal').click()
-  await buildy.main.waitForTimeout(400)
-  await buildy.main.screenshot({ path: path.join(ASSETS_DIR, 'set-goal.png') })
+  await mybuildy.main.getByTitle('Set Goal').click()
+  await mybuildy.main.waitForTimeout(400)
+  await mybuildy.main.screenshot({ path: path.join(ASSETS_DIR, 'set-goal.png') })
 })
 
 test('Memory screen', async () => {
-  await buildy.main.getByTitle('Memory').click()
-  await buildy.main.waitForTimeout(400)
-  await buildy.main.screenshot({ path: path.join(ASSETS_DIR, 'memory.png') })
+  await mybuildy.main.getByTitle('Memory').click()
+  await mybuildy.main.waitForTimeout(400)
+  await mybuildy.main.screenshot({ path: path.join(ASSETS_DIR, 'memory.png') })
 })
 
 test('guidance panel rendered from the canned fixture analysis', async () => {
   // Push the neutral fixture through the app's REAL display pathway
   // (showGuidanceWindow -> GUIDANCE_DATA -> GuidancePanel).
-  await buildy.app.evaluate(() => {
-    const hooks = (globalThis as Record<string, unknown>)['__buildyE2E'] as
+  await mybuildy.app.evaluate(() => {
+    const hooks = (globalThis as Record<string, unknown>)['__mybuildyE2E'] as
       | { showFixtureGuidance(): void }
       | undefined
-    if (!hooks) throw new Error('e2e fixture hook missing — is BUILDY_E2E=1 set?')
+    if (!hooks) throw new Error('e2e fixture hook missing — is MYBUILDY_E2E=1 set?')
     hooks.showFixtureGuidance()
   })
 
-  await expect(buildy.guidance.getByText('Prompt to paste')).toBeVisible()
+  await expect(mybuildy.guidance.getByText('Prompt to paste')).toBeVisible()
   // Let the window finish its content-height resize animation before capturing.
-  await buildy.guidance.waitForTimeout(800)
-  await buildy.guidance.screenshot({
+  await mybuildy.guidance.waitForTimeout(800)
+  await mybuildy.guidance.screenshot({
     path: path.join(ASSETS_DIR, 'guidance-panel.png'),
     omitBackground: true, // transparent floating window
   })

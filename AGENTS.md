@@ -1,10 +1,10 @@
-# Buildy — Agent Instructions
+# My Buildy — Agent Instructions
 
 <!-- Single source of truth for all AI coding agents working on this project. -->
 
-## What is Buildy?
+## What is My Buildy?
 
-A desktop companion (Windows-first; macOS/Linux run from source, untested) that helps non-technical builders work with AI coding tools (Claude Code primarily; Codex CLI experimental). Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. Buildy runs the loop; the user approves each step.
+A desktop companion (Windows-first; macOS/Linux run from source, untested) that helps non-technical builders work with AI coding tools (Claude Code primarily; Codex CLI experimental). My Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. My Buildy runs the loop; the user approves each step.
 
 Inspired by Clicky's screen-aware companion model — adapted to a different problem and a different tech stack.
 
@@ -17,9 +17,9 @@ Inspired by Clicky's screen-aware companion model — adapted to a different pro
 - **Screen capture**: Electron `desktopCapturer` — built-in, works on Windows and macOS
 - **AI**: multi-provider via a registry in `src/main/ai/` — Anthropic (Claude), OpenAI, Google Gemini, OpenRouter, Ollama, LM Studio, and custom OpenAI-compatible endpoints. Live model lists, no default model, and a vision check (`ai/vision-gate.ts`) that gates watching until the chosen model proves it can read images. All API calls happen in the main process; keys are encrypted with Electron `safeStorage` (`secure-store.ts`) — plaintext saving is refused.
 - **Voice**: ElevenLabs TTS with a Web Speech fallback. Playback is owned by a dedicated hidden voice window created with `backgroundThrottling: false`, driven by a serial voice queue (`voice-queue.ts`) that chunks long guidance and never cuts off mid-sentence.
-- **Persistence**: local JSON in Electron `app.getPath('userData')`, plus per-project memory via the Nemp integration (`nemp-bridge.ts`), namespaced under `userData/buildy-memory/<projectId>` — local-only.
-  - Windows: `C:\Users\<user>\AppData\Roaming\Buildy\`
-  - macOS: `~/Library/Application Support/Buildy/`
+- **Persistence**: local JSON in Electron `app.getPath('userData')`, plus per-project memory via the Nemp integration (`nemp-bridge.ts`), namespaced under `userData/mybuildy-memory/<projectId>` — local-only.
+  - Windows: `C:\Users\<user>\AppData\Roaming\MyBuildy\`
+  - macOS: `~/Library/Application Support/MyBuildy/`
 
 ### Process model
 
@@ -39,10 +39,10 @@ ipc-handlers.ts                       Goal · Brainstorm · Guidance · Memory �
   ↳ ANALYZE / BRAINSTORM_*          (analysis-loop.ts, ai/)
   ↳ COMPANION_* / PUSH_TO_TALK      (companion control, voice I/O)
   ↳ LOAD/SAVE_* , SET_SECRET        (settings + secrets, one-way)
-  ↳ MEMORY_EXPORT_BUILDYMD          (nemp-bridge.ts)
+  ↳ MEMORY_EXPORT_MYBUILDYMD          (nemp-bridge.ts)
 
 preload/index.ts
-  ↳ contextBridge → window.buildy.*
+  ↳ contextBridge → window.mybuildy.*
 ```
 
 ### IPC channel map
@@ -51,12 +51,12 @@ All channel names are defined in `src/renderer/src/types.ts` (`IPC` constant). G
 
 | Group | Channels | Purpose |
 |---|---|---|
-| Capture | `buildy:list-windows`, `buildy:capture-window`, `buildy:select-watch-source`, `buildy:companion-watched-source` | List windows with thumbnails, screenshot the watched window, choose what's watched |
-| Analysis | `buildy:analyze`, `buildy:brainstorm-start/-chunk/-done/-error`, `buildy:companion-analysis` | Screen analysis (non-streaming) and streaming brainstorm chat |
-| Providers | `buildy:get-provider-infos`, `buildy:test-connection` | Provider metadata for the Settings UI; connectivity check |
-| Companion control | `buildy:companion-start/-stop/-pause/-resume/-quiet`, `buildy:open-panel`, `buildy:show-companion`, `buildy:reset-companion`, `buildy:companion-shutdown`, `buildy:companion-state` | Watch lifecycle, quiet mode, window management |
-| Voice | `buildy:companion-speak`, `buildy:companion-audio`, `buildy:push-to-talk`, `buildy:ask-question`, `buildy:transcribe-audio`, `buildy:companion-answer` | TTS playback, push-to-talk input, Whisper STT, spoken answers |
-| State | `buildy:load-project`, `buildy:save-project`, `buildy:load-settings`, `buildy:save-settings`, `buildy:set-secret` (one-way), `memory:export-buildymd`, `buildy:copy-text` | Persistence and secrets. `LOAD_SETTINGS` returns redacted settings — raw keys never cross IPC to the renderer |
+| Capture | `mybuildy:list-windows`, `mybuildy:capture-window`, `mybuildy:select-watch-source`, `mybuildy:companion-watched-source` | List windows with thumbnails, screenshot the watched window, choose what's watched |
+| Analysis | `mybuildy:analyze`, `mybuildy:brainstorm-start/-chunk/-done/-error`, `mybuildy:companion-analysis` | Screen analysis (non-streaming) and streaming brainstorm chat |
+| Providers | `mybuildy:get-provider-infos`, `mybuildy:test-connection` | Provider metadata for the Settings UI; connectivity check |
+| Companion control | `mybuildy:companion-start/-stop/-pause/-resume/-quiet`, `mybuildy:open-panel`, `mybuildy:show-companion`, `mybuildy:reset-companion`, `mybuildy:companion-shutdown`, `mybuildy:companion-state` | Watch lifecycle, quiet mode, window management |
+| Voice | `mybuildy:companion-speak`, `mybuildy:companion-audio`, `mybuildy:push-to-talk`, `mybuildy:ask-question`, `mybuildy:transcribe-audio`, `mybuildy:companion-answer` | TTS playback, push-to-talk input, Whisper STT, spoken answers |
+| State | `mybuildy:load-project`, `mybuildy:save-project`, `mybuildy:load-settings`, `mybuildy:save-settings`, `mybuildy:set-secret` (one-way), `memory:export-mybuildymd`, `mybuildy:copy-text` | Persistence and secrets. `LOAD_SETTINGS` returns redacted settings — raw keys never cross IPC to the renderer |
 
 ### Screen capture approach
 
@@ -90,11 +90,11 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 | `src/main/ai/prompt-quality-check.ts` | Second-pass prompt grader. |
 | `src/main/ai/elevenlabs-tts.ts` | TTS synthesis. |
 | `src/main/ipc-handlers.ts` | Registers all IPC channels. Single file for easy auditing. |
-| `src/preload/index.ts` | `contextBridge` — exposes `window.buildy.*` to the renderer. |
+| `src/preload/index.ts` | `contextBridge` — exposes `window.mybuildy.*` to the renderer. |
 | `src/renderer/src/types.ts` | Shared TypeScript interfaces + IPC channel name constants. |
 | `src/renderer/src/store/` | Zustand stores — all app state. |
 | `src/renderer/src/App.tsx` | Root component; routes windows by query param. |
-| `src/main/projects.ts`, `projects-core.ts` | Project system — per-project memory dirs under `userData/buildy-memory/<projectId>`. |
+| `src/main/projects.ts`, `projects-core.ts` | Project system — per-project memory dirs under `userData/mybuildy-memory/<projectId>`. |
 | `src/main/turn-detector.ts` | Turn-end detection state machine (Electron-free, unit-tested). |
 | `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Send-to-watched-window (Windows) + destructive-prompt guard. |
 | `src/main/secure-store.ts` | Encrypted API-key storage (Electron `safeStorage`). |
@@ -120,7 +120,7 @@ npm run package         # Windows installer (nsis) → dist/
 
 ## Project system (per-project memory)
 
-Every project gets its own memory directory: `userData/buildy-memory/<projectId>` (see `projects-core.ts` for the path rules; `buildy-memory/default` is the fallback). `projects.ts` owns the project registry and re-initializes the Nemp bridge on the active project's directory when the user switches projects. Memory never leaks across projects — `e2e/memory-isolation.spec.ts` and the unit tests in `nemp-bridge.project-scope.test.ts` assert this. The Delete-all-data path (`memory.ts` → `deleteAllBuildyData`) removes keys, settings, project records, and every project's memory.
+Every project gets its own memory directory: `userData/mybuildy-memory/<projectId>` (see `projects-core.ts` for the path rules; `mybuildy-memory/default` is the fallback). `projects.ts` owns the project registry and re-initializes the Nemp bridge on the active project's directory when the user switches projects. Memory never leaks across projects — `e2e/memory-isolation.spec.ts` and the unit tests in `nemp-bridge.project-scope.test.ts` assert this. The Delete-all-data path (`memory.ts` → `deleteAllMyBuildyData`) removes keys, settings, project records, and every project's memory.
 
 ## Turn detector
 
@@ -128,14 +128,14 @@ Every project gets its own memory directory: `userData/buildy-memory/<projectId>
 
 ## E2E testing
 
-The Playwright suite in `e2e/` launches the real Electron app. Isolation works via `src/main/bootstrap.ts` — the actual entry point — which honours `BUILDY_USER_DATA_DIR` **only when `BUILDY_E2E=1`** and overrides Electron's `userData`/`sessionData` paths *before* the app modules are evaluated (dynamic import; never convert it to a static import — path-at-import-time modules would break). `e2e/helpers.ts` creates a fresh throwaway profile per launch, snapshots the real userData dir, and asserts after close that it was untouched. No e2e test ever calls an AI provider: the fresh profile has no key and no model, so analysis paths refuse by design.
+The Playwright suite in `e2e/` launches the real Electron app. Isolation works via `src/main/bootstrap.ts` — the actual entry point — which honours `MYBUILDY_USER_DATA_DIR` **only when `MYBUILDY_E2E=1`** and overrides Electron's `userData`/`sessionData` paths *before* the app modules are evaluated (dynamic import; never convert it to a static import — path-at-import-time modules would break). `e2e/helpers.ts` creates a fresh throwaway profile per launch, snapshots the real userData dir, and asserts after close that it was untouched. No e2e test ever calls an AI provider: the fresh profile has no key and no model, so analysis paths refuse by design.
 
 - `npm run test:e2e` — builds, then runs against `out/`
-- `npm run test:e2e:packaged` — runs the same suite against the packaged exe (`scripts/e2e-packaged.mjs` sets `BUILDY_E2E_EXE`)
+- `npm run test:e2e:packaged` — runs the same suite against the packaged exe (`scripts/e2e-packaged.mjs` sets `MYBUILDY_E2E_EXE`)
 
 ## Release pipeline
 
-`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/Buildy-oss`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`Buildy-Setup-<version>.exe`, unsigned), writes `SHA256SUMS.txt`, and uploads both to a **draft** GitHub release — publishing is a manual step. v1 ships a Windows installer only; macOS/Linux stay "run from source, untested". `ci.yml` runs typecheck + build + test on Node 22 for every push/PR to main.
+`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/mybuildy`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`MyBuildy-Setup-<version>.exe`, unsigned), writes `SHA256SUMS.txt`, and uploads both to a **draft** GitHub release — publishing is a manual step. v1 ships a Windows installer only; macOS/Linux stay "run from source, untested". `ci.yml` runs typecheck + build + test on Node 22 for every push/PR to main.
 
 ## Worker (not used in v0.1)
 
@@ -165,7 +165,7 @@ The proxy in `worker/` is **not used by the app in v0.1** and is kept only for a
 ## Security notes
 
 - `contextIsolation: true`, `nodeIntegration: false` — the renderer cannot access Node.js
-- All external API calls happen in the main process (API keys never reach the renderer; `buildy:set-secret` is one-way)
+- All external API calls happen in the main process (API keys never reach the renderer; `mybuildy:set-secret` is one-way)
 - CSP in `index.html` restricts what the renderer can load
 - API keys stored encrypted (Electron `safeStorage`) in userData, never in the app bundle or version control; plaintext saving is refused
-- Buildy sends screen captures to the AI provider the user configures — treat capture contents as sensitive (see `SECURITY.md`)
+- My Buildy sends screen captures to the AI provider the user configures — treat capture contents as sensitive (see `SECURITY.md`)

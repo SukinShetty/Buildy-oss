@@ -97,7 +97,7 @@ export function routeHumanQuestionToHandoff(analysis: AnalysisResult): AnalysisR
     needsHumanJudgment: true,
     humanJudgmentReason:
       (analysis.humanJudgmentReason || '').trim() ||
-      'Buildy needs your answer before it can suggest the next prompt: ' +
+      'My Buildy needs your answer before it can suggest the next prompt: ' +
         (analysis.nextPrompt || '').trim(),
   }
 }
@@ -110,7 +110,7 @@ export function tryExtractProjectData(
   fullResponseText: string
 ): ExtractedProjectData | null {
   const summaryBlockMatch = fullResponseText.match(
-    /---BUILDY_PROJECT_SUMMARY---([\s\S]+?)---END_BUILDY_PROJECT_SUMMARY---/
+    /---MYBUILDY_PROJECT_SUMMARY---([\s\S]+?)---END_MYBUILDY_PROJECT_SUMMARY---/
   )
   if (!summaryBlockMatch) return null
 
@@ -358,7 +358,7 @@ function buildFallbackAnalysisResult(rawText: string, startTime: number): Analys
   return {
     screenContentVisible: false,
     whatIsHappening: rawText.slice(0, 300),
-    whatItMeans: 'Buildy had trouble reading the response. Try analyzing again.',
+    whatItMeans: 'My Buildy had trouble reading the response. Try analyzing again.',
     whatIsBuilt: [],
     whatIsMissing: [],
     whatIsBroken: [],

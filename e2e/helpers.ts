@@ -1,8 +1,8 @@
-// e2e/helpers.ts — shared launch/teardown for the Buildy Electron e2e suite.
+// e2e/helpers.ts — shared launch/teardown for the Electron e2e suite.
 //
 // Every launch:
 //   - creates a FRESH throwaway profile dir and passes it as
-//     BUILDY_USER_DATA_DIR (honoured only under BUILDY_E2E=1 — bootstrap.ts)
+//     MYBUILDY_USER_DATA_DIR (honoured only under MYBUILDY_E2E=1 — bootstrap.ts)
 //   - snapshots the REAL userData folder (path + mtime + size of every file,
 //     recursively) and asserts after close that nothing changed — the whole
 //     point of the isolation
@@ -21,12 +21,21 @@ const ROOT = path.resolve(__dirname, '..')
 const DEV_MAIN_ENTRY = path.join(ROOT, 'out', 'main', 'index.js')
 
 /** Packaged-exe mode: set by scripts/e2e-packaged.mjs (npm run test:e2e:packaged). */
-export const PACKAGED_EXE = process.env.BUILDY_E2E_EXE || null
+export const PACKAGED_EXE = process.env.MYBUILDY_E2E_EXE || null
 export const IS_PACKAGED_RUN = !!PACKAGED_EXE
 
-/** The REAL Buildy profile on this machine — must never be touched by e2e. */
+/**
+ * The REAL My Buildy profile on this machine — must never be touched by e2e.
+ * Mirrors Electron's userData default for productName "MyBuildy".
+ */
 export function realUserDataDir(): string {
-  return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'buildy')
+  if (process.platform === 'darwin') {
+    return path.join(os.homedir(), 'Library', 'Application Support', 'MyBuildy')
+  }
+  if (process.platform === 'win32') {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'MyBuildy')
+  }
+  return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'MyBuildy')
 }
 
 type DirSnapshot = Map<string, string>
@@ -67,7 +76,7 @@ function diffSnapshots(before: DirSnapshot, after: DirSnapshot): string[] {
   return diffs
 }
 
-export interface BuildyApp {
+export interface MyBuildyApp {
   app: ElectronApplication
   profileDir: string
   main: Page
@@ -89,7 +98,7 @@ function windowKind(url: string): 'main' | 'companion' | 'guidance' | 'voice' {
   return 'main'
 }
 
-export async function launchBuildy(): Promise<BuildyApp> {
+export async function launchMyBuildy(): Promise<MyBuildyApp> {
   if (IS_PACKAGED_RUN) {
     if (!fs.existsSync(PACKAGED_EXE!)) {
       throw new Error(
@@ -103,7 +112,7 @@ export async function launchBuildy(): Promise<BuildyApp> {
     )
   }
 
-  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buildy-e2e-'))
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mybuildy-e2e-'))
   const removeProfile = (): void => {
     // Best effort — Windows may keep locks briefly; a leaked temp dir must
     // never turn a teardown into a test failure.
@@ -117,10 +126,10 @@ export async function launchBuildy(): Promise<BuildyApp> {
 
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
-    BUILDY_E2E: '1',
-    BUILDY_USER_DATA_DIR: profileDir,
+    MYBUILDY_E2E: '1',
+    MYBUILDY_USER_DATA_DIR: profileDir,
     // Never inherit a debug/dev-server environment into the tested app.
-    BUILDY_DEBUG: '',
+    MYBUILDY_DEBUG: '',
     ELECTRON_RENDERER_URL: '',
   }
 
@@ -196,7 +205,7 @@ export async function launchBuildy(): Promise<BuildyApp> {
     throw error
   }
 
-  const wrapped: BuildyApp = {
+  const wrapped: MyBuildyApp = {
     app,
     profileDir,
     main: pages.main!,

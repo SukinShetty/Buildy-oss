@@ -13,7 +13,7 @@ import { listOpenWindows, captureWindowForAnalysis } from './capturer'
 import {
   loadProjectMemory, saveProjectMemory, loadGoal, setGoal, updateGoal,
   loadSettings, loadNonSecretSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
-  deleteAllBuildyData,
+  deleteAllMyBuildyData,
 } from './memory'
 import { setSecret } from './secure-store'
 import { debugLog, debugError } from './debug-log'
@@ -353,14 +353,14 @@ export function registerIpcHandlers(
     }
   })
 
-  // Delete ALL Buildy data (keys, settings, every project's memory) and restart
+  // Delete ALL My Buildy data (keys, settings, every project's memory) and restart
   // to first run. User-confirmed in the Settings UI; main-window-only.
   ipcMain.handle(IPC.DELETE_ALL_DATA, async (event) => {
     try {
       assertFromMainWindow(event, mainWcId(), 'DELETE_ALL_DATA')
       console.log('[IPC] DELETE_ALL_DATA — user-confirmed wipe, restarting to first run')
       stopAnalysisLoop()
-      await deleteAllBuildyData()
+      await deleteAllMyBuildyData()
       app.relaunch()
       app.exit(0)
     } catch (error) {
@@ -550,14 +550,14 @@ export function registerIpcHandlers(
     nemp.recordDecision(parseInput(shortText, 'MEMORY_ADD_DECISION', question), parseInput(shortText, 'MEMORY_ADD_DECISION', choice), typeof reasoning === 'string' ? reasoning : undefined))
   ipcMain.handle(IPC.MEMORY_ADD_PATTERN, async (_e, observation: unknown, confidence: unknown) =>
     nemp.recordPattern(parseInput(shortText, 'MEMORY_ADD_PATTERN', observation), parseInput(confidenceEnum, 'MEMORY_ADD_PATTERN', confidence)))
-  ipcMain.handle(IPC.MEMORY_EXPORT_BUILDYMD, async () => {
+  ipcMain.handle(IPC.MEMORY_EXPORT_MYBUILDYMD, async () => {
     const result = await dialog.showSaveDialog(getMainWindow(), {
-      title: 'Export BUILDY.md',
-      defaultPath: 'BUILDY.md',
+      title: 'Export MYBUILDY.md',
+      defaultPath: 'MYBUILDY.md',
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     })
     if (result.canceled || !result.filePath) return { saved: false }
-    await nemp.exportToBuildyMd(result.filePath)
+    await nemp.exportToMyBuildyMd(result.filePath)
     return { saved: true, path: result.filePath }
   })
   ipcMain.handle(IPC.MEMORY_RESET, async () => nemp.resetMemory())

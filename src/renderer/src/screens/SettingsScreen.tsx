@@ -164,7 +164,7 @@ export function SettingsScreen(): React.ReactElement {
     setModelsLoading(true)
     setModelsError(null)
     try {
-      const result = await window.buildy.listModels(p, url.trim())
+      const result = await window.mybuildy.listModels(p, url.trim())
       if (seq !== fetchSeq.current) return // stale fetch
       setModels(result.models)
       setModelsError(result.error)
@@ -189,7 +189,7 @@ export function SettingsScreen(): React.ReactElement {
     setVisionPassed(null)
     const effective = typedModelId.trim() || modelId
     if (!effective) return
-    window.buildy.getVisionStatus(provider, effective)
+    window.mybuildy.getVisionStatus(provider, effective)
       .then((r) => { if (!cancelled) setVisionPassed(r.passed) })
       .catch(() => {})
     return () => { cancelled = true }
@@ -217,15 +217,15 @@ export function SettingsScreen(): React.ReactElement {
 
   // Persist non-secret settings + any newly-typed keys (one-way to encrypted store).
   async function persistAll(overrides?: Partial<NonSecretSettings>): Promise<void> {
-    await window.buildy.saveSettings(buildNonSecret(overrides))
+    await window.mybuildy.saveSettings(buildNonSecret(overrides))
     if (providerSecret && apiKeyInput.trim()) {
-      await window.buildy.setSecret(providerSecret, apiKeyInput.trim())
+      await window.mybuildy.setSecret(providerSecret, apiKeyInput.trim())
     }
     if (elevenKeyInput.trim()) {
-      await window.buildy.setSecret('elevenLabsApiKey', elevenKeyInput.trim())
+      await window.mybuildy.setSecret('elevenLabsApiKey', elevenKeyInput.trim())
     }
     // Refresh the redacted view into the store, and clear the transient key inputs.
-    const redacted = await window.buildy.loadSettings()
+    const redacted = await window.mybuildy.loadSettings()
     setSettings(redacted)
     setApiKeyInput('')
     setElevenKeyInput('')
@@ -244,8 +244,8 @@ export function SettingsScreen(): React.ReactElement {
   }
 
   async function removeStoredKey(name: SecretName): Promise<void> {
-    await window.buildy.setSecret(name, '') // empty value deletes the secret
-    const redacted = await window.buildy.loadSettings()
+    await window.mybuildy.setSecret(name, '') // empty value deletes the secret
+    const redacted = await window.mybuildy.loadSettings()
     setSettings(redacted)
     setVisionPassed(null)
   }
@@ -257,7 +257,7 @@ export function SettingsScreen(): React.ReactElement {
     setSaveError(null)
     try {
       await persistAll(overrides) // the check runs in main with the STORED key
-      const result = await window.buildy.testConnection(buildNonSecret(overrides))
+      const result = await window.mybuildy.testConnection(buildNonSecret(overrides))
       setTestResult({ success: result.success, message: result.message })
       setVisionPassed(result.visionPassed)
     } catch (error) {
@@ -267,13 +267,13 @@ export function SettingsScreen(): React.ReactElement {
     }
   }
 
-  // Delete all Buildy data: keys, settings, every project's memory — then the
+  // Delete all My Buildy data: keys, settings, every project's memory — then the
   // app relaunches to first run. Main performs the wipe (main-window-only IPC).
   async function handleDeleteAllData(): Promise<void> {
     setIsWiping(true)
     setWipeError(null)
     try {
-      await window.buildy.deleteAllData()
+      await window.mybuildy.deleteAllData()
       // The app restarts here — nothing more to do on success.
     } catch (error) {
       setIsWiping(false)
@@ -558,7 +558,7 @@ export function SettingsScreen(): React.ReactElement {
               {configuredCorrectly
                 ? `Ready — ${meta.displayName} / ${effectiveModelId}`
                 : effectiveModelId
-                  ? 'Fill in the required fields above to use Buildy'
+                  ? 'Fill in the required fields above to use My Buildy'
                   : 'Choose a model in Settings — pick one from the list above'}
             </span>
           </div>
@@ -595,9 +595,9 @@ export function SettingsScreen(): React.ReactElement {
 
         {/* Info */}
         <div style={styles.infoSection}>
-          <div style={styles.infoTitle}>About Buildy</div>
+          <div style={styles.infoTitle}>About My Buildy</div>
           <div style={styles.infoText}>
-            Buildy — multi-provider builder buddy for Claude Code.
+            My Buildy — multi-provider builder buddy for Claude Code.
           </div>
           <div style={styles.infoText}>
             {isLocalProvider(provider)
@@ -610,13 +610,13 @@ export function SettingsScreen(): React.ReactElement {
         <div style={styles.section}>
           <div style={styles.sectionLabel}>Danger zone</div>
           <div style={styles.sectionHint}>
-            Remove everything Buildy stores on this computer and start over.
+            Remove everything My Buildy stores on this computer and start over.
           </div>
           <button
             onClick={() => { setWipeError(null); setConfirmWipe(true) }}
             style={styles.dangerOutlineBtn}
           >
-            Delete all Buildy data
+            Delete all My Buildy data
           </button>
           {wipeError && <div style={styles.modelsError}>{wipeError}</div>}
         </div>
@@ -625,10 +625,10 @@ export function SettingsScreen(): React.ReactElement {
       {confirmWipe && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard}>
-            <div style={styles.modalTitle}>Delete all Buildy data?</div>
+            <div style={styles.modalTitle}>Delete all My Buildy data?</div>
             <div style={styles.modalText}>
               This deletes your keys, settings and all project memory from this
-              computer. This cannot be undone. Buildy will restart as if freshly
+              computer. This cannot be undone. My Buildy will restart as if freshly
               installed.
             </div>
             <div style={styles.modalButtons}>

@@ -40,7 +40,7 @@ export function VoicePlayer(): null {
     vlog('mounted (dumb player)')
 
     const unsubs = [
-      window.buildy.voice.onPlayAudio((_, d) => {
+      window.mybuildy.voice.onPlayAudio((_, d) => {
         stopCurrent('new-audio')
         vlog(`play-audio ${d.id} (${d.audioBase64.length} b64 chars)`)
         const audio = new Audio(`data:audio/mpeg;base64,${d.audioBase64}`)
@@ -53,20 +53,20 @@ export function VoicePlayer(): null {
         }
         audio.oncanplaythrough = () => vlog(`canplaythrough ${d.id} dur=${audio.duration.toFixed(2)}`)
         audio.onpause = () => vlog(`PAUSE ${d.id} t=${audio.currentTime.toFixed(2)} STACK: ${stack()}`)
-        audio.onended = () => { vlog(`ENDED ${d.id} t=${audio.currentTime.toFixed(2)}`); window.buildy.voice.ended(d.id) }
-        audio.onerror = () => { vlog(`ERROR ${d.id} code=${audio.error?.code}`); window.buildy.voice.error(d.id) }
+        audio.onended = () => { vlog(`ENDED ${d.id} t=${audio.currentTime.toFixed(2)}`); window.mybuildy.voice.ended(d.id) }
+        audio.onerror = () => { vlog(`ERROR ${d.id} code=${audio.error?.code}`); window.mybuildy.voice.error(d.id) }
         vlog(`play() called ${d.id}`)
         audio.play().then(() => vlog(`play() RESOLVED ${d.id}`)).catch((err) => {
           vlog(`play() REJECTED ${d.id}: ${err?.name} ${err?.message}`)
-          window.buildy.voice.error(d.id)
+          window.mybuildy.voice.error(d.id)
         })
       }),
 
-      window.buildy.voice.onPlayTts((_, d) => {
+      window.mybuildy.voice.onPlayTts((_, d) => {
         stopCurrent('new-tts')
         vlog(`play-tts ${d.id} len=${d.text.length}`)
-        // @ts-expect-error TS narrows `window` to `never` inside this negated `in` guard, but window.buildy exists at runtime
-        if (!('speechSynthesis' in window)) { window.buildy.voice.error(d.id); return }
+        // @ts-expect-error TS narrows `window` to `never` inside this negated `in` guard, but window.mybuildy exists at runtime
+        if (!('speechSynthesis' in window)) { window.mybuildy.voice.error(d.id); return }
         const utter = new SpeechSynthesisUtterance(d.text)
         utter.rate = 0.95
         utter.pitch = 1.05
@@ -75,13 +75,13 @@ export function VoicePlayer(): null {
         utter.onstart = () => vlog(`tts start ${d.id}`)
         utter.onboundary = (e) => vlog(`tts boundary ${d.id} char=${e.charIndex}`)
         utter.onpause = () => vlog(`tts PAUSE ${d.id} STACK: ${stack()}`)
-        utter.onend = () => { vlog(`tts ENDED ${d.id}`); currentUtterance = null; window.buildy.voice.ended(d.id) }
-        utter.onerror = (e) => { vlog(`tts ERROR ${d.id}: ${e.error}`); currentUtterance = null; window.buildy.voice.error(d.id) }
+        utter.onend = () => { vlog(`tts ENDED ${d.id}`); currentUtterance = null; window.mybuildy.voice.ended(d.id) }
+        utter.onerror = (e) => { vlog(`tts ERROR ${d.id}: ${e.error}`); currentUtterance = null; window.mybuildy.voice.error(d.id) }
         vlog(`speak() ${d.id}`)
         window.speechSynthesis.speak(utter)
       }),
 
-      window.buildy.voice.onStop(() => {
+      window.mybuildy.voice.onStop(() => {
         vlog('onStop IPC received')
         stopCurrent('ipc-stop')
       }),

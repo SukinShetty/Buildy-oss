@@ -13,7 +13,7 @@
 //   • "Skip for now" → dismisses without recording.
 //
 // Focus note: the guidance window is non-focusable by design, so typing needs
-// window.buildy.setGuidanceFocusable(true) while the answer box is open — it is
+// window.mybuildy.setGuidanceFocusable(true) while the answer box is open — it is
 // ALWAYS restored to false when the flow ends (save/skip/unmount).
 
 import React, { useEffect, useState } from 'react'
@@ -30,8 +30,8 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
   // restore non-focusable when the flow ends or the card unmounts.
   useEffect(() => {
     if (!answering) return
-    window.buildy.setGuidanceFocusable(true)
-    return () => window.buildy.setGuidanceFocusable(false)
+    window.mybuildy.setGuidanceFocusable(true)
+    return () => window.mybuildy.setGuidanceFocusable(false)
   }, [answering])
 
   if (dismissed) return null
@@ -46,7 +46,7 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
     setSaving(true)
     try {
       // Store the user's hand-off ANSWER as a decision in the active project.
-      await window.buildy.memory.addDecision(
+      await window.mybuildy.memory.addDecision(
         question,
         answer.trim() || 'User chose to decide this themselves'
       )
@@ -64,7 +64,7 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
 
       {!answering ? (
         <div style={S.buttons}>
-          <button onClick={() => setAnswering(true)} style={S.primary} title="Type your answer — Buildy remembers it for this project">
+          <button onClick={() => setAnswering(true)} style={S.primary} title="Type your answer — My Buildy remembers it for this project">
             I'll decide
           </button>
           <button onClick={() => setDismissed(true)} style={S.ghost} title="Dismiss without recording">

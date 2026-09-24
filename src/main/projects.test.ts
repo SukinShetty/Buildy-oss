@@ -35,7 +35,7 @@ const tmp = vi.hoisted(() => {
   }
 
   return {
-    userDataDir: mkdtempSync(join(tmpdir(), 'buildy-projects-wiring-')),
+    userDataDir: mkdtempSync(join(tmpdir(), 'mybuildy-projects-wiring-')),
     stopWatchForProjectSwitch: makeSpy(),
     initNemp: makeSpy(async () => {}),
     setVerifierProject: makeSpy(),

@@ -2,8 +2,8 @@
 // Local JSON persistence for project memory and app settings.
 // Stored in the Electron userData directory so it survives app updates.
 //
-// On Windows: C:\Users\<user>\AppData\Roaming\Buildy\
-// On macOS:   ~/Library/Application Support/Buildy/
+// On Windows: C:\Users\<user>\AppData\Roaming\MyBuildy\
+// On macOS:   ~/Library/Application Support/MyBuildy/
 
 import { app } from 'electron'
 import { promises as fs } from 'fs'
@@ -27,7 +27,7 @@ export const settingsFilePath = join(userDataDirectory, 'settings.json')
 // ─── Project memory ───────────────────────────────────────────────────────────
 // Project memory (and the goal stored on it) is NAMESPACED PER PROJECT: after
 // projects.ts activates a project, reads/writes go to that project's store dir
-// (userData/buildy-memory/<projectId>/project-memory.json). The legacy
+// (userData/mybuildy-memory/<projectId>/project-memory.json). The legacy
 // un-namespaced userData/project-memory.json is only used as a fallback before
 // initialisation and is never written to after migration.
 
@@ -173,7 +173,7 @@ export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void>
   await ensureUserDataDirectoryExists()
   // captureNoticeAccepted is STICKY-TRUE: once the user has accepted the
   // one-time disclosure, a stale settings save from another window can't
-  // silently reset it. Only "Delete all Buildy data" clears it (fresh file).
+  // silently reset it. Only "Delete all My Buildy data" clears it (fresh file).
   const onDisk = await loadNonSecretSettings()
   const clean: NonSecretSettings = {
     provider: s.provider,
@@ -187,20 +187,20 @@ export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void>
   await fs.writeFile(settingsFilePath, JSON.stringify(clean, null, 2), 'utf-8')
 }
 
-// ─── Delete all Buildy data (Settings → restart to first run) ─────────────────
-// Deletes ONLY Buildy's own files inside its userData directory: encrypted
-// keys, settings, project records, every project's memory (buildy-memory/*,
+// ─── Delete all My Buildy data (Settings → restart to first run) ─────────────────
+// Deletes ONLY My Buildy's own files inside its userData directory: encrypted
+// keys, settings, project records, every project's memory (mybuildy-memory/*,
 // including each project's Nemp store), the legacy un-namespaced memory file,
 // and the vision-check approvals. Nothing outside userData is ever touched.
 // The caller relaunches the app afterwards (first-run experience).
-export async function deleteAllBuildyData(): Promise<void> {
+export async function deleteAllMyBuildyData(): Promise<void> {
   const targets = [
     'secrets.enc',           // encrypted API keys
     'settings.json',         // non-secret settings (incl. captureNoticeAccepted)
     'projects.json',         // project records + active project id
     'project-memory.json',   // legacy un-namespaced project memory
     'vision-approvals.json', // vision-check passes (keyed to key fingerprints)
-    'buildy-memory',         // every project's memory + Nemp stores (recursive)
+    'mybuildy-memory',         // every project's memory + Nemp stores (recursive)
   ]
   const failed: string[] = []
   for (const name of targets) {
@@ -220,7 +220,7 @@ export async function deleteAllBuildyData(): Promise<void> {
       `Could not delete: ${failed.join(', ')}. Close other programs using these files and try again.`
     )
   }
-  console.log('[DataWipe] Buildy data deleted (keys, settings, all project memory)')
+  console.log('[DataWipe] My Buildy data deleted (keys, settings, all project memory)')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

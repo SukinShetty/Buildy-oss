@@ -2,7 +2,7 @@
 // Captures the user's goal — their stated purpose for what they're building.
 // Shown on first launch, from the "Set Goal" nav tab, and when starting a new
 // project. The goal is stored locally (project memory) and injected into every
-// analysis so Buildy can tell the user whether each step moves toward the goal.
+// analysis so My Buildy can tell the user whether each step moves toward the goal.
 //
 // Also hosts the PROJECT SWITCHER: each project has its own memory, and
 // switching re-points the whole memory layer. Editing the goal text keeps the
@@ -40,8 +40,8 @@ export function GoalScreen(): React.ReactElement {
   const refreshProjects = useCallback(async (): Promise<void> => {
     try {
       const [list, active] = await Promise.all([
-        window.buildy.projects.list(),
-        window.buildy.projects.getActive(),
+        window.mybuildy.projects.list(),
+        window.mybuildy.projects.getActive(),
       ])
       setProjects(list)
       setActiveProject(active)
@@ -67,8 +67,8 @@ export function GoalScreen(): React.ReactElement {
     if (switching || !id || id === activeProject?.id) return
     setSwitching(true)
     try {
-      await window.buildy.projects.switch(id)
-      applyLoadedProject(await window.buildy.loadProject())
+      await window.mybuildy.projects.switch(id)
+      applyLoadedProject(await window.mybuildy.loadProject())
       await refreshProjects()
     } catch (e) {
       console.error('[GoalScreen] failed to switch project:', e)
@@ -81,8 +81,8 @@ export function GoalScreen(): React.ReactElement {
     if (switching) return
     setSwitching(true)
     try {
-      await window.buildy.projects.create({})
-      applyLoadedProject(await window.buildy.loadProject())
+      await window.mybuildy.projects.create({})
+      applyLoadedProject(await window.mybuildy.loadProject())
       await refreshProjects()
     } catch (e) {
       console.error('[GoalScreen] failed to create project:', e)
@@ -95,7 +95,7 @@ export function GoalScreen(): React.ReactElement {
     const name = renameValue.trim()
     if (!name || !activeProject) { setRenaming(false); return }
     try {
-      await window.buildy.projects.rename(activeProject.id, name)
+      await window.mybuildy.projects.rename(activeProject.id, name)
       await refreshProjects()
     } catch (e) {
       console.error('[GoalScreen] failed to rename project:', e)
@@ -110,7 +110,7 @@ export function GoalScreen(): React.ReactElement {
     try {
       // "Edit goal" KEEPS this project's memory: goal.set only replaces the goal
       // on the active project — it never creates a project or wipes memory.
-      const goal = await window.buildy.goal.set({
+      const goal = await window.mybuildy.goal.set({
         purpose: purpose.trim(),
         audience: audience.trim() || undefined,
         mostImportant: mostImportant.trim() || undefined,
@@ -129,7 +129,7 @@ export function GoalScreen(): React.ReactElement {
     // Skipping is allowed — record that the prompt was seen so it won't auto-show again.
     const updated = { ...project, goalPromptSeen: true }
     patchProject({ goalPromptSeen: true })
-    window.buildy.saveProject(updated).catch((e) =>
+    window.mybuildy.saveProject(updated).catch((e) =>
       console.warn('[GoalScreen] Failed to persist skip:', e)
     )
     setCurrentScreen('guidance')

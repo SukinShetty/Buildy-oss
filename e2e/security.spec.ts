@@ -1,32 +1,32 @@
 // security.spec.ts — Phase 7 security invariants, verified per window:
 // sandbox on, contextIsolation on, nodeIntegration off, no Node globals in the
-// page, window.buildy present, strict CSP meta, navigation + window.open
+// page, window.mybuildy present, strict CSP meta, navigation + window.open
 // blocked, no application menu, DevTools closed.
 
 import { test, expect, type Page } from '@playwright/test'
-import { launchBuildy, type BuildyApp } from './helpers'
+import { launchMyBuildy, type MyBuildyApp } from './helpers'
 
-let buildy: BuildyApp
+let mybuildy: MyBuildyApp
 
 test.beforeAll(async () => {
-  buildy = await launchBuildy()
+  mybuildy = await launchMyBuildy()
 })
 
 test.afterAll(async () => {
-  await buildy?.close()
+  await mybuildy?.close()
 })
 
 function allPages(): Array<[string, Page]> {
   return [
-    ['main', buildy.main],
-    ['companion', buildy.companion],
-    ['guidance', buildy.guidance],
-    ['voice', buildy.voice],
+    ['main', mybuildy.main],
+    ['companion', mybuildy.companion],
+    ['guidance', mybuildy.guidance],
+    ['voice', mybuildy.voice],
   ]
 }
 
 test('every window has sandbox + contextIsolation on and nodeIntegration off', async () => {
-  const prefs = await buildy.app.evaluate(({ BrowserWindow }) =>
+  const prefs = await mybuildy.app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows().map((win) => {
       // getLastWebPreferences (undocumented API): the WebPreferences the
       // renderer was created with.
@@ -57,16 +57,16 @@ test('every window has sandbox + contextIsolation on and nodeIntegration off', a
   }
 })
 
-test('no Node globals leak into any renderer; window.buildy is present', async () => {
+test('no Node globals leak into any renderer; window.mybuildy is present', async () => {
   for (const [name, page] of allPages()) {
     const probe = await page.evaluate(() => ({
       hasRequire: typeof (window as unknown as Record<string, unknown>).require !== 'undefined',
       hasProcess: typeof (window as unknown as Record<string, unknown>).process !== 'undefined',
-      hasBuildy: typeof (window as unknown as Record<string, unknown>).buildy === 'object',
+      hasMyBuildy: typeof (window as unknown as Record<string, unknown>).mybuildy === 'object',
     }))
     expect(probe.hasRequire, `window.require leaked in ${name}`).toBe(false)
     expect(probe.hasProcess, `window.process leaked in ${name}`).toBe(false)
-    expect(probe.hasBuildy, `window.buildy missing in ${name}`).toBe(true)
+    expect(probe.hasMyBuildy, `window.mybuildy missing in ${name}`).toBe(true)
   }
 })
 
@@ -83,28 +83,28 @@ test('strict CSP meta tag is present in every window', async () => {
 })
 
 test('navigating a window to https://example.com is blocked', async () => {
-  const before = buildy.main.url()
-  await buildy.main.evaluate(() => {
+  const before = mybuildy.main.url()
+  await mybuildy.main.evaluate(() => {
     window.location.href = 'https://example.com/'
   })
-  await buildy.main.waitForTimeout(1000)
-  expect(buildy.main.url()).toBe(before)
-  expect(buildy.main.url()).not.toContain('example.com')
+  await mybuildy.main.waitForTimeout(1000)
+  expect(mybuildy.main.url()).toBe(before)
+  expect(mybuildy.main.url()).not.toContain('example.com')
 })
 
 test('window.open is denied (no new window is created)', async () => {
-  const windowsBefore = buildy.app.windows().length
+  const windowsBefore = mybuildy.app.windows().length
   // Deliberately NOT an https URL: safe externals are forwarded to the OS
   // browser, and a test must never pop the user's browser.
-  await buildy.main.evaluate(() => {
-    window.open('notasafescheme://blocked-by-buildy-e2e')
+  await mybuildy.main.evaluate(() => {
+    window.open('notasafescheme://blocked-by-mybuildy-e2e')
   })
-  await buildy.main.waitForTimeout(750)
-  expect(buildy.app.windows().length).toBe(windowsBefore)
+  await mybuildy.main.waitForTimeout(750)
+  expect(mybuildy.app.windows().length).toBe(windowsBefore)
 })
 
 test('application menu is null (Windows) and DevTools are closed everywhere', async () => {
-  const state = await buildy.app.evaluate(({ Menu, BrowserWindow }) => ({
+  const state = await mybuildy.app.evaluate(({ Menu, BrowserWindow }) => ({
     platform: process.platform,
     menuIsNull: Menu.getApplicationMenu() === null,
     devtoolsOpen: BrowserWindow.getAllWindows().map((w) => w.webContents.isDevToolsOpened()),

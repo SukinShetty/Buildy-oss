@@ -3,7 +3,7 @@
 // contextBridge.exposeInMainWorld() is the only safe way to give the renderer
 // access to Electron/Node.js capabilities without enabling nodeIntegration.
 //
-// The renderer accesses everything via window.buildy.*
+// The renderer accesses everything via window.mybuildy.*
 
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../renderer/src/types'
@@ -31,8 +31,8 @@ import type {
   ModelListResult,
 } from '../renderer/src/types'
 
-// The API exposed to window.buildy in the renderer
-const buildyAPI = {
+// The API exposed to window.mybuildy in the renderer
+const mybuildyAPI = {
 
   // OS platform ('win32' | 'darwin' | 'linux') — the send button is Windows-only;
   // macOS/Linux fall back to clipboard copy.
@@ -152,11 +152,11 @@ const buildyAPI = {
   setSecret: (name: SecretName, value: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SET_SECRET, { name, value }),
 
-  // Persist the one-time privacy disclosure ("Buildy sends screenshots…") as accepted.
+  // Persist the one-time privacy disclosure ("My Buildy sends screenshots…") as accepted.
   acceptCaptureNotice: (): Promise<void> =>
     ipcRenderer.invoke(IPC.CAPTURE_NOTICE_ACCEPT),
 
-  // Delete ALL Buildy data (keys, settings, every project's memory) and restart
+  // Delete ALL My Buildy data (keys, settings, every project's memory) and restart
   // to first run. Main re-confirms nothing — the Settings UI owns the confirm.
   deleteAllData: (): Promise<void> =>
     ipcRenderer.invoke(IPC.DELETE_ALL_DATA),
@@ -366,14 +366,14 @@ const buildyAPI = {
       ipcRenderer.invoke(IPC.MEMORY_ADD_DECISION, question, choice, reasoning),
     addPattern: (observation: string, confidence: 'low' | 'medium' | 'high'): Promise<void> =>
       ipcRenderer.invoke(IPC.MEMORY_ADD_PATTERN, observation, confidence),
-    exportBuildyMd: (): Promise<{ saved: boolean; path?: string }> =>
-      ipcRenderer.invoke(IPC.MEMORY_EXPORT_BUILDYMD),
+    exportMyBuildyMd: (): Promise<{ saved: boolean; path?: string }> =>
+      ipcRenderer.invoke(IPC.MEMORY_EXPORT_MYBUILDYMD),
     reset: (): Promise<void> => ipcRenderer.invoke(IPC.MEMORY_RESET),
   },
 }
 
-contextBridge.exposeInMainWorld('buildy', buildyAPI)
+contextBridge.exposeInMainWorld('mybuildy', mybuildyAPI)
 
-// The renderer declares `window.buildy` in src/renderer/src/env.d.ts via a
+// The renderer declares `window.mybuildy` in src/renderer/src/env.d.ts via a
 // type-only import of this alias — keep it in sync by construction.
-export type BuildyAPI = typeof buildyAPI
+export type MyBuildyAPI = typeof mybuildyAPI

@@ -63,7 +63,7 @@ function buildVerifierPrompt(
   goal: Goal | null,
   memoryContext: string
 ): string {
-  return `A moment ago Buildy suggested this prompt for the user to paste into their coding tool:
+  return `A moment ago My Buildy suggested this prompt for the user to paste into their coding tool:
 
 SUGGESTED PROMPT:
 ${pending.promptText}

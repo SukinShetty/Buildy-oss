@@ -1,8 +1,8 @@
 // BrainstormScreen.tsx
-// The first screen the user sees. A chat interface where Buildy helps them
+// The first screen the user sees. A chat interface where My Buildy helps them
 // define their product idea: what to build, who it's for, and what the MVP should be.
 //
-// Once Buildy extracts enough context, it generates a structured project summary
+// Once My Buildy extracts enough context, it generates a structured project summary
 // that auto-populates the Memory screen.
 
 import React, { useState, useEffect, useRef } from 'react'
@@ -42,16 +42,16 @@ export function BrainstormScreen(): React.ReactElement {
 
   // Register streaming event listeners once on mount
   useEffect(() => {
-    const unsubChunk = window.buildy.onBrainstormChunk((chunk) => {
+    const unsubChunk = window.mybuildy.onBrainstormChunk((chunk) => {
       appendBrainstormStreamChunk(chunk)
     })
 
-    const unsubDone = window.buildy.onBrainstormDone(({ fullText, extractedProjectData }) => {
+    const unsubDone = window.mybuildy.onBrainstormDone(({ fullText, extractedProjectData }) => {
       finalizeBrainstormAssistantMessage(fullText, extractedProjectData)
-      // If Buildy extracted project data, offer to save it
+      // If My Buildy extracted project data, offer to save it
     })
 
-    const unsubError = window.buildy.onBrainstormError((errorMessage) => {
+    const unsubError = window.mybuildy.onBrainstormError((errorMessage) => {
       setBrainstormError(errorMessage)
     })
 
@@ -74,7 +74,7 @@ export function BrainstormScreen(): React.ReactElement {
     addBrainstormUserMessage(trimmedInput)
 
     try {
-      await window.buildy.startBrainstorm(
+      await window.mybuildy.startBrainstorm(
         trimmedInput,
         brainstormMessages,
         settings
@@ -101,13 +101,13 @@ export function BrainstormScreen(): React.ReactElement {
       brainstormSummary: data.brainstormSummary,
     })
     // Persist to disk
-    await window.buildy.saveProject({ ...project, ...data })
+    await window.mybuildy.saveProject({ ...project, ...data })
 
     // Seed the watch session so it starts already knowing the project:
     //  • Goal — so goal-aware analysis judges every step against this product.
     if (data.productSummary?.trim()) {
       try {
-        await window.buildy.goal.set({
+        await window.mybuildy.goal.set({
           purpose: data.productSummary,
           mostImportant: data.brainstormSummary || undefined,
           audience: data.targetUser || undefined,
@@ -119,7 +119,7 @@ export function BrainstormScreen(): React.ReactElement {
     //  • Memory — record the planned first step so guidance references it.
     if (data.firstPrompt?.trim()) {
       try {
-        await window.buildy.memory.addObservation(`Planned first build step: ${data.firstPrompt}`)
+        await window.mybuildy.memory.addObservation(`Planned first build step: ${data.firstPrompt}`)
       } catch (e) {
         console.warn('[Brainstorm] first-prompt memory seed failed:', e)
       }
@@ -134,7 +134,7 @@ export function BrainstormScreen(): React.ReactElement {
       <div style={styles.header}>
         <div style={styles.headerTitle}>💡 Let's figure out what you're building</div>
         <div style={styles.headerSub}>
-          Chat with Buildy to define your product. Then go to Guidance to start building.
+          Chat with My Buildy to define your product. Then go to Guidance to start building.
         </div>
         {brainstormMessages.length > 0 && (
           <button className="btn-ghost" style={styles.clearButton} onClick={clearBrainstormMessages}>
@@ -155,7 +155,7 @@ export function BrainstormScreen(): React.ReactElement {
             >
               Settings
             </button>
-            {' '}to use Buildy.
+            {' '}to use My Buildy.
           </span>
         </div>
       )}
@@ -186,7 +186,7 @@ export function BrainstormScreen(): React.ReactElement {
         {brainstormPhase === 'waiting-for-response' && !brainstormStreamingBuffer && (
           <div style={styles.typingIndicator}>
             <span>🔨</span>
-            <span style={styles.typingDots}>Buildy is thinking…</span>
+            <span style={styles.typingDots}>My Buildy is thinking…</span>
           </div>
         )}
 
@@ -213,7 +213,7 @@ export function BrainstormScreen(): React.ReactElement {
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your idea, or answer Buildy's question…"
+          placeholder="Describe your idea, or answer My Buildy's question…"
           style={styles.input}
           rows={2}
           disabled={isStreaming || !apiIsConfigured}
@@ -239,7 +239,7 @@ function WelcomeMessage(): React.ReactElement {
   return (
     <div style={styles.welcomeMessage}>
       <div style={styles.welcomeIcon}>🔨</div>
-      <div style={styles.welcomeTitle}>Hey! I'm Buildy, your builder buddy.</div>
+      <div style={styles.welcomeTitle}>Hey! My Buildy here, your builder buddy.</div>
       <div style={styles.welcomeText}>
         Tell me what you want to build. No need to be technical — just describe your idea
         in plain words and I'll help you figure out what to make first.
@@ -257,9 +257,9 @@ function ChatBubble({
 }): React.ReactElement {
   const isUser = message.role === 'user'
 
-  // Strip the BUILDY_PROJECT_SUMMARY block from the display — it's internal
+  // Strip the MYBUILDY_PROJECT_SUMMARY block from the display — it's internal
   const displayContent = message.content
-    .replace(/---BUILDY_PROJECT_SUMMARY---[\s\S]*?---END_BUILDY_PROJECT_SUMMARY---/, '')
+    .replace(/---MYBUILDY_PROJECT_SUMMARY---[\s\S]*?---END_MYBUILDY_PROJECT_SUMMARY---/, '')
     .trim()
 
   return (
@@ -288,7 +288,7 @@ function ExtractedDataCard({
 }): React.ReactElement {
   return (
     <div style={styles.extractedCard}>
-      <div style={styles.extractedCardTitle}>✅ Buildy understands your product</div>
+      <div style={styles.extractedCardTitle}>✅ My Buildy understands your product</div>
       <div style={styles.extractedField}>
         <span style={styles.extractedLabel}>Product name</span>
         <span style={styles.extractedValue}>{data.projectName}</span>

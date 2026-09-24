@@ -9,7 +9,7 @@ import { resolve } from 'path'
 // policy written in index.html: connect-src 'self', script-src 'self'.
 function devCspPlugin(): Plugin {
   return {
-    name: 'buildy-dev-csp',
+    name: 'mybuildy-dev-csp',
     apply: 'serve',
     transformIndexHtml(html) {
       return html

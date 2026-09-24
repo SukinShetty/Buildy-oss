@@ -1,6 +1,6 @@
-# Contributing to Buildy
+# Contributing to My Buildy
 
-Thanks for your interest in contributing. Buildy is a small open-source project — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
+Thanks for your interest in contributing. My Buildy is a small open-source project — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
 
 ## Ways to contribute
 
@@ -13,8 +13,8 @@ Thanks for your interest in contributing. Buildy is a small open-source project 
 Requires Node.js 18+. Windows is the primary platform; macOS and Linux run from source but are untested.
 
 ```bash
-git clone https://github.com/SukinShetty/Buildy-oss.git
-cd Buildy-oss
+git clone https://github.com/SukinShetty/mybuildy.git
+cd mybuildy
 
 # --legacy-peer-deps is required: npm 10+ crashes with an arborist "edgesOut"
 # error on a clean install without it, even though every peer dependency resolves.
@@ -53,7 +53,7 @@ The renderer is a single bundle routed to three windows via a query param in `Ap
 - `?guidance` — the frosted-glass guidance panel
 - `?voice` — the hidden audio player
 
-All AI calls, screen capture, and file I/O live in the **main process** (`src/main/`). The renderer never touches the filesystem or calls AI providers directly. IPC channels are defined in `ipc-handlers.ts`; the renderer accesses them through `window.buildy.*` (defined in `preload/index.ts`).
+All AI calls, screen capture, and file I/O live in the **main process** (`src/main/`). The renderer never touches the filesystem or calls AI providers directly. IPC channels are defined in `ipc-handlers.ts`; the renderer accesses them through `window.mybuildy.*` (defined in `preload/index.ts`).
 
 API keys are handled exclusively in `secure-store.ts`. Do not pass key values across the IPC boundary — only booleans (`hasKey`).
 
@@ -74,5 +74,5 @@ Read [`AGENTS.md`](./AGENTS.md) for the full architecture, the IPC channel map, 
 
 ## What's out of scope for now
 
-- The `worker/` directory is not used by Buildy v0.1 (see [`worker/README.md`](./worker/README.md)). PRs that re-enable it will not be merged until the authentication work planned for a later release is in place.
+- The `worker/` directory is not used by My Buildy v0.1 (see [`worker/README.md`](./worker/README.md)). PRs that re-enable it will not be merged until the authentication work planned for a later release is in place.
 - Bundled binaries or pre-built installers are not accepted as PR content.

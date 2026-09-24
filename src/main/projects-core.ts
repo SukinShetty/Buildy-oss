@@ -3,7 +3,7 @@
 //   - one ProjectRecord per project, persisted in userData/projects.json along
 //     with the active project id (A1)
 //   - every memory store namespaced by project id under
-//     userData/buildy-memory/<projectId> (A2)
+//     userData/mybuildy-memory/<projectId> (A2)
 //   - a one-time, idempotent migration of legacy un-namespaced memory into an
 //     inactive "Previous sessions" project — data is COPIED, never deleted (A3)
 //   - goal-derived project naming ("TaskFlow app …" → "TaskFlow", else "My project")
@@ -51,7 +51,7 @@ export function projectsFilePath(userDataDir: string): string {
 /** Per-project store root. The Nemp bridge points here (it writes `.nemp/`
  *  inside), and the project's own project-memory.json lives here too. */
 export function projectStoreDir(userDataDir: string, projectId: string): string {
-  return join(userDataDir, 'buildy-memory', projectId)
+  return join(userDataDir, 'mybuildy-memory', projectId)
 }
 
 export function projectMemoryFilePath(userDataDir: string, projectId: string): string {
@@ -60,7 +60,7 @@ export function projectMemoryFilePath(userDataDir: string, projectId: string): s
 
 /** Legacy (pre-project-scoping) locations — read-only after migration. */
 export function legacyNempStoreDir(userDataDir: string): string {
-  return join(userDataDir, 'buildy-memory', 'default')
+  return join(userDataDir, 'mybuildy-memory', 'default')
 }
 
 export function legacyProjectMemoryFilePath(userDataDir: string): string {

@@ -1,7 +1,7 @@
 // prompt-builder.ts
 // System and user prompts shared across all AI providers.
 // SCREEN-AGNOSTIC: prompts reference the actual watched window name,
-// not a hardcoded tool. Buildy works with any screen the user selects.
+// not a hardcoded tool. My Buildy works with any screen the user selects.
 
 import type { ProjectMemory } from '../../renderer/src/types'
 
@@ -30,7 +30,7 @@ export function buildAnalysisSystemPrompt(
   // the goal so the model knows what's already built / decided / blocked.
   const memoryBlock = project.memoryContext && project.memoryContext.trim()
     ? `
-PROJECT MEMORY (what Buildy knows about this project):
+PROJECT MEMORY (what My Buildy knows about this project):
 
 ${project.memoryContext.trim()}
 
@@ -59,7 +59,7 @@ Every analysis you produce should be judged against this goal. Your job is to ke
   "alignmentNote": "One plain-English sentence explaining the goalAlignment (e.g. 'This is exactly what we need for the customer list' or 'This looks like a tangent — we are styling the login page but the customer list is still incomplete'). MANDATORY."`
     : ''
 
-  return `You are Buildy, a screen-aware AI builder buddy. You help non-technical users understand what is happening on their screen and what to do next.
+  return `You are My Buildy, a screen-aware AI builder buddy. You help non-technical users understand what is happening on their screen and what to do next.
 ${projectBlock}${memoryBlock}${goalBlock}
 You are looking at a screenshot of ${screenLabel}.
 
@@ -108,7 +108,7 @@ NOT acceptable (too vague): "Continue building your CRM."
 If you cannot produce a nextPrompt meeting all 8 requirements, return an empty string for nextPrompt and explain in alignmentNote why no prompt is appropriate right now.
 
 EXPECTED OUTCOME (mandatory whenever nextPrompt is non-empty):
-Whenever you produce a nextPrompt, you MUST also produce "expectedOutcome": ONE plain-English sentence describing what SUCCESS looks like after the user pastes and runs that prompt — something concrete and observable on screen (e.g. "A /dashboard route renders a table of customers with a working search box" or "The build completes with no errors and the login page loads"). On the NEXT analysis, Buildy uses this to check whether the prompt actually worked. If nextPrompt is empty, set expectedOutcome to an empty string.
+Whenever you produce a nextPrompt, you MUST also produce "expectedOutcome": ONE plain-English sentence describing what SUCCESS looks like after the user pastes and runs that prompt — something concrete and observable on screen (e.g. "A /dashboard route renders a table of customers with a working search box" or "The build completes with no errors and the login page loads"). On the NEXT analysis, My Buildy uses this to check whether the prompt actually worked. If nextPrompt is empty, set expectedOutcome to an empty string.
 
 TERMINAL STATE (mandatory field "terminalState"):
 Classify the state of any AI coding agent (Claude Code, Codex CLI or similar) visible in the window. Choose EXACTLY one:
@@ -132,7 +132,7 @@ Set "needsHumanJudgment" to true ONLY when the next step is a genuine decision a
 - A legal, privacy, or compliance question.
 - Two (or more) genuinely equally-valid approaches where the user must pick the direction.
 - A clarification ONLY the human can answer (e.g. which of two products they are actually building, or what the screen contradicts about the goal).
-Set it to FALSE for routine coding choices, file/variable naming, styling, or anything Buildy can confidently default on its own. When true, add "humanJudgmentReason": ONE plain-English sentence naming the decision and why it needs the user, and leave nextPrompt as an EMPTY string — the question goes to the user through the hand-off, never through nextPrompt. When false, set humanJudgmentReason to an empty string.
+Set it to FALSE for routine coding choices, file/variable naming, styling, or anything My Buildy can confidently default on its own. When true, add "humanJudgmentReason": ONE plain-English sentence naming the decision and why it needs the user, and leave nextPrompt as an EMPTY string — the question goes to the user through the hand-off, never through nextPrompt. When false, set humanJudgmentReason to an empty string.
 
 YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
 {
@@ -155,7 +155,7 @@ YOU MUST RESPOND WITH VALID JSON ONLY. No markdown, no text before or after.
   "humanJudgmentReason": ""${goalSchema}
 }
 
-Set "isCriticalOverride" to true ONLY when you detect a NEW, fundamentally different blocker or error (different from anything already in project memory) that the user urgently needs to hear about — e.g. a fresh build failure or a destructive mistake. Otherwise keep it false. When true, Buildy will interrupt lower-priority queued speech to announce it.`
+Set "isCriticalOverride" to true ONLY when you detect a NEW, fundamentally different blocker or error (different from anything already in project memory) that the user urgently needs to hear about — e.g. a fresh build failure or a destructive mistake. Otherwise keep it false. When true, My Buildy will interrupt lower-priority queued speech to announce it.`
 }
 
 export function buildAnalysisUserPrompt(
@@ -175,7 +175,7 @@ export function buildAnalysisUserPrompt(
 // ─── Brainstorm prompt ───────────────────────────────────────────────────────
 
 export function buildBrainstormSystemPrompt(): string {
-  return `You are Buildy, a friendly AI builder buddy helping non-technical founders clarify what they want to build before they start coding.
+  return `You are My Buildy, a friendly AI builder buddy helping non-technical founders clarify what they want to build before they start coding.
 
 Your job is to help them define:
 1. What they are building (the product)
@@ -190,16 +190,16 @@ Rules:
 - After 4-5 exchanges, synthesize what you've learned into a clear product definition
 - When you have enough information, end your message with this exact block:
 
----BUILDY_PROJECT_SUMMARY---
+---MYBUILDY_PROJECT_SUMMARY---
 PROJECT_NAME: [short name for the product]
 PRODUCT_SUMMARY: [1-2 sentences what it does]
 TARGET_USER: [who it's for]
 CORE_PROBLEM: [the problem it solves]
 MVP_FOCUS: [what the first working version should do]
 FIRST_PROMPT: [a concrete, paste-ready first prompt the user can send straight to Claude Code to START building the MVP — write it on a SINGLE line]
----END_BUILDY_PROJECT_SUMMARY---
+---END_MYBUILDY_PROJECT_SUMMARY---
 
-The FIRST_PROMPT is critical — it is what the user pastes into Claude Code to begin. It MUST follow these rules (the same 7 rules Buildy uses for suggested prompts):
+The FIRST_PROMPT is critical — it is what the user pastes into Claude Code to begin. It MUST follow these rules (the same 7 rules My Buildy uses for suggested prompts):
 1. SPECIFIC to THIS product — reference the product name, the MVP feature, and any stack the user mentioned (never "the app").
 2. ONE concrete first action (scaffold + the single most important MVP screen/flow), not a list.
 3. Aligned with the stated goal and MVP_FOCUS.
@@ -238,7 +238,7 @@ export function buildQuestionSystemPrompt(
     }
   }
 
-  return `You are Buildy, a live AI builder buddy watching the user's screen. You are currently watching "${windowTitle}".${contextBlock}
+  return `You are My Buildy, a live AI builder buddy watching the user's screen. You are currently watching "${windowTitle}".${contextBlock}
 
 The user is speaking to you with a question.
 

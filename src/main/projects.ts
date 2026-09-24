@@ -5,7 +5,7 @@
 //   - STOP any active watch first (see stopWatchForProjectSwitch — an old
 //     window's session must never write into the new project's store)
 //   - point memory.ts at the project's store dir (project-memory.json + goal)
-//   - re-init the Nemp bridge on userData/buildy-memory/<projectId>
+//   - re-init the Nemp bridge on userData/mybuildy-memory/<projectId>
 //   - reset the Verifier's pending outcomes to the project's namespace
 // The ACTIVE project is the only one any analysis context ever reads.
 

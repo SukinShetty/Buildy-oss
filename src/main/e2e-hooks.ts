@@ -1,8 +1,8 @@
 // e2e-hooks.ts — main process, e2e/dev ONLY.
 // A tiny test hook used by the Playwright suite (e2e/screenshots.spec.ts) to
 // render the guidance panel from a canned fixture analysis WITHOUT calling any
-// AI provider. Registered ONLY when BUILDY_E2E=1 AND the app is not packaged —
-// packaged builds never expose it, and normal dev runs (no BUILDY_E2E) don't
+// AI provider. Registered ONLY when MYBUILDY_E2E=1 AND the app is not packaged —
+// packaged builds never expose it, and normal dev runs (no MYBUILDY_E2E) don't
 // either.
 //
 // The hook is a main-process global invoked via Playwright's
@@ -47,9 +47,9 @@ interface E2eHooks {
   showFixtureGuidance(): void
 }
 
-/** Register the gated e2e test hooks. No-op outside BUILDY_E2E=1 dev runs. */
+/** Register the gated e2e test hooks. No-op outside MYBUILDY_E2E=1 dev runs. */
 export function registerE2eTestHooks(): void {
-  if (process.env['BUILDY_E2E'] !== '1' || app.isPackaged) return
+  if (process.env['MYBUILDY_E2E'] !== '1' || app.isPackaged) return
   const hooks: E2eHooks = {
     showFixtureGuidance(): void {
       showGuidanceWindow({
@@ -58,6 +58,6 @@ export function registerE2eTestHooks(): void {
       })
     },
   }
-  ;(globalThis as Record<string, unknown>)['__buildyE2E'] = hooks
-  console.log('[E2E] test hooks registered (BUILDY_E2E dev run only)')
+  ;(globalThis as Record<string, unknown>)['__mybuildyE2E'] = hooks
+  console.log('[E2E] test hooks registered (MYBUILDY_E2E dev run only)')
 }
