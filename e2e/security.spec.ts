@@ -103,12 +103,33 @@ test('window.open is denied (no new window is created)', async () => {
   expect(mybuildy.app.windows().length).toBe(windowsBefore)
 })
 
-test('application menu is null (Windows) and DevTools are closed everywhere', async () => {
-  const state = await mybuildy.app.evaluate(({ Menu, BrowserWindow }) => ({
-    platform: process.platform,
-    menuIsNull: Menu.getApplicationMenu() === null,
-    devtoolsOpen: BrowserWindow.getAllWindows().map((w) => w.webContents.isDevToolsOpened()),
-  }))
-  if (state.platform === 'win32') expect(state.menuIsNull).toBe(true)
-  for (const open of state.devtoolsOpen) expect(open).toBe(false)
+test('application menu is null (Windows / Linux)', async () => {
+  test.skip(process.platform === 'darwin', 'macOS keeps a minimal app + Edit menu — covered by the macOS menu test')
+  const menuIsNull = await mybuildy.app.evaluate(({ Menu }) => Menu.getApplicationMenu() === null)
+  expect(menuIsNull).toBe(true)
+})
+
+test('application menu on macOS is only app + Edit, with no Reload or DevTools', async () => {
+  test.skip(process.platform !== 'darwin', 'macOS-only: Windows and Linux have no application menu at all')
+  const menu = await mybuildy.app.evaluate(({ Menu }) => {
+    const appMenu = Menu.getApplicationMenu()
+    const collect = (items: Electron.MenuItem[]): string[] =>
+      items.flatMap((item) => [String(item.role ?? item.label ?? ''), ...(item.submenu ? collect(item.submenu.items) : [])])
+    return appMenu
+      ? { topLevel: appMenu.items.map((item) => String(item.role ?? item.label)), all: collect(appMenu.items) }
+      : null
+  })
+  expect(menu, 'macOS needs an Edit menu for copy/paste in inputs').not.toBeNull()
+  expect(menu!.topLevel).toHaveLength(2)
+  expect(menu!.all.map((r) => r.toLowerCase())).toContain('paste')
+  for (const forbidden of ['reload', 'forcereload', 'toggledevtools']) {
+    expect(menu!.all.map((r) => r.toLowerCase())).not.toContain(forbidden)
+  }
+})
+
+test('DevTools are closed in every window', async () => {
+  const devtoolsOpen = await mybuildy.app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().map((w) => w.webContents.isDevToolsOpened())
+  )
+  for (const open of devtoolsOpen) expect(open).toBe(false)
 })

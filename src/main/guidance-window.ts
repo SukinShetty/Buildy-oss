@@ -125,7 +125,7 @@ export function showGuidanceWindow(payload: GuidancePayload): void {
   if (!guidanceRef || guidanceRef.isDestroyed()) return
 
   // Cache real guidance so it can be re-shown later (but not placeholder notices).
-  if (payload.kind !== 'message') lastGuidancePayload = payload
+  if (payload.kind !== 'message' && payload.kind !== 'permission') lastGuidancePayload = payload
 
   // Renderer not loaded yet — remember and replay once it's ready.
   if (!isReady) {

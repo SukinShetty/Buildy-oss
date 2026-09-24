@@ -25,6 +25,7 @@ import type {
   MemorySnapshot,
   SendEligibility,
   SendPromptResult,
+  MacPermission,
   ProjectRecord,
   ProjectSummary,
   ProviderType,
@@ -278,9 +279,14 @@ const mybuildyAPI = {
     ipcRenderer.invoke(IPC.COPY_TEXT, text),
 
   // Approve-and-send: sends ONLY the displayed prompt's id — main resolves the
-  // text and performs the send (Windows-only).
+  // text and performs the send (Windows and macOS).
   sendPromptToWindow: (promptId: string): Promise<SendPromptResult> =>
     ipcRenderer.invoke(IPC.SEND_PROMPT, promptId),
+
+  // macOS: open System Settings at the pane for a missing permission (main owns
+  // the URL; only the kind crosses IPC).
+  openPermissionSettings: (permission: MacPermission): Promise<void> =>
+    ipcRenderer.invoke(IPC.OPEN_PERMISSION_SETTINGS, permission),
 
   // Main pushes canSend + blocked reason; the renderer only renders it.
   onSendEligibility: (handler: (event: unknown, state: SendEligibility) => void): (() => void) => {

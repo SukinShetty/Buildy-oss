@@ -4,7 +4,7 @@
 
 ## What is My Buildy?
 
-A desktop companion (Windows-first; macOS/Linux run from source, untested) that helps non-technical builders work with AI coding tools (Claude Code primarily; Codex CLI experimental). My Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. My Buildy runs the loop; the user approves each step.
+A desktop companion (Windows and macOS; Linux runs from source, untested) that helps non-technical builders work with AI coding tools (Claude Code primarily; Codex CLI experimental). My Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. My Buildy runs the loop; the user approves each step.
 
 Inspired by Clicky's screen-aware companion model — adapted to a different problem and a different tech stack.
 
@@ -96,7 +96,8 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 | `src/renderer/src/App.tsx` | Root component; routes windows by query param. |
 | `src/main/projects.ts`, `projects-core.ts` | Project system — per-project memory dirs under `userData/mybuildy-memory/<projectId>`. |
 | `src/main/turn-detector.ts` | Turn-end detection state machine (Electron-free, unit-tested). |
-| `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Send-to-watched-window (Windows) + destructive-prompt guard. |
+| `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Send-to-watched-window (Windows: fixed PowerShell; macOS: fixed osascript/JXA that resolves the window owner via CGWindowList, verifies it is frontmost, then Cmd+V + Return) + destructive-prompt guard. Prompt only via clipboard, target only via `MYBUILDY_TARGET_*` env vars. |
+| `src/main/mac-permissions-core.ts` | macOS Screen Recording / Accessibility / Automation decisions + fixed System Settings URLs (Electron-free, unit-tested). |
 | `src/main/secure-store.ts` | Encrypted API-key storage (Electron `safeStorage`). |
 | `worker/` | Worker proxy — **not used in v0.1, see below**. |
 
@@ -113,7 +114,7 @@ npm run typecheck       # tsc over main, renderer, and e2e configs
 npm test                # vitest unit suite
 npm run test:e2e        # Playwright e2e suite (builds first)
 npm run test:e2e:packaged  # e2e against a packaged build
-npm run package         # Windows installer (nsis) → dist/
+npm run package         # installer for this OS (Windows NSIS / macOS DMGs) → dist/
 ```
 
 **First run**: open Settings, pick a provider, and enter an API key (cloud) or a Base URL (local). There is no default model — one must be chosen and pass the vision check. `npm run typecheck`, `npm run build`, and `npm test` must stay green — CI (Node 22) enforces them on every PR.
@@ -135,7 +136,7 @@ The Playwright suite in `e2e/` launches the real Electron app. Isolation works v
 
 ## Release pipeline
 
-`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/mybuildy`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`MyBuildy-Setup-<version>.exe`, unsigned), writes `SHA256SUMS.txt`, and uploads both to a **draft** GitHub release — publishing is a manual step. v1 ships a Windows installer only; macOS/Linux stay "run from source, untested". `ci.yml` runs typecheck + build + test on Node 22 for every push/PR to main.
+`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/mybuildy`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`MyBuildy-Setup-<version>.exe`, unsigned) on windows-latest and macOS DMGs for arm64 + x64 (`MyBuildy-<version>-<arch>.dmg`, ad-hoc signed by `scripts/after-pack.js`, not notarized) on macos-latest; a final job writes one `SHA256SUMS.txt` over all files and creates ONE **draft** GitHub release — publishing is a manual step. `ci.yml` runs typecheck + build + test on Node 22 on ubuntu-latest and macos-latest for every push/PR to main.
 
 ## Worker (not used in v0.1)
 

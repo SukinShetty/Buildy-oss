@@ -114,6 +114,9 @@ export const secretNameEnum = z.enum([
   'anthropicApiKey', 'openaiApiKey', 'geminiApiKey', 'openrouterApiKey', 'customApiKey', 'elevenLabsApiKey',
 ])
 
+// macOS privacy permission kinds — the renderer names a kind, main owns the URL.
+export const macPermissionEnum = z.enum(['screen', 'accessibility', 'automation'])
+
 // Unknown keys are STRIPPED by zod's default object parse — so a renderer that tries
 // to sneak an `apiKey` field into a settings save has it silently dropped.
 // modelId may be EMPTY: there is no default model — the user must pick one

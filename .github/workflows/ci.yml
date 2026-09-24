@@ -8,7 +8,13 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # macos-latest proves the app type-checks, passes its unit tests and builds
+    # on macOS on every push, before a human ever touches a Mac build.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,3 +36,30 @@ jobs:
 
       - name: Test
         run: npm test
+
+  # The Playwright Electron suite on a clean Windows machine: dev build, then the
+  # packaged app (dist/win-unpacked/MyBuildy.exe). Independent of the release
+  # workflow, so a runner hiccup here can never block cutting a draft release.
+  e2e-windows:
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: E2E (dev build)
+        run: npm run test:e2e
+
+      - name: Package Windows app
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: E2E (packaged app)
+        run: npm run test:e2e:packaged

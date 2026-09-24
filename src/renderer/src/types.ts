@@ -218,6 +218,42 @@ export const CAPTURE_NOTICE_MESSAGE =
   "My Buildy sends screenshots of the window you pick, plus this project's memory, " +
   'to the AI provider you chose. Your keys and memory are stored only on this computer.'
 
+// ─── macOS privacy permissions ───────────────────────────────────────────────
+// Without these, macOS fails SILENTLY (black captures, keystrokes that do
+// nothing), so My Buildy checks first and says exactly what to turn on. Shown on
+// the mascot label and in the guidance panel with an "Open System Settings"
+// button (main maps the kind to a fixed System Settings URL).
+
+export type MacPermission = 'screen' | 'accessibility' | 'automation'
+
+export const MAC_PERMISSION_MESSAGES: Record<MacPermission, string> = {
+  screen:
+    'macOS needs permission to see your screen. Open System Settings > Privacy & Security > ' +
+    'Screen Recording, turn on My Buildy, then quit and reopen My Buildy. ' +
+    'macOS only applies this permission after a restart.',
+  accessibility:
+    'macOS needs permission to type for you. Open System Settings > Privacy & Security > ' +
+    'Accessibility and turn on My Buildy. The prompt is on your clipboard: press Cmd+V, then Return.',
+  automation:
+    'macOS needs permission for My Buildy to control System Events (that is how it presses Cmd+V and Return). ' +
+    'Open System Settings > Privacy & Security > Automation, and under My Buildy turn on System Events. ' +
+    'The prompt is on your clipboard: press Cmd+V, then Return.',
+}
+
+// macOS says Screen Recording IS granted but the chosen window came back empty:
+// either the permission was just granted (macOS applies it only after a
+// restart) or the window is minimized / on another desktop.
+export const MAC_BLANK_CAPTURE_MESSAGE =
+  "My Buildy can't see anything in that window. If you just turned on Screen Recording, " +
+  'quit and reopen My Buildy. If the window is minimized or on another desktop, bring it into view and pick it again.'
+
+/** Which permission a failed send needs, or null if the failure was something else. */
+export function permissionForSendFailure(reason: SendFailureReason | undefined): MacPermission | null {
+  if (reason === 'accessibility_permission') return 'accessibility'
+  if (reason === 'automation_permission') return 'automation'
+  return null
+}
+
 // ─── Live model lists (fetched in MAIN with the stored key) ──────────────────
 
 export interface ModelChoice {
@@ -359,6 +395,8 @@ export type SendFailureReason =
   | 'not_eligible'
   | 'stale'
   | 'unknown'
+  | 'accessibility_permission'  // macOS: My Buildy may not post keystrokes (Accessibility)
+  | 'automation_permission'     // macOS: My Buildy may not control System Events (Automation)
 
 export interface SendPromptResult {
   sent: boolean
@@ -379,6 +417,7 @@ export type GuidancePayload =
   | { kind: 'analysis'; analysis: AnalysisResult }
   | { kind: 'answer'; answer: QuestionAnswer }
   | { kind: 'message'; message: string }   // plain notice (e.g. "No guidance yet")
+  | { kind: 'permission'; permission: MacPermission }  // macOS permission missing — message + Open System Settings
 
 // ─── Brainstorm Chat ──────────────────────────────────────────────────────────
 
@@ -452,6 +491,7 @@ export const IPC = {
   SET_SECRET:          'mybuildy:set-secret',        // renderer → main, one-way (store an API key)
   CAPTURE_NOTICE_ACCEPT: 'mybuildy:capture-notice-accept', // companion/main → main (persist the one-time privacy disclosure)
   DELETE_ALL_DATA:     'mybuildy:delete-all-data',   // main window → main (wipe keys/settings/memory, restart to first run)
+  OPEN_PERMISSION_SETTINGS: 'mybuildy:open-permission-settings', // guidance window → main (macOS: open the Privacy & Security pane for a MacPermission)
   GOAL_GET:            'goal:get',                 // renderer → main (read current goal)
   GOAL_SET:            'goal:set',                 // renderer → main (create/replace goal)
   GOAL_UPDATE:         'goal:update',              // renderer → main (merge into goal, e.g. lastReviewedAt)

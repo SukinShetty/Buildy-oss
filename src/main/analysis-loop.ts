@@ -17,7 +17,7 @@
 
 import type { BrowserWindow } from 'electron'
 import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
-import { emptyProjectMemory, CHOOSE_MODEL_MESSAGE } from '../renderer/src/types'
+import { emptyProjectMemory, CHOOSE_MODEL_MESSAGE, MAC_PERMISSION_MESSAGES } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
 import { captureWatchedWindow, listLiveWindowSources, capturePollThumbnail } from './capturer'
 import { getProvider } from './ai/provider-registry'
@@ -1134,9 +1134,21 @@ export async function handleSendPromptRequest(promptId: string): Promise<SendPro
   const promptText = current.nextPrompt
   const expectedOutcome = current.expectedOutcome || ''
 
-  const sendPromise = executeSend(promptText, watchedWindowName || '')
+  const sendPromise = executeSend(promptText, { title: watchedWindowName || '', sourceId: watchedSourceId })
   void pushSendEligibility() // in-flight now → button disables while sending
   const result = await sendPromise
+
+  // macOS permission problems: the guidance panel shows the fix inline (it got
+  // the reason); the mascot label says it too, until the next good cycle.
+  if (!result.sent && (result.reason === 'accessibility_permission' || result.reason === 'automation_permission')) {
+    const permission = result.reason === 'accessibility_permission' ? 'accessibility' : 'automation'
+    if (companionRef && !companionRef.isDestroyed()) {
+      errorLabelShown = true
+      companionRef.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+        windowName: watchedWindowName, message: MAC_PERMISSION_MESSAGES[permission],
+      })
+    }
+  }
 
   if (result.sent && !isStaleSession(mySession, currentSession)) {
     // The SENT prompt becomes the single pending outcome (replacing any

@@ -3,10 +3,14 @@ import {
   sanitizePromptForSend,
   evaluateSendEligibility,
   buildSendCommand,
+  buildMacSendCommand,
+  macWindowIdFromSourceId,
+  performSend,
   detectDestructivePrompt,
   POWERSHELL_SEND_SCRIPT,
+  MAC_SEND_SCRIPT,
 } from './prompt-sender-core'
-import type { SendEligibilityInput } from './prompt-sender-core'
+import type { SendEligibilityInput, SendCommand, SendDeps } from './prompt-sender-core'
 
 describe('sanitizePromptForSend', () => {
   it('collapses every newline run to a single space', () => {
@@ -43,8 +47,14 @@ describe('evaluateSendEligibility', () => {
     expect(r.sendBlockedReason).toBe('')
   })
 
-  it('blocks on non-Windows platforms', () => {
-    for (const platform of ['darwin', 'linux']) {
+  it('allows sending on Windows and macOS', () => {
+    for (const platform of ['win32', 'darwin']) {
+      expect(evaluateSendEligibility({ ...allGood, platform }).canSend).toBe(true)
+    }
+  })
+
+  it('blocks on platforms without a send implementation', () => {
+    for (const platform of ['linux', 'freebsd']) {
       const r = evaluateSendEligibility({ ...allGood, platform })
       expect(r.canSend).toBe(false)
       expect(r.sendBlockedReason).not.toBe('')
@@ -188,5 +198,170 @@ describe('buildSendCommand — no user content in the command string', () => {
     expect(cmd.args[3]).toBe(POWERSHELL_SEND_SCRIPT)
     expect(POWERSHELL_SEND_SCRIPT).toContain("SendWait('^v')")
     expect(POWERSHELL_SEND_SCRIPT).toContain("SendWait('{ENTER}')")
+  })
+})
+
+// ─── macOS send ──────────────────────────────────────────────────────────────
+
+describe('macWindowIdFromSourceId', () => {
+  it('extracts the CGWindowID from a desktopCapturer window source id', () => {
+    expect(macWindowIdFromSourceId('window:12345:0')).toBe('12345')
+  })
+
+  it('rejects non-window sources and malformed ids', () => {
+    expect(macWindowIdFromSourceId('screen:1:0')).toBeNull()
+    expect(macWindowIdFromSourceId('window:abc:0')).toBeNull()
+    expect(macWindowIdFromSourceId('')).toBeNull()
+    expect(macWindowIdFromSourceId(null)).toBeNull()
+  })
+})
+
+describe('buildMacSendCommand — no user content in the command string', () => {
+  const prompt = 'MYBUILDY_SECRET_PROMPT: build the /dashboard route with a table'
+  const title = 'MYBUILDY SECRET WINDOW TITLE — claude in ~/my-app'
+  const target = { windowId: '4242', title }
+
+  it('never interpolates the prompt text, the window title or the window id', () => {
+    const cmd = buildMacSendCommand(prompt, target)
+    const full = [cmd.exe, ...cmd.args].join(' ')
+    expect(full).not.toContain(prompt)
+    expect(full).not.toContain('MYBUILDY_SECRET_PROMPT')
+    expect(full).not.toContain(title)
+    expect(full).not.toContain('SECRET WINDOW TITLE')
+    expect(full).not.toContain('4242')
+  })
+
+  it('passes the target ONLY via environment variables', () => {
+    const cmd = buildMacSendCommand(prompt, target)
+    expect(cmd.env).toEqual({ MYBUILDY_TARGET_WINDOW_ID: '4242', MYBUILDY_TARGET_TITLE: title })
+    expect(MAC_SEND_SCRIPT).toContain("'MYBUILDY_TARGET_WINDOW_ID'")
+    expect(MAC_SEND_SCRIPT).toContain("'MYBUILDY_TARGET_TITLE'")
+  })
+
+  it('runs the fixed osascript program: verify frontmost, then Cmd+V and Return only', () => {
+    const cmd = buildMacSendCommand(prompt, target)
+    expect(cmd.exe).toBe('/usr/bin/osascript')
+    expect(cmd.args).toEqual(['-l', 'JavaScript', '-e', MAC_SEND_SCRIPT])
+    expect(MAC_SEND_SCRIPT).toContain('whose({ frontmost: true })')
+    expect(MAC_SEND_SCRIPT).toContain("keystroke('v', { using: 'command down' })")
+    expect(MAC_SEND_SCRIPT).toContain('keyCode(36)') // Return
+    // The not-frontmost exit comes BEFORE any keystroke.
+    expect(MAC_SEND_SCRIPT.indexOf('$.exit(2)')).toBeLessThan(MAC_SEND_SCRIPT.indexOf('keystroke('))
+  })
+
+  it('is syntactically valid JavaScript (osascript -l JavaScript would reject a parse error)', () => {
+    // Parse only — never executed here (ObjC / $ / Application exist only in osascript).
+    expect(() => new Function(MAC_SEND_SCRIPT)).not.toThrow()
+  })
+})
+
+describe('performSend', () => {
+  const PROMPT = 'Add a search box\nto the header'
+  const SANITIZED = 'Add a search box to the header'
+
+  function fakeDeps(overrides: Partial<SendDeps> & { exit?: number | null } = {}) {
+    const calls = {
+      clipboard: [] as string[],
+      commands: [] as SendCommand[],
+      accessibilityPrompts: 0,
+      logs: [] as string[],
+    }
+    const { exit, ...depOverrides } = overrides
+    const deps: SendDeps = {
+      platform: 'darwin',
+      writeClipboard: (text) => { calls.clipboard.push(text) },
+      isAccessibilityTrusted: () => true,
+      requestAccessibilityPrompt: () => { calls.accessibilityPrompts++ },
+      runScript: async (command) => {
+        calls.commands.push(command)
+        return exit === undefined ? 0 : exit
+      },
+      log: (message) => { calls.logs.push(message) },
+      ...depOverrides,
+    }
+    return { deps, calls }
+  }
+
+  const macTarget = { title: 'claude — ~/my-app', sourceId: 'window:4242:0' }
+
+  it('macOS happy path: clipboard first, then the fixed script with the target in env', async () => {
+    const { deps, calls } = fakeDeps()
+    const result = await performSend(PROMPT, macTarget, deps)
+    expect(result).toEqual({ sent: true })
+    expect(calls.clipboard).toEqual([SANITIZED])
+    expect(calls.commands).toHaveLength(1)
+    expect(calls.commands[0].exe).toBe('/usr/bin/osascript')
+    expect(calls.commands[0].env).toEqual({
+      MYBUILDY_TARGET_WINDOW_ID: '4242',
+      MYBUILDY_TARGET_TITLE: 'claude — ~/my-app',
+    })
+    expect([calls.commands[0].exe, ...calls.commands[0].args].join(' ')).not.toContain(SANITIZED)
+  })
+
+  it('macOS without Accessibility: never runs the script, leaves the prompt on the clipboard', async () => {
+    const { deps, calls } = fakeDeps({ isAccessibilityTrusted: () => false })
+    const result = await performSend(PROMPT, macTarget, deps)
+    expect(result).toEqual({ sent: false, reason: 'accessibility_permission' })
+    expect(calls.commands).toHaveLength(0) // no keystrokes attempted
+    expect(calls.clipboard).toEqual([SANITIZED])
+    expect(calls.accessibilityPrompts).toBe(1)
+    expect(calls.logs.some((l) => l.startsWith('[Send]') && l.includes('Accessibility'))).toBe(true)
+  })
+
+  it('macOS: target not frontmost reports window_not_in_front', async () => {
+    const { deps, calls } = fakeDeps({ exit: 2 })
+    expect(await performSend(PROMPT, macTarget, deps)).toEqual({ sent: false, reason: 'window_not_in_front' })
+    expect(calls.logs).toContain('[Send] target window not in foreground (exit 2) — text left on clipboard')
+  })
+
+  it('macOS: maps the remaining exit codes to distinct reasons', async () => {
+    const cases: Array<[number | null, string]> = [
+      [4, 'window_not_in_front'],       // window no longer in the window list
+      [5, 'automation_permission'],     // System Events automation denied
+      [6, 'accessibility_permission'],  // keystroke refused by macOS
+      [null, 'timeout'],
+      [1, 'unknown'],
+    ]
+    for (const [exit, reason] of cases) {
+      const { deps } = fakeDeps({ exit })
+      expect(await performSend(PROMPT, macTarget, deps)).toEqual({ sent: false, reason })
+    }
+  })
+
+  it('macOS: a source id without a window number never runs the script', async () => {
+    const { deps, calls } = fakeDeps()
+    const result = await performSend(PROMPT, { title: 't', sourceId: 'screen:1:0' }, deps)
+    expect(result).toEqual({ sent: false, reason: 'unknown' })
+    expect(calls.commands).toHaveLength(0)
+    expect(calls.clipboard).toEqual([SANITIZED])
+  })
+
+  it('Windows path is unchanged: powershell with the title in env, no Accessibility check', async () => {
+    let trustedChecks = 0
+    const { deps, calls } = fakeDeps({
+      platform: 'win32',
+      isAccessibilityTrusted: () => { trustedChecks++; return false },
+    })
+    expect(await performSend(PROMPT, { title: 'claude', sourceId: 'window:1:0' }, deps)).toEqual({ sent: true })
+    expect(trustedChecks).toBe(0)
+    expect(calls.commands[0]).toEqual(buildSendCommand('', 'claude'))
+    expect(calls.logs).toContain('[Send] keystrokes delivered (exit 0)')
+  })
+
+  it('Windows: exit 2 and timeout keep their original reasons and log lines', async () => {
+    const notFront = fakeDeps({ platform: 'win32', exit: 2 })
+    expect(await performSend(PROMPT, { title: 'claude', sourceId: null }, notFront.deps))
+      .toEqual({ sent: false, reason: 'window_not_in_front' })
+    const timedOut = fakeDeps({ platform: 'win32', exit: null })
+    expect(await performSend(PROMPT, { title: 'claude', sourceId: null }, timedOut.deps))
+      .toEqual({ sent: false, reason: 'timeout' })
+    expect(timedOut.calls.logs).toContain('[Send] PowerShell timed out — killed, text left on clipboard')
+  })
+
+  it('rejects a prompt that is empty after sanitizing, touching nothing', async () => {
+    const { deps, calls } = fakeDeps()
+    expect(await performSend('\n\n', macTarget, deps)).toEqual({ sent: false, reason: 'not_eligible' })
+    expect(calls.clipboard).toHaveLength(0)
+    expect(calls.commands).toHaveLength(0)
   })
 })

@@ -177,9 +177,23 @@ export function SettingsScreen(): React.ReactElement {
     }
   }, [])
 
+  // A keyed provider with no saved key would answer 401 — shown as "Your API
+  // key was rejected" to someone who never entered one. Don't ask until a key
+  // is saved; the empty-list hint says what to do instead.
+  const refreshModels = useCallback((): void => {
+    if (meta.needsApiKey && !keySaved) {
+      fetchSeq.current++ // drop any in-flight fetch for the previous provider
+      setModels([])
+      setModelsError(null)
+      setModelsLoading(false)
+      return
+    }
+    void loadModels(provider, baseUrl)
+  }, [meta.needsApiKey, keySaved, loadModels, provider, baseUrl])
+
   // Fetch on mount + whenever provider or stored-key state changes.
   useEffect(() => {
-    void loadModels(provider, baseUrl)
+    refreshModels()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider, keySaved])
 
@@ -380,6 +394,15 @@ export function SettingsScreen(): React.ReactElement {
                 )}
               </div>
             )}
+            {window.mybuildy.platform === 'darwin' && (
+              // Explain the Keychain prompt BEFORE it appears, so it never
+              // looks like it came from nowhere.
+              <div style={styles.sectionHint}>
+                On a Mac your keys are encrypted with the macOS Keychain. macOS may ask
+                whether My Buildy can use the &quot;MyBuildy Safe Storage&quot; keychain item
+                (on first save, or after reinstalling). Choose Always Allow.
+              </div>
+            )}
           </div>
         )}
 
@@ -407,7 +430,7 @@ export function SettingsScreen(): React.ReactElement {
         <div style={styles.section}>
           <div style={styles.modelHeaderRow}>
             <div style={styles.sectionLabel}>Model</div>
-            <button className="btn-icon" onClick={() => void loadModels(provider, baseUrl)} disabled={modelsLoading}>
+            <button className="btn-icon" onClick={refreshModels} disabled={modelsLoading}>
               {modelsLoading ? 'Loading…' : 'Refresh'}
             </button>
           </div>

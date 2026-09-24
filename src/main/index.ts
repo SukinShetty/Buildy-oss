@@ -197,6 +197,13 @@ function createSystemTray(): Tray {
   const trayIcon = loadedIcon.isEmpty()
     ? nativeImage.createEmpty()
     : loadedIcon.resize({ width: 18, height: 18 })
+  // macOS menu bar: 18pt, plus a 2x bitmap so it stays sharp on Retina. It is a
+  // full-colour badge, deliberately NOT a template image (a template keeps
+  // only the alpha mask, which for this badge is a plain rounded square).
+  if (process.platform === 'darwin' && !loadedIcon.isEmpty()) {
+    trayIcon.addRepresentation({ scaleFactor: 2, buffer: loadedIcon.resize({ width: 36, height: 36 }).toPNG() })
+    trayIcon.setTemplateImage(false)
+  }
   const newTray = new Tray(trayIcon)
 
   // Read-only tray health for the e2e suite (booleans only — no capability is
@@ -283,6 +290,13 @@ app.whenReady().then(async () => {
   // No stock menu (it exposes Reload / Toggle Developer Tools).
   installAppMenu()
 
+  // macOS Dock: packaged builds get the icon from the bundle's .icns; a dev
+  // run would otherwise show the stock Electron icon.
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    const dockIcon = nativeImage.createFromPath(LOGO_PATH)
+    if (!dockIcon.isEmpty()) app.dock?.setIcon(dockIcon)
+  }
+
   // One-time: move any plaintext API keys out of settings.json into encrypted storage.
   try { migratePlaintextSecrets(settingsFilePath) } catch (e) { console.error('[SecureStore] migration failed:', e) }
 
@@ -360,7 +374,11 @@ app.on('window-all-closed', () => {
   app.quit()
 })
 
-// Safety net: clean up on quit signal (Cmd+Q, etc.)
+// Every quit path (macOS Cmd+Q / app menu Quit / Dock Quit / logout, not only
+// the tray's shutdownApp) must let the hidden Settings window really close —
+// its 'close' handler hides instead of closing unless isQuitting is set, which
+// would otherwise cancel the quit and leave the app running.
 app.on('before-quit', () => {
+  ;(app as any).isQuitting = true
   stopAnalysisLoop()
 })

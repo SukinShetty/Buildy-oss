@@ -7,8 +7,13 @@
 //     window title are NEVER interpolated into the command string — the prompt
 //     travels via the clipboard only, and the title travels as an environment
 //     variable (MYBUILDY_TARGET_TITLE) read inside the script.
+//   - buildMacSendCommand: the macOS equivalent — a FIXED osascript program with
+//     the same rules (prompt via clipboard, target via environment variables).
+//   - performSend: the shared send sequence (sanitize → clipboard → platform
+//     script → exit-code mapping), with every side effect injected so both
+//     platforms are unit-testable without Electron.
 
-import type { SendEligibility, TerminalState } from '../renderer/src/types'
+import type { SendEligibility, SendPromptResult, TerminalState } from '../renderer/src/types'
 
 // ─── Sanitize ────────────────────────────────────────────────────────────────
 
@@ -42,8 +47,8 @@ export interface SendEligibilityInput {
  * reason (as tooltip-ready text) so the renderer can explain the disabled button.
  */
 export function evaluateSendEligibility(input: SendEligibilityInput): SendEligibility {
-  if (input.platform !== 'win32') {
-    return { canSend: false, sendBlockedReason: 'Sending is only supported on Windows — use Copy instead' }
+  if (input.platform !== 'win32' && input.platform !== 'darwin') {
+    return { canSend: false, sendBlockedReason: 'Sending is only supported on Windows and macOS — use Copy instead' }
   }
   if (!input.watchActive) {
     return { canSend: false, sendBlockedReason: 'Not watching a window' }
@@ -222,7 +227,7 @@ exit 0
 export interface SendCommand {
   exe: string
   args: string[]
-  env: { MYBUILDY_TARGET_TITLE: string }
+  env: Record<string, string>
 }
 
 /**
@@ -236,4 +241,214 @@ export function buildSendCommand(_promptText: string, targetWindowTitle: string)
     args: ['-NoProfile', '-NonInteractive', '-Command', POWERSHELL_SEND_SCRIPT],
     env: { MYBUILDY_TARGET_TITLE: targetWindowTitle },
   }
+}
+
+// ─── Fixed macOS send script (osascript, JavaScript for Automation) ──────────
+//
+// Same contract as the PowerShell script: NO user content in the program text.
+// The target arrives only through environment variables:
+//   MYBUILDY_TARGET_WINDOW_ID — the CGWindowID from the desktopCapturer source
+//                               id "window:<id>:0" (a number)
+//   MYBUILDY_TARGET_TITLE     — the watched window's current title (best-effort
+//                               raise of that exact window within its app)
+// and the prompt is already on the clipboard; the only keystrokes sent are the
+// fixed Cmd+V then Return.
+//
+// Why JavaScript for Automation rather than AppleScript: Electron's window
+// sources do not expose the owning application, so the script resolves it from
+// the window number via CoreGraphics (CGWindowListCopyWindowInfo), which only
+// the JXA Objective-C bridge can call. Activation is by application (the owning
+// process). On macOS 14+ a background process such as osascript can no longer
+// force activation through NSRunningApplication, so the System Events
+// `frontmost = true` that follows is what actually brings the app forward.
+// The frontmost check then asks System Events too (NSWorkspace's
+// frontmostApplication only refreshes inside a running main run loop, which
+// osascript never spins, so it could report a stale app) — and no keystroke
+// is sent unless the owning process is the one in front. KNOWN LIMITATION: if that app has several windows open, macOS
+// brings the app forward and the script tries to raise the watched window by
+// its exact title; when the title just changed, another window of the same app
+// may be the one that receives the paste.
+//
+// Exit codes: 0 = sent; 2 = the target app is not frontmost after activation;
+// 3 = no target in the environment; 4 = the window / its app no longer exists;
+// 5 = macOS refused Automation of System Events (error -1743); 6 = macOS
+// refused the keystroke (Accessibility); 7 = any other keystroke failure.
+export const MAC_SEND_SCRIPT = `
+ObjC.import('stdlib');
+ObjC.import('AppKit');
+ObjC.import('CoreGraphics');
+function readEnv(name) {
+  var value = $.NSProcessInfo.processInfo.environment.objectForKey(name);
+  return value.isNil() ? '' : ObjC.unwrap(value);
+}
+function isAutomationDenied(e) { return e && e.errorNumber === -1743; }
+function isKeystrokeDenied(e) { return e && (e.errorNumber === 1002 || e.errorNumber === -1719 || e.errorNumber === -25211); }
+var windowId = parseInt(readEnv('MYBUILDY_TARGET_WINDOW_ID'), 10);
+var title = readEnv('MYBUILDY_TARGET_TITLE');
+if (!(windowId > 0)) $.exit(3);
+var windows = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll, $.kCGNullWindowID))) || [];
+var owner = null;
+for (var i = 0; i < windows.length; i++) {
+  if (windows[i].kCGWindowNumber === windowId) { owner = windows[i]; break; }
+}
+if (!owner) $.exit(4);
+var pid = owner.kCGWindowOwnerPID;
+var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
+if (app.isNil()) $.exit(4);
+app.activateWithOptions($.NSApplicationActivateIgnoringOtherApps);
+var systemEvents = Application('System Events');
+try {
+  var proc = systemEvents.processes.whose({ unixId: pid })[0];
+  proc.frontmost = true;
+  if (title) {
+    var matches = proc.windows.whose({ name: title });
+    if (matches.length > 0) matches[0].actions.byName('AXRaise').perform();
+  }
+} catch (e) {
+  if (isAutomationDenied(e)) $.exit(5);
+}
+delay(0.2);
+var frontPid = -1;
+try {
+  var frontmost = systemEvents.processes.whose({ frontmost: true });
+  if (frontmost.length > 0) frontPid = frontmost[0].unixId();
+} catch (e) {
+  if (isAutomationDenied(e)) $.exit(5);
+}
+if (frontPid !== pid) $.exit(2);
+try {
+  systemEvents.keystroke('v', { using: 'command down' });
+  delay(0.15);
+  systemEvents.keyCode(36);
+} catch (e) {
+  if (isAutomationDenied(e)) $.exit(5);
+  if (isKeystrokeDenied(e)) $.exit(6);
+  $.exit(7);
+}
+$.exit(0);
+`.trim()
+
+/**
+ * The CGWindowID inside a desktopCapturer window source id ("window:<id>:0"),
+ * or null for screens and malformed ids.
+ */
+export function macWindowIdFromSourceId(sourceId: string | null): string | null {
+  const match = /^window:(\d+):/.exec(sourceId || '')
+  return match ? match[1] : null
+}
+
+/**
+ * Build the osascript invocation for a macOS send. Like buildSendCommand, it
+ * takes the prompt only to mirror the real call site: neither the prompt nor
+ * the target may appear in the command string.
+ */
+export function buildMacSendCommand(
+  _promptText: string,
+  target: { windowId: string; title: string }
+): SendCommand {
+  return {
+    exe: '/usr/bin/osascript',
+    args: ['-l', 'JavaScript', '-e', MAC_SEND_SCRIPT],
+    env: { MYBUILDY_TARGET_WINDOW_ID: target.windowId, MYBUILDY_TARGET_TITLE: target.title },
+  }
+}
+
+// ─── Shared send sequence ────────────────────────────────────────────────────
+
+/** Exit code of the send script, or null when it timed out and was killed. */
+export type SendExit = number | null
+
+export interface SendTarget {
+  title: string             // current title of the watched window
+  sourceId: string | null   // desktopCapturer source id of the watched window
+}
+
+/** Every side effect of a send, injected so the sequence is testable. */
+export interface SendDeps {
+  platform: string
+  writeClipboard(text: string): void
+  /** macOS: may this app post synthetic keystrokes? (never prompts) */
+  isAccessibilityTrusted(): boolean
+  /** macOS: ask macOS to show its Accessibility prompt (the caller limits how often). */
+  requestAccessibilityPrompt(): void
+  runScript(command: SendCommand): Promise<SendExit>
+  log(message: string): void
+}
+
+/**
+ * Sanitize → clipboard → fixed platform script → map the exit code. On every
+ * failure the sanitized text stays on the clipboard for a manual paste. On
+ * macOS, keystrokes are never attempted without the Accessibility permission
+ * (macOS would silently drop them).
+ */
+export async function performSend(
+  promptText: string,
+  target: SendTarget,
+  deps: SendDeps
+): Promise<SendPromptResult> {
+  const sanitized = sanitizePromptForSend(promptText)
+  if (!sanitized) {
+    deps.log('[Send] rejected: prompt empty after sanitize')
+    return { sent: false, reason: 'not_eligible' }
+  }
+
+  deps.writeClipboard(sanitized)
+  deps.log(`[Send] clipboard set (${sanitized.length} chars)`)
+
+  let command: SendCommand
+  if (deps.platform === 'darwin') {
+    if (!deps.isAccessibilityTrusted()) {
+      deps.requestAccessibilityPrompt()
+      deps.log('[Send] macOS Accessibility permission missing — keystrokes not attempted, text left on clipboard')
+      return { sent: false, reason: 'accessibility_permission' }
+    }
+    const windowId = macWindowIdFromSourceId(target.sourceId)
+    if (!windowId) {
+      deps.log('[Send] watched source has no window number — text left on clipboard')
+      return { sent: false, reason: 'unknown' }
+    }
+    command = buildMacSendCommand('', { windowId, title: target.title })
+    deps.log('[Send] spawning osascript (fixed script, target via env)')
+  } else if (deps.platform === 'win32') {
+    command = buildSendCommand('', target.title)
+    deps.log('[Send] spawning powershell (fixed script, title via env)')
+  } else {
+    deps.log(`[Send] rejected: no send implementation on ${deps.platform}`)
+    return { sent: false, reason: 'not_eligible' }
+  }
+
+  return interpretSendExit(deps.platform, await deps.runScript(command), deps.log)
+}
+
+/** Map a send script's exit code to a result (and its [Send] log line). */
+function interpretSendExit(platform: string, exit: SendExit, log: (message: string) => void): SendPromptResult {
+  const tool = platform === 'darwin' ? 'osascript' : 'PowerShell'
+  if (exit === 0) {
+    log('[Send] keystrokes delivered (exit 0)')
+    return { sent: true }
+  }
+  if (exit === 2) {
+    log('[Send] target window not in foreground (exit 2) — text left on clipboard')
+    return { sent: false, reason: 'window_not_in_front' }
+  }
+  if (exit === null) {
+    log(`[Send] ${tool} timed out — killed, text left on clipboard`)
+    return { sent: false, reason: 'timeout' }
+  }
+  if (platform === 'darwin') {
+    if (exit === 4) {
+      log('[Send] target window no longer exists (exit 4) — text left on clipboard')
+      return { sent: false, reason: 'window_not_in_front' }
+    }
+    if (exit === 5) {
+      log('[Send] macOS Automation permission for System Events missing (exit 5) — text left on clipboard')
+      return { sent: false, reason: 'automation_permission' }
+    }
+    if (exit === 6) {
+      log('[Send] macOS Accessibility permission missing (exit 6) — text left on clipboard')
+      return { sent: false, reason: 'accessibility_permission' }
+    }
+  }
+  log(`[Send] ${tool} exited ${exit} — text left on clipboard`)
+  return { sent: false, reason: 'unknown' }
 }

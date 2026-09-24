@@ -340,7 +340,7 @@ export function CompanionApp(): React.ReactElement {
         />
       </div>
 
-      <div style={S.watchLabel}>{watchLabel}</div>
+      <div style={S.watchLabel} title={watchLabel}>{watchLabel}</div>
 
       {/* Control pill */}
       <div style={S.pill}>

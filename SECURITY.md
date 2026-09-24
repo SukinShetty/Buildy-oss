@@ -26,7 +26,7 @@ My Buildy works by capturing a window you explicitly pick and **sending those sc
 - Your screenshots go to the provider **you** selected; their data-retention and training policies apply.
 - For fully local analysis, use Ollama or LM Studio with a vision-capable local model — nothing leaves your machine.
 
-Project memory (`userData/mybuildy-memory/<projectId>`) is plain JSON on your disk and is never uploaded except as context in the analysis calls to your chosen provider. API keys are encrypted at rest with Electron `safeStorage` (DPAPI on Windows); if OS encryption is unavailable, My Buildy refuses to save keys rather than store them in plaintext. The renderer process never receives raw keys — secrets cross IPC one way only, and the UI sees only `hasKey` booleans.
+Project memory (`userData/mybuildy-memory/<projectId>`) is plain JSON on your disk and is never uploaded except as context in the analysis calls to your chosen provider. API keys are encrypted at rest with Electron `safeStorage` (DPAPI on Windows, the Keychain on macOS); if OS encryption is unavailable, My Buildy refuses to save keys rather than store them in plaintext. The renderer process never receives raw keys — secrets cross IPC one way only, and the UI sees only `hasKey` booleans.
 
 ### Screen text can influence suggested prompts
 

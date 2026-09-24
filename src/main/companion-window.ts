@@ -53,6 +53,22 @@ function isOnScreen(x: number, y: number): boolean {
   return false
 }
 
+/**
+ * Never let the mascot end up (almost) off every display: when a drag ends with
+ * less than a grab-able corner visible, pull it fully back inside the work area
+ * of the display it is nearest to. Runs at drag END (the 350ms quiet timer), so
+ * it never fights the pointer mid-drag.
+ */
+function pullBackOnScreen(window: BrowserWindow): void {
+  const bounds = window.getBounds()
+  if (isOnScreen(bounds.x, bounds.y)) return
+  const area = screen.getDisplayMatching(bounds).workArea
+  const x = Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width)
+  const y = Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height)
+  console.log('[Companion] dragged off-screen — pulling back into the work area')
+  window.setBounds({ ...bounds, x, y })
+}
+
 export function createCompanionWindow(): BrowserWindow {
   const pos = safeDefaultPosition()
 
@@ -110,7 +126,9 @@ export function createCompanionWindow(): BrowserWindow {
     else clearTimeout(dragEndTimer)
     dragEndTimer = setTimeout(() => {
       dragEndTimer = null
-      if (!window.isDestroyed()) window.webContents.send(IPC.COMPANION_DRAG, false)
+      if (window.isDestroyed()) return
+      window.webContents.send(IPC.COMPANION_DRAG, false)
+      pullBackOnScreen(window)
     }, 350)
   })
   window.on('closed', () => {
@@ -188,7 +206,12 @@ export function showCompanion(): void {
     // Re-assert top-most every time we summon — z-order can be lost after the
     // user interacts with other apps.
     companionRef.setAlwaysOnTop(true, 'screen-saver')
-    companionRef.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    // Windows: re-assert all-workspaces too. macOS: the collection behaviour set
+    // at creation sticks, and every call re-transforms the process type, which
+    // briefly hides the window and the Dock icon — so don't repeat it there.
+    if (process.platform !== 'darwin') {
+      companionRef.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    }
     companionRef.focus()
   }
   console.log('[Companion] showCompanion() — visible and re-asserted top-most')

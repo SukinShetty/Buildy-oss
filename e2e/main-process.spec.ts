@@ -18,6 +18,14 @@ test.afterAll(async () => {
 })
 
 test('desktopCapturer sees at least one window source', async () => {
+  if (process.platform === 'darwin') {
+    // macOS: listing other apps' windows needs Screen Recording for the app
+    // under test. Without it this is a permission state, not a regression.
+    const status = await mybuildy.app.evaluate(({ systemPreferences }) =>
+      systemPreferences.getMediaAccessStatus('screen')
+    )
+    test.skip(status !== 'granted', `macOS Screen Recording is "${status}" for the app under test — grant it to run this check`)
+  }
   const sourceCount = await mybuildy.app.evaluate(async ({ desktopCapturer }) => {
     const sources = await desktopCapturer.getSources({ types: ['window'] })
     return sources.length
@@ -35,7 +43,8 @@ test('tray was created with a real icon; the icon file resolves in this mode', a
   // (shipped by electron-builder extraResources), dev -> repo build/icon.png.
   const devIconPath = path.resolve(__dirname, '..', 'build', 'icon.png')
   const info = await mybuildy.app.evaluate(({ app, nativeImage }, devIcon) => {
-    const iconPath = app.isPackaged ? `${process.resourcesPath}\\icon.png` : devIcon
+    const sep = process.platform === 'win32' ? '\\' : '/'
+    const iconPath = app.isPackaged ? `${process.resourcesPath}${sep}icon.png` : devIcon
     const image = nativeImage.createFromPath(iconPath)
     const health = (globalThis as Record<string, unknown>)['__mybuildyTrayHealth'] as
       | { created: boolean; iconLoaded: boolean }

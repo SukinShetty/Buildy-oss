@@ -47,14 +47,18 @@ export function isAllowedAppNavigation(url: string, devServerUrl?: string | null
 export interface KeyInput {
   type: string
   key: string
+  code?: string   // physical key (e.g. 'KeyI') — stable when Option composes a character
   control: boolean
   meta: boolean
   shift: boolean
+  alt?: boolean
 }
 
 /**
  * Reload/devtools shortcuts blocked in PACKAGED builds: Ctrl+R, F5, F12 and
- * Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (plus macOS Cmd equivalents).
+ * Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C (plus macOS Cmd equivalents), and
+ * the macOS DevTools chords Cmd+Option+I / J / C (matched by physical key,
+ * because Option changes the reported character).
  */
 export function isBlockedDevShortcut(input: KeyInput): boolean {
   if (input.type !== 'keyDown') return false
@@ -63,5 +67,6 @@ export function isBlockedDevShortcut(input: KeyInput): boolean {
   if (key === 'f5' || key === 'f12') return true
   if (ctrlOrCmd && key === 'r') return true
   if (ctrlOrCmd && input.shift && (key === 'i' || key === 'j' || key === 'c')) return true
+  if (ctrlOrCmd && input.alt && (input.code === 'KeyI' || input.code === 'KeyJ' || input.code === 'KeyC')) return true
   return false
 }

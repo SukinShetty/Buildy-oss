@@ -15,8 +15,9 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import type {
   GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer, VerificationStatus,
-  SendEligibility,
+  SendEligibility, MacPermission,
 } from '../types'
+import { MAC_PERMISSION_MESSAGES, permissionForSendFailure } from '../types'
 import { HandoffCard } from './HandoffCard'
 
 const AUTO_HIDE_MS = 60_000
@@ -115,6 +116,7 @@ export function GuidancePanel(): React.ReactElement | null {
         )}
         {payload.kind === 'answer' && <AnswerBody answer={payload.answer} />}
         {payload.kind === 'message' && <div style={S.message}>{payload.message}</div>}
+        {payload.kind === 'permission' && <PermissionNotice permission={payload.permission} />}
 
         {speakingChunk && (
           <div style={S.speaking}>
@@ -124,6 +126,23 @@ export function GuidancePanel(): React.ReactElement | null {
       </div>
 
       <PanelStyle />
+    </div>
+  )
+}
+
+// ─── macOS permission notice ───────────────────────────────────────────────────
+
+/** Exactly what to turn on, plus a button that opens that System Settings pane. */
+function PermissionNotice({ permission }: { permission: MacPermission }): React.ReactElement {
+  return (
+    <div style={S.permission}>
+      <div style={S.permissionText}>{MAC_PERMISSION_MESSAGES[permission]}</div>
+      <button
+        style={S.permissionBtn}
+        onClick={() => { void window.mybuildy.openPermissionSettings(permission) }}
+      >
+        Open System Settings
+      </button>
     </div>
   )
 }
@@ -151,8 +170,13 @@ function AnalysisBody({
   // verdict): the first click only ARMS the send and shows the reason in red;
   // a second deliberate click actually sends.
   const [guardArmed, setGuardArmed] = useState(false)
+  // macOS: a send that failed for a missing permission shows the fix inline.
+  const [permissionNeeded, setPermissionNeeded] = useState<MacPermission | null>(null)
 
-  const isWindows = window.mybuildy.platform === 'win32'
+  const isMac = window.mybuildy.platform === 'darwin'
+  // Windows and macOS send keystrokes; other platforms only copy.
+  const canKeySend = window.mybuildy.platform === 'win32' || isMac
+  const pasteKeys = isMac ? 'Cmd+V then Return' : 'Ctrl+V then Enter'
   const agentLabel = agentDisplayName(analysis.agentName)
   const pasteTarget = agentLabel ?? 'the terminal'
   const guard = analysis.sendGuard ?? null
@@ -175,12 +199,13 @@ function AnalysisBody({
     }
   }
 
-  // Windows: send ONLY the prompt id — main resolves the text and decides.
+  // Windows + macOS: send ONLY the prompt id — main resolves the text and decides.
   // On any failure the text is left/put on the clipboard for a manual paste.
   async function sendPrompt(): Promise<void> {
     if (!analysis.nextPrompt || !analysis.promptId || sendState === 'sending') return
     setSendState('sending')
     setSendError(null)
+    setPermissionNeeded(null)
     try {
       const result = await window.mybuildy.sendPromptToWindow(analysis.promptId)
       if (result.sent) {
@@ -189,20 +214,28 @@ function AnalysisBody({
         return
       }
       console.warn('[GuidancePanel] Send failed:', result.reason)
-      await window.mybuildy.copyText(analysis.nextPrompt)
       setSendState('idle')
-      setSendError(`Copied instead. Press Ctrl+V then Enter in ${pasteTarget}.`)
+      const permission = permissionForSendFailure(result.reason)
+      if (permission) {
+        // Main already left the SANITIZED single-line prompt on the clipboard
+        // (the message tells the user to paste it) — don't overwrite it with
+        // the multi-line display text. Stays until the next send attempt.
+        setPermissionNeeded(permission)
+        return
+      }
+      await window.mybuildy.copyText(analysis.nextPrompt)
+      setSendError(`Copied instead. Press ${pasteKeys} in ${pasteTarget}.`)
       setTimeout(() => setSendError(null), 6000)
     } catch (e) {
       console.warn('[GuidancePanel] Send failed:', e)
       try { await window.mybuildy.copyText(analysis.nextPrompt) } catch { /* clipboard best-effort */ }
       setSendState('idle')
-      setSendError(`Copied instead. Press Ctrl+V then Enter in ${pasteTarget}.`)
+      setSendError(`Copied instead. Press ${pasteKeys} in ${pasteTarget}.`)
       setTimeout(() => setSendError(null), 6000)
     }
   }
 
-  // Windows: the guard demands a second, deliberate click when it matched.
+  // Windows + macOS: the guard demands a second, deliberate click when it matched.
   function handleSendClick(): void {
     if (guard && !guardArmed) {
       setGuardArmed(true) // first click: arm + show the reason — never send
@@ -211,7 +244,7 @@ function AnalysisBody({
     void sendPrompt()
   }
 
-  // macOS/Linux: the primary button only copies.
+  // Other platforms (Linux): the primary button only copies.
   async function copyForAgent(): Promise<void> {
     if (!analysis.nextPrompt) return
     try {
@@ -226,13 +259,13 @@ function AnalysisBody({
   // Label follows the model-reported agent: "Send to Claude Code" / "Send to
   // Codex" / plain "Send" when the agent is unknown ('other').
   const sendActionLabel = agentLabel ? `Send to ${agentLabel}` : 'Send'
-  const sendLabel = !isWindows
+  const sendLabel = !canKeySend
     ? (sendState === 'sent' ? 'Copied!' : agentLabel ? `Copy for ${agentLabel}` : 'Copy prompt')
     : sendState === 'sending' ? 'Sending…'
     : sendState === 'sent' ? 'Sent'
     : guard && !guardArmed ? 'Review first'
     : sendActionLabel
-  const sendDisabled = isWindows
+  const sendDisabled = canKeySend
     ? (!sendEligibility.canSend || sendState === 'sending')
     : false
 
@@ -279,7 +312,7 @@ function AnalysisBody({
                 {copied ? 'Copied!' : 'Copy'}
               </button>
               <button
-                onClick={isWindows ? handleSendClick : copyForAgent}
+                onClick={canKeySend ? handleSendClick : copyForAgent}
                 disabled={sendDisabled}
                 style={{ ...S.sendBtn, ...(sendDisabled ? S.sendBtnDisabled : {}) }}
                 title={sendDisabled && sendEligibility.sendBlockedReason ? sendEligibility.sendBlockedReason : sendLabel}
@@ -289,12 +322,13 @@ function AnalysisBody({
             </div>
           </div>
           <div style={S.promptText} data-selectable>{analysis.nextPrompt}</div>
-          {isWindows && guard && guardArmed && (
+          {canKeySend && guard && guardArmed && (
             <div style={S.guardWarning}>
               {guard.reason} Click {sendActionLabel} again to send anyway.
             </div>
           )}
           {sendError && <div style={S.sendError}>{sendError}</div>}
+          {permissionNeeded && <PermissionNotice permission={permissionNeeded} />}
         </div>
       )}
 
@@ -653,6 +687,31 @@ const S = {
     fontStyle: 'italic' as const,
     color: '#FBBF24',
     lineHeight: 1.5,
+  },
+  // macOS permission notice (amber) with its Open System Settings button.
+  permission: {
+    marginTop: 8,
+    padding: '10px 12px',
+    borderRadius: 10,
+    background: 'rgba(251,191,36,0.10)',
+    border: '1px solid rgba(251,191,36,0.35)',
+    paddingRight: 24, // clear the close button when shown on its own
+  },
+  permissionText: {
+    fontSize: 12,
+    color: '#FDE68A',
+    lineHeight: 1.55,
+  },
+  permissionBtn: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '5px 10px',
+    borderRadius: 7,
+    background: 'rgba(251,191,36,0.18)',
+    color: '#FBBF24',
+    border: '1px solid rgba(251,191,36,0.45)',
+    cursor: 'pointer',
   },
   // Destructive-prompt guard reason — red, shown once the first click armed it.
   guardWarning: {

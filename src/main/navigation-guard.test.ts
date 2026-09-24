@@ -61,12 +61,18 @@ describe('isAllowedAppNavigation', () => {
 })
 
 describe('isBlockedDevShortcut', () => {
-  const key = (k: string, mods: Partial<{ control: boolean; meta: boolean; shift: boolean }> = {}, type = 'keyDown') => ({
+  const key = (
+    k: string,
+    mods: Partial<{ control: boolean; meta: boolean; shift: boolean; alt: boolean; code: string }> = {},
+    type = 'keyDown'
+  ) => ({
     type,
     key: k,
+    code: mods.code,
     control: mods.control ?? false,
     meta: mods.meta ?? false,
     shift: mods.shift ?? false,
+    alt: mods.alt ?? false,
   })
 
   it('blocks Ctrl+R, F5 and Ctrl+Shift+I', () => {
@@ -88,6 +94,15 @@ describe('isBlockedDevShortcut', () => {
     expect(isBlockedDevShortcut(key('r', { meta: true }))).toBe(true)
     expect(isBlockedDevShortcut(key('i', { meta: true, shift: true }))).toBe(true)
     expect(isBlockedDevShortcut(key('j', { meta: true, shift: true }))).toBe(true)
+  })
+
+  it('blocks the macOS DevTools chords Cmd+Option+I / J / C by physical key', () => {
+    // With Option held, macOS reports a composed character as `key` (e.g. "ˆ"
+    // for I), so the physical `code` is what identifies the chord.
+    expect(isBlockedDevShortcut(key('ˆ', { meta: true, alt: true, code: 'KeyI' }))).toBe(true)
+    expect(isBlockedDevShortcut(key('∆', { meta: true, alt: true, code: 'KeyJ' }))).toBe(true)
+    expect(isBlockedDevShortcut(key('ç', { meta: true, alt: true, code: 'KeyC' }))).toBe(true)
+    expect(isBlockedDevShortcut(key('ˆ', { alt: true, code: 'KeyI' }))).toBe(false) // Option alone types text
   })
 
   it('does not block plain typing or other shortcuts', () => {

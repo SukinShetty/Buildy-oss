@@ -12,6 +12,7 @@
 import { desktopCapturer } from 'electron'
 import type { WindowSource, CaptureResult, CaptureOutcome } from '../renderer/src/types'
 import { captureHaltReason, findWatchedSource } from './capture-guard'
+import { isBlankFrame } from './mac-permissions-core'
 
 // Picker thumbnails: small + lower quality to minimise exposure of other windows.
 const THUMB_SIZE = { width: 160, height: 100 }
@@ -110,6 +111,24 @@ export async function capturePollThumbnail(sourceId: string): Promise<string | n
   const target = findWatchedSource(sources, sourceId)
   if (!target) return null
   return target.thumbnail.toJPEG(POLL_QUALITY).toString('base64')
+}
+
+/**
+ * One small frame of the chosen window, checked for content — used at watch
+ * start on macOS, where a missing Screen Recording permission yields frames
+ * with nothing in them instead of an error. 'missing' = not in the live list.
+ */
+export async function probeWatchedWindowFrame(sourceId: string): Promise<'ok' | 'blank' | 'missing'> {
+  const sources = await desktopCapturer.getSources({
+    types: ['window'],
+    thumbnailSize: THUMB_SIZE,
+    fetchWindowIcons: false,
+  })
+  const target = findWatchedSource(sources, sourceId)
+  if (!target) return 'missing'
+  const { width, height } = target.thumbnail.getSize()
+  if (target.thumbnail.isEmpty()) return 'blank'
+  return isBlankFrame(target.thumbnail.toBitmap(), width, height) ? 'blank' : 'ok'
 }
 
 /**

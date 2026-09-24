@@ -10,7 +10,7 @@ Thanks for your interest in contributing. My Buildy is a small open-source proje
 
 ## Setup
 
-Requires Node.js 18+. Windows is the primary platform; macOS and Linux run from source but are untested.
+Requires Node.js 20.19 or newer (22 LTS recommended). Windows and macOS are supported (macOS testing notes: [docs/MAC-TESTING.md](./docs/MAC-TESTING.md)); Linux runs from source but is untested.
 
 ```bash
 git clone https://github.com/SukinShetty/mybuildy.git

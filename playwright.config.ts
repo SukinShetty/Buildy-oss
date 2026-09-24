@@ -1,4 +1,4 @@
-// playwright.config.ts — Electron e2e suite (Windows, this machine).
+// playwright.config.ts — Electron e2e suite (Windows and macOS).
 //
 // Install note: playwright/@playwright/test were installed with
 // PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 — Electron ships its own Chromium, so no
@@ -7,7 +7,8 @@
 //
 // Run modes:
 //   npm run test:e2e           — dev build (out/main/index.js; builds first)
-//   npm run test:e2e:packaged  — packaged exe (dist/win-unpacked/MyBuildy.exe via
+//   npm run test:e2e:packaged  — packaged app (dist/win-unpacked/MyBuildy.exe, or on
+//                                macOS dist/mac*/MyBuildy.app/.../MyBuildy, via
 //                                MYBUILDY_E2E_EXE); dev-only tests self-skip.
 //
 // Isolation: every launch uses a throwaway profile (MYBUILDY_USER_DATA_DIR,

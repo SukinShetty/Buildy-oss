@@ -1,23 +1,33 @@
 // prompt-sender.ts — main process
 // Executes an approved "Send to Claude Code": puts the sanitized prompt on the
-// clipboard, then runs the FIXED PowerShell script (see prompt-sender-core.ts)
-// that activates the watched window and sends Ctrl+V + Enter. The prompt text
-// and the window title are never part of the command string — text travels via
-// the clipboard, the title via the MYBUILDY_TARGET_TITLE environment variable.
+// clipboard, then runs a FIXED script (see prompt-sender-core.ts) that brings
+// the watched window forward and sends paste + Enter:
+//   - Windows: PowerShell (AppActivate + SendKeys Ctrl+V, Enter)
+//   - macOS:   osascript (activate the owning app, verify it is frontmost,
+//              then System Events Cmd+V, Return)
+// The prompt text and the target are never part of the command string — text
+// travels via the clipboard, the target via MYBUILDY_TARGET_* environment
+// variables.
 //
 // Serialized: one send at a time. A second send while one is in flight is
 // rejected (not queued) by the caller via isSendInFlight().
 
-import { clipboard, desktopCapturer } from 'electron'
+import { clipboard, desktopCapturer, systemPreferences } from 'electron'
 import { spawn } from 'child_process'
 import type { SendPromptResult } from '../renderer/src/types'
-import { sanitizePromptForSend, buildSendCommand } from './prompt-sender-core'
+import { performSend, type SendCommand, type SendExit, type SendTarget } from './prompt-sender-core'
 import { findWatchedSource } from './capture-guard'
 import { debugLog } from './debug-log'
 
 const SEND_TIMEOUT_MS = 5_000
+// macOS shows a one-time "My Buildy wants to control System Events" consent
+// dialog on the first send; osascript waits while it is open, so allow time to
+// answer it instead of killing the script mid-dialog.
+const MAC_SEND_TIMEOUT_MS = 30_000
 
 let sendInFlight = false
+// isTrustedAccessibilityClient(true) shows macOS's own prompt; ask once per run.
+let accessibilityPromptShown = false
 
 export function isSendInFlight(): boolean {
   return sendInFlight
@@ -44,44 +54,31 @@ export async function isWatchedWindowPresent(watchedId: string | null): Promise<
 }
 
 /**
- * Execute the send sequence: sanitize → clipboard → PowerShell activate + paste
- * + Enter. On any failure the sanitized text is left on the clipboard so the
- * user can paste manually. Resolves, never rejects.
+ * Execute the send sequence (sanitize → clipboard → platform script). On any
+ * failure the sanitized text is left on the clipboard so the user can paste
+ * manually. Resolves, never rejects.
  */
-export async function executeSend(
-  promptText: string,
-  targetWindowTitle: string
-): Promise<SendPromptResult> {
+export async function executeSend(promptText: string, target: SendTarget): Promise<SendPromptResult> {
   if (sendInFlight) {
     console.log('[Send] rejected: a send is already in flight')
     return { sent: false, reason: 'not_eligible' }
   }
   sendInFlight = true
   try {
-    const sanitized = sanitizePromptForSend(promptText)
-    if (!sanitized) {
-      console.log('[Send] rejected: prompt empty after sanitize')
-      return { sent: false, reason: 'not_eligible' }
-    }
-
-    clipboard.writeText(sanitized)
-    console.log(`[Send] clipboard set (${sanitized.length} chars)`)
-
-    const exitCode = await runSendScript(targetWindowTitle)
-    if (exitCode === 0) {
-      console.log('[Send] keystrokes delivered (exit 0)')
-      return { sent: true }
-    }
-    if (exitCode === 2) {
-      console.log('[Send] target window not in foreground (exit 2) — text left on clipboard')
-      return { sent: false, reason: 'window_not_in_front' }
-    }
-    if (exitCode === null) {
-      console.log('[Send] PowerShell timed out — killed, text left on clipboard')
-      return { sent: false, reason: 'timeout' }
-    }
-    console.log(`[Send] PowerShell exited ${exitCode} — text left on clipboard`)
-    return { sent: false, reason: 'unknown' }
+    // Window titles can contain user content — gate behind MYBUILDY_DEBUG.
+    debugLog(`[Send] activating target window "${target.title}"`)
+    return await performSend(promptText, target, {
+      platform: process.platform,
+      writeClipboard: (text) => clipboard.writeText(text),
+      isAccessibilityTrusted: () => systemPreferences.isTrustedAccessibilityClient(false),
+      requestAccessibilityPrompt: () => {
+        if (accessibilityPromptShown) return
+        accessibilityPromptShown = true
+        systemPreferences.isTrustedAccessibilityClient(true)
+      },
+      runScript: runSendScript,
+      log: (message) => console.log(message),
+    })
   } catch (error) {
     console.error('[Send] failed:', error)
     return { sent: false, reason: 'unknown' }
@@ -91,18 +88,15 @@ export async function executeSend(
 }
 
 /**
- * Spawn the fixed PowerShell script and resolve with its exit code, or null on
- * timeout (the process is killed after SEND_TIMEOUT_MS).
+ * Spawn a fixed send script and resolve with its exit code, or null on timeout
+ * (the process is killed after the platform's timeout).
  */
-function runSendScript(targetWindowTitle: string): Promise<number | null> {
-  const { exe, args, env } = buildSendCommand('', targetWindowTitle)
-  // Window titles can contain user content — gate behind MYBUILDY_DEBUG.
-  debugLog(`[Send] activating target window "${targetWindowTitle}"`)
-  console.log('[Send] spawning powershell (fixed script, title via env)')
+function runSendScript(command: SendCommand): Promise<SendExit> {
+  const timeoutMs = process.platform === 'darwin' ? MAC_SEND_TIMEOUT_MS : SEND_TIMEOUT_MS
 
   return new Promise((resolve) => {
-    const child = spawn(exe, args, {
-      env: { ...process.env, ...env },
+    const child = spawn(command.exe, command.args, {
+      env: { ...process.env, ...command.env },
       windowsHide: true,
       stdio: 'ignore',
     })
@@ -113,7 +107,7 @@ function runSendScript(targetWindowTitle: string): Promise<number | null> {
       settled = true
       try { child.kill() } catch { /* already gone */ }
       resolve(null)
-    }, SEND_TIMEOUT_MS)
+    }, timeoutMs)
 
     child.on('exit', (code) => {
       if (settled) return

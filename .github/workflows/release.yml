@@ -1,9 +1,13 @@
-# release.yml — Windows installer on version tags (v*), as a DRAFT release.
+# release.yml — installers on version tags (v*), as ONE DRAFT release.
 #
-# v0.1.0 ships a Windows installer only: macOS is untested (no Mac available;
-# unsigned Apple-silicon apps open as "damaged"), so macOS and Linux stay
-# "run from source, untested". Guarded to the canonical repo so forks pushing
-# tags don't try to cut releases.
+# Two build jobs run on the same tag — Windows (NSIS installer) and macOS (DMG
+# for Apple Silicon and Intel, ad-hoc signed, not notarized) — and upload their
+# files as workflow artifacts. A single final job then writes one
+# SHA256SUMS.txt over every file and creates the draft. Only that job talks to
+# the Releases API, so two jobs can never race into two drafts. Nothing is
+# published: a human reviews the draft and publishes it by hand.
+#
+# Guarded to the canonical repo so forks pushing tags don't try to cut releases.
 
 name: Release
 
@@ -44,18 +48,78 @@ jobs:
       - name: Package Windows installer
         run: npx electron-builder --win nsis --x64 --publish never
 
-      - name: Write SHA256SUMS.txt
-        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/MyBuildy-Setup-*.exe
+          if-no-files-found: error
+
+  macos-dmg:
+    if: github.repository == 'SukinShetty/mybuildy'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # No Apple Developer certificate: electron-builder's own signing is off
+      # (mac.identity null) and scripts/after-pack.js ad-hoc signs the .app.
+      - name: Package macOS DMGs (arm64 + x64)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac dmg --arm64 --x64 --publish never
+
+      - name: Verify the ad-hoc signature of each packaged app
         run: |
-          $exe = Get-ChildItem dist -Filter 'MyBuildy-Setup-*.exe'
-          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $($exe.Name)" | Out-File dist/SHA256SUMS.txt -Encoding ascii
-          Get-Content dist/SHA256SUMS.txt
+          for app in dist/mac*/MyBuildy.app; do
+            echo "== $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv "$app" 2>&1 | grep -E 'Identifier|Signature|Format'
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/MyBuildy-*.dmg
+          if-no-files-found: error
+
+  draft-release:
+    needs: [windows-installer, macos-dmg]
+    if: github.repository == 'SukinShetty/mybuildy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Write SHA256SUMS.txt
+        working-directory: release
+        run: |
+          sha256sum MyBuildy-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       - name: Draft GitHub release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          fail_on_unmatched_files: true
           files: |
-            dist/MyBuildy-Setup-*.exe
-            dist/SHA256SUMS.txt
+            release/MyBuildy-Setup-*.exe
+            release/MyBuildy-*.dmg
+            release/SHA256SUMS.txt

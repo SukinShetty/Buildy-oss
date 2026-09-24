@@ -2,14 +2,14 @@
 // All IPC channels registered in one place.
 // Every channel name is defined in types.ts (IPC constant) to prevent typos.
 
-import { app, ipcMain, clipboard, dialog } from 'electron'
+import { app, ipcMain, clipboard, dialog, shell, systemPreferences } from 'electron'
 import type { BrowserWindow } from 'electron'
-import { IPC, CHOOSE_MODEL_MESSAGE } from '../renderer/src/types'
+import { IPC, CHOOSE_MODEL_MESSAGE, MAC_PERMISSION_MESSAGES, MAC_BLANK_CAPTURE_MESSAGE } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
 import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId, setGuidanceFocusable } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
-import { listOpenWindows, captureWindowForAnalysis } from './capturer'
+import { listOpenWindows, captureWindowForAnalysis, probeWatchedWindowFrame } from './capturer'
 import {
   loadProjectMemory, saveProjectMemory, loadGoal, setGoal, updateGoal,
   loadSettings, loadNonSecretSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
@@ -29,8 +29,9 @@ import {
   goalPartialSchema, shortText, sourceId as sourceIdSchema, windowName as windowNameSchema,
   confidenceEnum, chatHistorySchema, promptIdSchema,
   projectIdSchema, projectCreateSchema, projectRenameSchema,
-  listModelsSchema, visionStatusSchema,
+  listModelsSchema, visionStatusSchema, macPermissionEnum,
 } from './ipc-schemas'
+import { permissionSettingsUrl, screenPermissionMissing } from './mac-permissions-core'
 import {
   listProjectSummaries, getActiveProject, createProjectAndSwitch, switchProject,
   renameProject, noteGoalSaved,
@@ -419,6 +420,31 @@ export function registerIpcHandlers(
           })
           return
         }
+        // Gate 3 (macOS): Screen Recording. Without it macOS returns captures
+        // with nothing in them, so watching would analyse blank frames forever.
+        // Check the reported status, then one real frame of the chosen window.
+        if (process.platform === 'darwin') {
+          const status = systemPreferences.getMediaAccessStatus('screen')
+          const blank = (await probeWatchedWindowFrame(sid)) === 'blank'
+          if (screenPermissionMissing(process.platform, status) || (blank && status !== 'granted')) {
+            console.log(`[Watch] macOS Screen Recording not granted (status ${status}) — watch not started`)
+            companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+              windowName: null, message: MAC_PERMISSION_MESSAGES.screen,
+            })
+            showGuidanceWindow({ kind: 'permission', permission: 'screen' })
+            return
+          }
+          if (blank) {
+            // Granted, yet nothing visible: granted this session (restart
+            // pending) or the window is minimized / on another Space.
+            console.log('[Watch] macOS capture of the chosen window is blank — watch not started')
+            companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+              windowName: null, message: MAC_BLANK_CAPTURE_MESSAGE,
+            })
+            showGuidanceWindow({ kind: 'message', message: MAC_BLANK_CAPTURE_MESSAGE })
+            return
+          }
+        }
 
         // The loop reloads settings + goal at the START of each cycle (async getters),
         // so editing the goal or settings mid-watch takes effect without restarting.
@@ -518,8 +544,21 @@ export function registerIpcHandlers(
     clipboard.writeText(text)
   })
 
+  // macOS: open System Settings at the pane for a missing permission. The
+  // renderer names only the KIND (Zod enum); the URL is fixed in main.
+  ipcMain.handle(IPC.OPEN_PERMISSION_SETTINGS, async (event, permissionRaw: unknown) => {
+    try {
+      assertFromGuidanceWindow(event, getGuidanceWebContentsId(), 'OPEN_PERMISSION_SETTINGS')
+      const permission = parseInput(macPermissionEnum, 'OPEN_PERMISSION_SETTINGS', permissionRaw)
+      if (process.platform !== 'darwin') return
+      await shell.openExternal(permissionSettingsUrl(permission))
+    } catch (error) {
+      console.error('[IPC] OPEN_PERMISSION_SETTINGS error:', error)
+    }
+  })
+
   // Approve-and-send: the guidance window sends ONLY the displayed prompt's id;
-  // main resolves the text itself and rejects stale/unknown ids. Windows-only.
+  // main resolves the text itself and rejects stale/unknown ids. Windows + macOS.
   ipcMain.handle(IPC.SEND_PROMPT, async (event, promptIdRaw: unknown) => {
     try {
       assertFromGuidanceWindow(event, getGuidanceWebContentsId(), 'SEND_PROMPT')
