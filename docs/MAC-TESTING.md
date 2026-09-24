@@ -2,7 +2,7 @@
 
 This is the first time My Buildy runs on a real Mac. Everything below was built and unit-tested on macOS in CI, but **nobody has clicked through it on a Mac yet** — that is what this checklist is for. It takes about 20 minutes.
 
-You will need: a Mac (Apple Silicon or Intel), a terminal app (Terminal, iTerm2, …) with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or any shell in it, and an API key for Anthropic, OpenAI, Google Gemini or OpenRouter.
+You will need: a Mac (Apple Silicon or Intel), a terminal app (Terminal, iTerm2, …) running an AI coding agent — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is the one tested so far, but any terminal agent or a plain shell works for this checklist — and an API key for Anthropic, OpenAI, Google Gemini or OpenRouter.
 
 ---
 
@@ -98,11 +98,11 @@ Right-click the mascot, pick your terminal window. Accept the one-time privacy n
 
 **6. The guidance panel shows an analysis.**
 Wait up to ~30 seconds (or type something in the terminal).
-*You should see:* a panel appears next to the mascot with an ON TRACK / DRIFTING / BLOCKED pill, a plain-English explanation of what's on screen, and usually a **Prompt to paste** with a **Send to Claude Code** (or **Send**) button.
+*You should see:* a panel appears next to the mascot with an ON TRACK / DRIFTING / BLOCKED pill, a plain-English explanation of what's on screen, and usually a **Prompt to paste** with a **Send** button (it reads **Send to Claude Code** or **Send to Codex** when My Buildy recognises the agent).
 *If not:* screenshot + the log.
 
 **7. Send pastes and submits.**
-With Claude Code (or a shell) waiting for input in the watched terminal, click **Send…** in the panel.
+With your agent (or a shell) waiting for input in the watched terminal, click **Send…** in the panel.
 - If Accessibility is missing: the panel says **"macOS needs permission to type for you…"** with **Open System Settings**, and macOS shows its own Accessibility prompt. Turn on MyBuildy under Accessibility and click Send again.
 - The first successful send makes macOS ask **"MyBuildy wants to control System Events"** — click **OK**. (If you clicked Don't Allow, the panel says so and the button opens Automation settings.)
 
@@ -110,7 +110,7 @@ With Claude Code (or a shell) waiting for input in the watched terminal, click *
 *If not:* what happened in the terminal (nothing / pasted but not submitted / pasted into another window) + the log. If you had several windows of the same terminal app open, say so.
 
 **8. A turn-end report arrives.**
-After a Send, let Claude Code (or your shell command) finish its work.
+After a Send, let your agent (or your shell command) finish its work.
 *You should see:* within about 10 seconds of it finishing, a fresh analysis in the guidance panel (and a spoken summary if voice is on). While it is still working, My Buildy stays quiet.
 *If not:* roughly how long it took (or never) + the log.
 

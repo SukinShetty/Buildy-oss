@@ -10,7 +10,7 @@ First public release (MIT). Windows installer and macOS DMGs (Apple Silicon and 
 
 ### Added
 
-- **The loop** — watch a chosen Claude Code (or Codex CLI, experimental) window, explain what happened in plain English, judge it against the stated goal (on track / drifting / blocked), and produce the exact next prompt. My Buildy runs the loop; the user approves each step.
+- **The loop** — watch the terminal window your AI coding agent runs in (any agent; built and tested against Claude Code first, Codex CLI recognised), explain what happened in plain English, judge it against the stated goal (on track / drifting / blocked), and produce the exact next prompt. My Buildy runs the loop; the user approves each step.
 - **Loop engineering blocks** — Goal, Memory, Verifier (a separate AI check that the sent prompt achieved its outcome), and Hand-off (genuine decisions are detected and handed back to the user with options).
 - **Project system** — per-project memory namespaced under `userData/mybuildy-memory/<projectId>` (Nemp-backed, local JSON), with project switching and a one-time capture disclosure on first window pick.
 - **Providers** — Anthropic, OpenAI, Google Gemini, and OpenRouter recommended, plus Ollama / LM Studio / custom OpenAI-compatible endpoints under Advanced. Live model lists fetched from the provider; no default model; a vision check gates watching until the chosen model proves it can read images.

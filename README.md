@@ -49,9 +49,11 @@
 
 ## What My Buildy does
 
-Claude Code is astonishing — and it was built by developers, for developers. If you can't read code, 400 lines of terminal output fly past and you have no idea whether something brilliant just happened or your project is on fire.
+AI coding agents in the terminal are astonishing — and they were built by developers, for developers. If you can't read code, 400 lines of terminal output fly past and you have no idea whether something brilliant just happened or your project is on fire.
 
-My Buildy is a desktop companion that sits next to your Claude Code terminal and translates:
+My Buildy was built and tested against Claude Code first, and works with any coding agent that runs in a terminal window — see [Works with your agent](#works-with-your-agent).
+
+My Buildy is a desktop companion that sits next to your AI coding agent's terminal and translates:
 
 - **Watches only the window you pick** — one explicit choice, never your whole screen
 - **Explains what just happened** in plain English, no jargon
@@ -70,7 +72,7 @@ My Buildy runs the loop. You approve each step.
 ## How the loop works
 
 1. **Goal** — you say what you're building once. Every step is judged against it.
-2. **Watch** — you pick your Claude Code window. My Buildy captures only that window.
+2. **Watch** — you pick the terminal window your agent is running in. My Buildy captures only that window.
 3. **Explain** — a vision model reads the screenshot and tells you, in plain English, what the agent just did. My Buildy detects when the agent's turn ends and analyzes within about 10 seconds of it stopping.
 4. **Next prompt** — My Buildy writes the exact prompt that moves your goal forward.
 5. **Send when you approve** — one click sends the prompt into the watched window (Windows and macOS). Nothing is ever sent without your click.
@@ -164,7 +166,7 @@ Linux runs from source but is **untested** — see [Known limitations](#known-li
 3. Choose a model from the live list. My Buildy runs the **vision check**; watching stays disabled until a model passes it.
 4. Optionally add an **ElevenLabs** key for spoken guidance (the mic button only appears once a key is saved).
 5. Pick or create a **project** — each project gets its own memory.
-6. Set your **goal**, pick the Claude Code window to watch, and start. The first time you pick a window, My Buildy shows a one-time disclosure explaining exactly what gets captured and where it goes.
+6. Set your **goal**, pick the terminal window your agent is running in, and start. The first time you pick a window, My Buildy shows a one-time disclosure explaining exactly what gets captured and where it goes.
 
 ---
 
@@ -211,9 +213,19 @@ See [SECURITY.md](./SECURITY.md) for the reporting policy.
 
 ---
 
-## Codex CLI (experimental)
+## Works with your agent
 
-My Buildy recognizes the agent in the watched window and adapts its labels ("Send to Claude Code" vs "Send to Codex"). **Codex CLI support is experimental** — the loop is built and tested around Claude Code first.
+My Buildy watches pixels, not an API — so **watching, explaining, the verifier and hand-off work with any coding agent that runs in a terminal window**. It detects which agent it is looking at and labels the button accordingly ("Send to Claude Code", "Send to Codex", or plain "Send").
+
+Only **Send** depends on the agent accepting a pasted prompt and Enter, and that is where testing so far is uneven:
+
+| Agent | Status |
+|---|---|
+| **Claude Code** | Built and tested against this. |
+| **Codex CLI** | Recognised, Send implemented — not yet tested end to end. |
+| **Any other terminal agent** (Gemini CLI, Cursor CLI, Aider, and so on) | Watching and explaining work. Send is untested. Copy and paste always works. |
+
+Tried My Buildy with another agent? Please [open an issue](https://github.com/SukinShetty/mybuildy/issues) with what worked and what didn't — this table will be updated as results come in.
 
 ---
 
