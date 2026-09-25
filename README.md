@@ -19,7 +19,7 @@
 > **Demo video coming soon.** Until then, the screenshots below show the real app.
 
 <p align="center">
-  <img src="docs/assets/guidance-panel.png" width="640" alt="Guidance panel: plain-English analysis, status pill, and the next prompt to send" />
+  <img src="docs/assets/guidance-panel.png" width="640" alt="Guidance panel: plain-English analysis, status pill, and the next prompt to paste" />
 </p>
 
 <p align="center">
@@ -59,7 +59,7 @@ MyBuildy is a desktop companion that sits next to your AI coding agent's termina
 - **Explains what just happened** in plain English, no jargon
 - **Judges every step against your goal** — on track, drifting, or blocked
 - **Writes the exact next prompt to paste** — no guessing, no googling
-- **Sends it for you when you click approve** — you never have to touch the terminal
+- **Pastes it into your terminal when you click** — you read it, then press Enter to run it
 - **Verifies whether the last prompt actually worked** before moving on
 - **Stops and asks you** when a decision genuinely needs a human
 - **Speaks guidance out loud** (optional) so you can stay heads-up
@@ -75,7 +75,7 @@ MyBuildy runs the loop. You approve each step.
 2. **Watch** — you pick the terminal window your agent is running in. MyBuildy captures only that window.
 3. **Explain** — a vision model reads the screenshot and tells you, in plain English, what the agent just did. MyBuildy detects when the agent's turn ends and analyzes within about 10 seconds of it stopping.
 4. **Next prompt** — MyBuildy writes the exact prompt that moves your goal forward.
-5. **Send when you approve** — one click sends the prompt into the watched window (Windows and macOS). Nothing is ever sent without your click.
+5. **Paste when you approve** — one click pastes the prompt into the watched terminal (Windows and macOS). MyBuildy never presses Enter: you read the prompt and run it yourself.
 6. **Verify** — a separate check confirms whether the last prompt achieved its intended outcome before the loop moves on.
 7. **Hand-off** — when a decision needs a human (choosing a database, a payment provider, deleting data), MyBuildy stops and asks instead of guessing.
 
@@ -134,7 +134,7 @@ Whatever you pick, the model must **pass the vision check** (MyBuildy sends it a
 
 5. macOS asks for three privacy permissions. MyBuildy checks each one, tells you exactly what to turn on, and has a button that opens the right System Settings pane:
    - **Screen Recording** — required to watch a window. **macOS only applies it after you quit and reopen MyBuildy.**
-   - **Accessibility** and **Automation → System Events** — needed only for **Send** (pressing Cmd+V and Return in your terminal). Without them, the prompt stays on your clipboard to paste yourself.
+   - **Accessibility** and **Automation → System Events** — needed only for **Paste into terminal** (pressing Cmd+V in your terminal). Without them, the prompt stays on your clipboard to paste yourself.
 
 **After installing a new version:** because the app is ad-hoc signed (no Apple Developer identity), macOS treats every new build as a different app and forgets its permissions — System Settings may still show the switch **on** while MyBuildy says it is missing. Fix it once per update: in that System Settings list select MyBuildy, click **−** to remove it, then turn it back on (or re-add it with **+**). The Keychain may also ask again — choose **Always Allow**.
 
@@ -142,7 +142,7 @@ Whatever you pick, the model must **pass the vision check** (MyBuildy sends it a
 
 ### From source (any OS)
 
-Requires Node.js 20.19 or newer (22 LTS recommended).
+Requires Node.js 22.12 or newer.
 
 ```bash
 git clone https://github.com/SukinShetty/mybuildy.git
@@ -182,16 +182,28 @@ MyBuildy uses **your** API key, and **each analysis is a paid API call** to your
 
 ## Privacy and data
 
-No accounts, no servers, **no telemetry**. Everything lives on your machine; the only network calls are the ones you configure.
+No accounts, no MyBuildy servers, **no telemetry**. Your settings, keys and project memory live on this computer. This is everything MyBuildy sends, and where:
 
-| Data | Where it lives | Who it is sent to |
+| Flow | What is sent | Sent to |
 |---|---|---|
-| Screenshots of the watched window | Processed in memory, never written to disk | **Your AI provider** (the one you configured), for analysis |
-| Project memory (goals, decisions, blockers) | `userData/mybuildy-memory/<projectId>` as plain JSON | Included in analysis context sent to **your AI provider** |
-| Spoken guidance text | — | **ElevenLabs**, only if you add an ElevenLabs key; otherwise the system voice is used and nothing is sent |
-| API keys | Encrypted at rest in your user-data directory (OS keystore via Electron `safeStorage`) | Only to the provider each key belongs to, from the main process |
-| Settings | Plain JSON in your user-data directory (secrets are stripped out) | Nobody |
-| Anything else | — | **Nothing else is sent to anyone.** |
+| **Screen analysis** (watching, and Analyze on the Guidance screen) | An image of the window you picked, its title, your goal and this project's memory | **Your AI provider** |
+| **Brainstorm** | Your messages and the conversation so far | **Your AI provider** |
+| **Spoken questions** (mic button) | Your recording | **ElevenLabs** speech-to-text |
+| | The transcript, plus a fresh screenshot of the watched window and the project context | **Your AI provider** |
+| **Spoken guidance** | The text being read aloud | **ElevenLabs**, only if you saved an ElevenLabs key (otherwise your computer's own voice is used and nothing is sent) |
+| **Grading and verification** (checking a suggested prompt; checking that a pasted prompt worked) | The prompt, its expected outcome and context | **Your AI provider** — on Anthropic this is a separate call to a small Claude Haiku model |
+| **Connection and model setup** (model list, vision check) | Requests carrying your API key; the vision check also sends a tiny test image | **Your AI provider** |
+
+With Ollama, LM Studio or a custom endpoint on this computer, "your AI provider" is on this computer too. A custom endpoint elsewhere receives what the table says your AI provider receives. Each API key is only ever sent to its own provider's address, and a custom endpoint's key only to the endpoint it was entered for.
+
+Nothing else is sent: MyBuildy makes no other network requests (no analytics, no update checks).
+
+| Stored on this computer | Where |
+|---|---|
+| API keys | Encrypted with your operating system's keystore (Electron `safeStorage`); plain-text storage is refused |
+| Project memory (goals, decisions, blockers) | `userData/mybuildy-memory/<projectId>` as plain JSON |
+| Settings | Plain JSON in the user-data folder, with keys stripped out |
+| Screenshots | Never written to disk — processed in memory only |
 
 **Delete everything:** Settings has a **Delete all MyBuildy data** button that removes keys, settings, and every project's memory. Uninstalling and deleting the `MyBuildy` user-data folder does the same.
 
@@ -201,13 +213,13 @@ Screenshots may contain whatever is visible in the watched window — code, secr
 
 ## Security model
 
-- **Encrypted keys** — API keys are stored with Electron `safeStorage` (DPAPI on Windows, the Keychain on macOS). If OS encryption is unavailable, MyBuildy **refuses to save keys in plaintext**. Keys never cross into the renderer — the UI only ever sees `hasKey: true/false`.
+- **Encrypted keys** — API keys are stored with Electron `safeStorage` (DPAPI on Windows, the Keychain on macOS). If OS encryption is unavailable, MyBuildy **refuses to save keys in plaintext**. A key you type passes from the Settings screen to the main process once and is then stored encrypted; saved keys are never sent back to the interface, which only ever sees whether a key is set.
 - **Sandboxed renderers** — `contextIsolation: true`, `nodeIntegration: false`; the UI cannot touch Node, the filesystem, or the network directly.
 - **Validated IPC** — every IPC channel validates its payload shape in the main process before acting.
 - **Strict CSP** and navigation guards — renderer windows cannot load or navigate to remote content.
-- **Send safety guard** — prompts about to be sent are scanned for destructive patterns (deletes, force-pushes, secrets exfiltration). Flagged prompts need a second, explicit confirmation click.
+- **Paste safety guard** — prompts about to be pasted are scanned for destructive patterns (deletes, disk formatting, force-pushes, secrets exfiltration). Flagged prompts need a second, explicit click. MyBuildy never presses Enter, so nothing runs until you do.
 
-One honest caveat: MyBuildy reads your screen, and **text on the screen can influence the prompts it suggests** (a form of prompt injection). That is exactly why MyBuildy never sends anything on its own — every send needs your click, and the guard adds a second click on anything that looks destructive.
+One honest caveat: MyBuildy reads your screen, and **text on the screen can influence the prompts it suggests** (a form of prompt injection). That is exactly why MyBuildy never pastes on its own and never presses Enter — every paste needs your click, the guard adds a second click on anything that looks destructive, and you run the prompt yourself.
 
 See [SECURITY.md](./SECURITY.md) for the reporting policy.
 
@@ -215,15 +227,15 @@ See [SECURITY.md](./SECURITY.md) for the reporting policy.
 
 ## Works with your agent
 
-MyBuildy watches pixels, not an API — so **watching, explaining, the verifier and hand-off work with any coding agent that runs in a terminal window**. It detects which agent it is looking at and labels the button accordingly ("Send to Claude Code", "Send to Codex", or plain "Send").
+MyBuildy watches pixels, not an API — so **watching, explaining, the verifier and hand-off work with any coding agent that runs in a terminal window**. It detects which agent it is looking at and adapts its guidance; the button always reads **Paste into terminal**.
 
-Only **Send** depends on the agent accepting a pasted prompt and Enter, and that is where testing so far is uneven:
+Only **Paste into terminal** depends on how the agent's terminal accepts a pasted prompt, and that is where testing so far is uneven:
 
 | Agent | Status |
 |---|---|
 | **Claude Code** | Built and tested against this. |
-| **Codex CLI** | Recognised, Send implemented — not yet tested end to end. |
-| **Any other terminal agent** (Gemini CLI, Cursor CLI, Aider, and so on) | Watching and explaining work. Send is untested. Copy and paste always works. |
+| **Codex CLI** | Recognised, paste implemented — not yet tested end to end. |
+| **Any other terminal agent** (Gemini CLI, Cursor CLI, Aider, and so on) | Watching and explaining work. Paste is untested. Copy and paste always works. |
 
 Tried MyBuildy with another agent? Please [open an issue](https://github.com/SukinShetty/mybuildy/issues) with what worked and what didn't — this table will be updated as results come in.
 
@@ -231,13 +243,13 @@ Tried MyBuildy with another agent? Please [open an issue](https://github.com/Suk
 
 ## Known limitations
 
-- **Send works on Windows and macOS.** On Linux you copy the prompt and paste it yourself.
+- **Paste into terminal works on Windows and macOS.** On Linux you copy the prompt and paste it yourself. It never presses Enter.
 - **macOS is new in this release.** It is built, type-checked and unit-tested on macOS in CI, and the in-app permission checks explain every macOS prompt — but first hands-on testing on a real Mac is still under way ([docs/MAC-TESTING.md](./docs/MAC-TESTING.md)). Reports welcome.
-- **macOS Send targets the watched app, then its window by title.** If the app (say Terminal) has several windows open, macOS brings the app forward and MyBuildy raises the watched window by its exact title; if the title changed that instant, another window of the same app could receive the paste. MyBuildy checks the right *app* is in front before typing, but it cannot prove which of its windows is.
+- **macOS paste targets the watched app, then its window by title.** If the app (say Terminal) has several windows open, macOS brings the app forward and MyBuildy raises the watched window by its exact title; if the title changed that instant, another window of the same app could receive the paste. MyBuildy checks the right *app* is in front before typing, but it cannot prove which of its windows is.
 - **The macOS app is not notarized** — first launch needs right-click > Open (see [Install](#macos-dmg)).
 - **Linux is untested.** It can run from source, but no testing has been done there yet.
 - **Window identity edge case:** if the watched window closes and, within ~15 seconds, a brand-new window appears that reuses the same OS window handle, MyBuildy can follow the new window. Closing and reopening normally is handled; this narrow reuse window is not.
-- **The Send guard is heuristic.** It is a speed bump against destructive prompts, not a guarantee — you remain the final check.
+- **The paste guard is heuristic.** It is a speed bump against destructive prompts, not a guarantee — you remain the final check.
 - **The verifier judges from screenshots.** It confirms what is visible on screen, not what happened inside your codebase; it can be wrong when the screen doesn't tell the whole story.
 
 ---
@@ -272,8 +284,8 @@ You likely hit the hourly call cap. Raise it in Settings or wait for the rolling
 **macOS: watching won't start and it asks for Screen Recording.**
 Turn MyBuildy on in System Settings > Privacy & Security > Screen Recording, then **quit and reopen MyBuildy** — macOS ignores the permission until the app restarts.
 
-**macOS: Send pastes nothing.**
-Send needs Accessibility and Automation → System Events for MyBuildy (System Settings > Privacy & Security). The panel tells you which one is missing and opens it; the prompt stays on your clipboard meanwhile.
+**macOS: Paste into terminal pastes nothing.**
+Pasting needs Accessibility and Automation → System Events for MyBuildy (System Settings > Privacy & Security). The panel tells you which one is missing and opens it; the prompt stays on your clipboard meanwhile.
 
 **Can I run it fully offline?**
 Yes — pick Ollama or LM Studio under Advanced, point the Base URL at your local server, choose a vision-capable local model, and skip the ElevenLabs key.

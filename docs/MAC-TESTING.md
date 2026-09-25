@@ -33,8 +33,8 @@ macOS will ask for these. If one is missing, MyBuildy shows a message on the mas
 | Permission | Where | Needed for | Restart needed? |
 |---|---|---|---|
 | **Screen Recording** | System Settings > Privacy & Security > Screen Recording | Watching a window (without it macOS hands MyBuildy blank pictures) | **Yes — quit MyBuildy (right-click the Dock icon > Quit, or the menu bar icon > Quit MyBuildy) and open it again.** macOS ignores the permission until the app restarts. |
-| **Accessibility** | System Settings > Privacy & Security > Accessibility | **Send** (typing Cmd+V and Return into your terminal) | No |
-| **Automation → System Events** | System Settings > Privacy & Security > Automation > MyBuildy > System Events | **Send** (same reason — macOS asks "MyBuildy wants to control System Events" the first time; click **OK**) | No |
+| **Accessibility** | System Settings > Privacy & Security > Accessibility | **Paste into terminal** (typing Cmd+V into your terminal) | No |
+| **Automation → System Events** | System Settings > Privacy & Security > Automation > MyBuildy > System Events | **Paste into terminal** (same reason — macOS asks "MyBuildy wants to control System Events" the first time; click **OK**) | No |
 
 macOS may also ask whether MyBuildy can use the **"MyBuildy Safe Storage"** keychain item when you save your API key. That is where your key is encrypted — choose **Always Allow**.
 
@@ -98,19 +98,19 @@ Right-click the mascot, pick your terminal window. Accept the one-time privacy n
 
 **6. The guidance panel shows an analysis.**
 Wait up to ~30 seconds (or type something in the terminal).
-*You should see:* a panel appears next to the mascot with an ON TRACK / DRIFTING / BLOCKED pill, a plain-English explanation of what's on screen, and usually a **Prompt to paste** with a **Send** button (it reads **Send to Claude Code** or **Send to Codex** when MyBuildy recognises the agent).
+*You should see:* a panel appears next to the mascot with an ON TRACK / DRIFTING / BLOCKED pill, a plain-English explanation of what's on screen, and usually a **Prompt to paste** with a **Paste into terminal** button.
 *If not:* screenshot + the log.
 
-**7. Send pastes and submits.**
-With your agent (or a shell) waiting for input in the watched terminal, click **Send…** in the panel.
-- If Accessibility is missing: the panel says **"macOS needs permission to type for you…"** with **Open System Settings**, and macOS shows its own Accessibility prompt. Turn on MyBuildy under Accessibility and click Send again.
+**7. Paste into terminal pastes (and never submits).**
+With your agent (or a shell) waiting for input in the watched terminal, click **Paste into terminal** in the panel.
+- If Accessibility is missing: the panel says **"macOS needs permission to type for you…"** with **Open System Settings**, and macOS shows its own Accessibility prompt. Turn on MyBuildy under Accessibility and click **Paste into terminal** again.
 - The first successful send makes macOS ask **"MyBuildy wants to control System Events"** — click **OK**. (If you clicked Don't Allow, the panel says so and the button opens Automation settings.)
 
-*You should see:* the terminal comes to the front, the prompt is pasted and submitted (Return pressed) by itself, and the mascot briefly says **Sent**.
-*If not:* what happened in the terminal (nothing / pasted but not submitted / pasted into another window) + the log. If you had several windows of the same terminal app open, say so.
+*You should see:* the terminal comes to the front and the prompt is pasted but **not** run: MyBuildy never presses Return. The panel says **"Pasted into your terminal. Read it, then press Enter to run it."** and the mascot briefly says **Pasted**. Press Return yourself to run it.
+*If not:* what happened in the terminal (nothing / pasted into another window / it ran without you pressing Return) + the log. If you had several windows of the same terminal app open, say so.
 
 **8. A turn-end report arrives.**
-After a Send, let your agent (or your shell command) finish its work.
+After pasting, press Enter yourself, then let your agent (or your shell command) finish its work.
 *You should see:* within about 10 seconds of it finishing, a fresh analysis in the guidance panel (and a spoken summary if voice is on). While it is still working, MyBuildy stays quiet.
 *If not:* roughly how long it took (or never) + the log.
 
@@ -128,6 +128,6 @@ Settings > **Delete all MyBuildy data** > confirm.
 
 ## Known limitation to watch for
 
-If your terminal app has **several windows open**, Send brings the right *app* forward and then tries to raise the watched window by its exact title. If the title changed at that very moment, the paste could land in another window of the same app. If you see that happen, please report it with the log.
+If your terminal app has **several windows open**, pasting brings the right *app* forward and then tries to raise the watched window by its exact title. If the title changed at that very moment, the paste could land in another window of the same app. If you see that happen, please report it with the log.
 
 Thank you — every "it did something odd" report is useful.

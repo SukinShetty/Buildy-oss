@@ -4,7 +4,7 @@
 
 ## What is MyBuildy?
 
-A desktop companion (Windows and macOS; Linux runs from source, untested) that helps non-technical builders work with AI coding agents in a terminal (any agent for watching, explaining, verifying and hand-off; Send is built and tested against Claude Code, implemented but not yet end-to-end tested for Codex CLI, untested for others). MyBuildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. MyBuildy runs the loop; the user approves each step.
+A desktop companion (Windows and macOS; Linux runs from source, untested) that helps non-technical builders work with AI coding agents in a terminal (any agent for watching, explaining, verifying and hand-off; Paste into terminal is built and tested against Claude Code, implemented but not yet end-to-end tested for Codex CLI, untested for others; it never presses Enter). MyBuildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. MyBuildy runs the loop; the user approves each step.
 
 Inspired by Clicky's screen-aware companion model — adapted to a different problem and a different tech stack.
 
@@ -96,7 +96,7 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 | `src/renderer/src/App.tsx` | Root component; routes windows by query param. |
 | `src/main/projects.ts`, `projects-core.ts` | Project system — per-project memory dirs under `userData/mybuildy-memory/<projectId>`. |
 | `src/main/turn-detector.ts` | Turn-end detection state machine (Electron-free, unit-tested). |
-| `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Send-to-watched-window (Windows: fixed PowerShell; macOS: fixed osascript/JXA that resolves the window owner via CGWindowList, verifies it is frontmost, then Cmd+V + Return) + destructive-prompt guard. Prompt only via clipboard, target only via `MYBUILDY_TARGET_*` env vars. |
+| `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Paste-into-watched-window (Windows: fixed PowerShell; macOS: fixed osascript/JXA that resolves the window owner via CGWindowList, verifies it is frontmost, then Cmd+V — never Enter/Return) + destructive-prompt guard. `send-authorization.ts` binds each paste at click time to the prompt, project, watch session and window, and allows it once. Prompt only via clipboard, target only via `MYBUILDY_TARGET_*` env vars. |
 | `src/main/mac-permissions-core.ts` | macOS Screen Recording / Accessibility / Automation decisions + fixed System Settings URLs (Electron-free, unit-tested). |
 | `src/main/secure-store.ts` | Encrypted API-key storage (Electron `safeStorage`). |
 | `worker/` | Worker proxy — **not used in v0.1, see below**. |
@@ -125,7 +125,7 @@ Every project gets its own memory directory: `userData/mybuildy-memory/<projectI
 
 ## Turn detector
 
-`src/main/turn-detector.ts` is a pure, Electron-free state machine that decides *when an analysis is worth paying for*. While the coding agent is mid-turn, the loop takes a cheap low-resolution local capture every 5 s (never sent anywhere) and feeds the change fraction in. A turn end = the screen changed and then stayed stable for two consecutive polls — analyze then (within ~10 s of the agent stopping). Continuous change for 3 minutes forces one checkpoint analysis. "Working" mode comes from the last analysis's `terminalState` or from being within 3 minutes of a Send. No timers, no `Date.now()` — callers pass timestamps, which keeps the policy fully unit-testable (`turn-detector.test.ts`).
+`src/main/turn-detector.ts` is a pure, Electron-free state machine that decides *when an analysis is worth paying for*. While the coding agent is mid-turn, the loop takes a cheap low-resolution local capture every 5 s (never sent anywhere) and feeds the change fraction in. A turn end = the screen changed and then stayed stable for two consecutive polls — analyze then (within ~10 s of the agent stopping). Continuous change for 3 minutes forces one checkpoint analysis. "Working" mode comes from the last analysis's `terminalState` or from being within 3 minutes of a paste. No timers, no `Date.now()` — callers pass timestamps, which keeps the policy fully unit-testable (`turn-detector.test.ts`).
 
 ## E2E testing
 
@@ -166,7 +166,7 @@ The proxy in `worker/` is **not used by the app in v0.1** and is kept only for a
 ## Security notes
 
 - `contextIsolation: true`, `nodeIntegration: false` — the renderer cannot access Node.js
-- All external API calls happen in the main process (API keys never reach the renderer; `mybuildy:set-secret` is one-way)
+- All external API calls happen in the main process through `providerFetch` (no redirects, Stop-cancellable). A key typed in Settings reaches main once via `mybuildy:set-secret` (one-way) and is stored encrypted; saved keys are never sent back to any renderer
 - CSP in `index.html` restricts what the renderer can load
 - API keys stored encrypted (Electron `safeStorage`) in userData, never in the app bundle or version control; plaintext saving is refused
 - MyBuildy sends screen captures to the AI provider the user configures — treat capture contents as sensitive (see `SECURITY.md`)
