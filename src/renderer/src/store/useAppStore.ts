@@ -103,6 +103,8 @@ interface AppState {
   setBrainstormPhase: (phase: BrainstormPhase) => void
   setBrainstormError: (message: string | null) => void
   clearBrainstormMessages: () => void
+  /** The active project changed: drop everything that belonged to the old one. */
+  resetForProjectSwitch: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -211,5 +213,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       brainstormStreamingBuffer: '',
       brainstormErrorMessage: null,
       lastExtractedProjectData: null,
+    }),
+
+  resetForProjectSwitch: () =>
+    set({
+      brainstormMessages: [],
+      brainstormPhase: 'idle',
+      brainstormStreamingBuffer: '',
+      brainstormErrorMessage: null,
+      lastExtractedProjectData: null,
+      latestAnalysis: null,
     }),
 }))

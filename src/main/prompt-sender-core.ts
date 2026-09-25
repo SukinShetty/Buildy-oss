@@ -89,6 +89,14 @@ const DESTRUCTIVE_PROMPT_RULES: DestructivePromptRule[] = [
       /\brm\s+(-[a-z]+\s+)*-f\s+(-[a-z]+\s+)*-r\b/i,   // rm -f -r
       /\bremove-item\b[^\n]{0,80}-recurse\b/i,          // PowerShell recursive delete
       /\bdel\s+(\/[a-z]+\s+)*\/s\b/i,                   // cmd.exe del /s (subdirectories)
+      /\b(rd|rmdir)\s+(\/[a-z]+\s+)*\/s\b/i,            // cmd.exe rd /s, rmdir /s (with or without /q)
+    ],
+  },
+  {
+    reason: 'This prompt force-deletes files (del /f / Remove-Item -Force).',
+    patterns: [
+      /\bdel\s+(\/[a-z]+\s+)*\/f\b/i,                   // cmd.exe del /f (read-only files too)
+      /\bremove-item\b[^\n]{0,80}-force\b/i,            // PowerShell forced delete
     ],
   },
   {
@@ -97,6 +105,10 @@ const DESTRUCTIVE_PROMPT_RULES: DestructivePromptRule[] = [
       /\bformat\s+[a-z]:/i,   // format c:
       /\bmkfs\b/i,            // mkfs, mkfs.ext4 ("\b" matches before the dot)
     ],
+  },
+  {
+    reason: 'This prompt runs diskpart, which can erase or repartition disks.',
+    patterns: [/\bdiskpart\b/i],
   },
   {
     reason: 'This prompt force-pushes to git, overwriting remote history.',
@@ -191,18 +203,19 @@ export function detectDestructivePrompt(promptText: string): { reason: string } 
 
 // ─── Fixed PowerShell send script ────────────────────────────────────────────
 
-// Exit codes: 0 = sent; 2 = target window is not in the foreground; 3 = no
+// Exit codes: 0 = pasted; 2 = target window is not in the foreground; 3 = no
 // target title in the environment. The script contains NO user content: it
 // reads the target title from $env:MYBUILDY_TARGET_TITLE and sends only the
-// fixed keystrokes Ctrl+V then Enter (the prompt is already on the clipboard).
-// Foreground title matching mirrors AppActivate: case-insensitive exact, then
-// prefix, then suffix.
+// fixed keystroke Ctrl+V (the prompt is already on the clipboard). It NEVER
+// presses Enter: the user reads the pasted prompt and runs it themselves.
+// Everything slow (loading System.Windows.Forms, compiling the foreground
+// helper) happens BEFORE activation, so the foreground check runs on the line
+// directly before the paste keystroke. Foreground title matching mirrors
+// AppActivate: case-insensitive exact, then prefix, then suffix.
 export const POWERSHELL_SEND_SCRIPT = `
 $target = $env:MYBUILDY_TARGET_TITLE
 if (-not $target) { exit 3 }
-$wshell = New-Object -ComObject WScript.Shell
-try { [void]$wshell.AppActivate($target) } catch { }
-Start-Sleep -Milliseconds 200
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -212,15 +225,18 @@ public static class MyBuildyForeground {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 }
 "@
-$sb = New-Object System.Text.StringBuilder 1024
-[void][MyBuildyForeground]::GetWindowText([MyBuildyForeground]::GetForegroundWindow(), $sb, 1024)
-$fg = $sb.ToString().ToLowerInvariant()
 $t = $target.ToLowerInvariant()
-if (-not (($fg -eq $t) -or $fg.StartsWith($t) -or $fg.EndsWith($t))) { exit 2 }
-Add-Type -AssemblyName System.Windows.Forms
+function Test-TargetInFront {
+  $sb = New-Object System.Text.StringBuilder 1024
+  [void][MyBuildyForeground]::GetWindowText([MyBuildyForeground]::GetForegroundWindow(), $sb, 1024)
+  $fg = $sb.ToString().ToLowerInvariant()
+  return (($fg -eq $t) -or $fg.StartsWith($t) -or $fg.EndsWith($t))
+}
+$wshell = New-Object -ComObject WScript.Shell
+try { [void]$wshell.AppActivate($target) } catch { }
+Start-Sleep -Milliseconds 200
+if (-not (Test-TargetInFront)) { exit 2 }
 [System.Windows.Forms.SendKeys]::SendWait('^v')
-Start-Sleep -Milliseconds 150
-[System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
 exit 0
 `.trim()
 
@@ -252,7 +268,7 @@ export function buildSendCommand(_promptText: string, targetWindowTitle: string)
 //   MYBUILDY_TARGET_TITLE     — the watched window's current title (best-effort
 //                               raise of that exact window within its app)
 // and the prompt is already on the clipboard; the only keystrokes sent are the
-// fixed Cmd+V then Return.
+// fixed Cmd+V — never Return: the user reads the pasted prompt and runs it.
 //
 // Why JavaScript for Automation rather than AppleScript: Electron's window
 // sources do not expose the owning application, so the script resolves it from
@@ -318,8 +334,6 @@ try {
 if (frontPid !== pid) $.exit(2);
 try {
   systemEvents.keystroke('v', { using: 'command down' });
-  delay(0.15);
-  systemEvents.keyCode(36);
 } catch (e) {
   if (isAutomationDenied(e)) $.exit(5);
   if (isKeystrokeDenied(e)) $.exit(6);
@@ -373,6 +387,12 @@ export interface SendDeps {
   requestAccessibilityPrompt(): void
   runScript(command: SendCommand): Promise<SendExit>
   log(message: string): void
+  /**
+   * The click-time binding check (send-authorization.ts): null while the prompt,
+   * project, watch session and window are unchanged, otherwise the reason. Run as
+   * the LAST step before the keystroke script, after every earlier await.
+   */
+  bindingChanged?(): string | null
 }
 
 /**
@@ -415,6 +435,12 @@ export async function performSend(
   } else {
     deps.log(`[Send] rejected: no send implementation on ${deps.platform}`)
     return { sent: false, reason: 'not_eligible' }
+  }
+
+  const changed = deps.bindingChanged?.() ?? null
+  if (changed) {
+    deps.log(`[Send] aborted before the paste keystroke: ${changed}`)
+    return { sent: false, reason: 'stale', detail: changed }
   }
 
   return interpretSendExit(deps.platform, await deps.runScript(command), deps.log)

@@ -297,6 +297,13 @@ const mybuildyAPI = {
   },
 
   // Companion mascot: transient send status (e.g. 'sent') for the status label.
+  // The active project changed: drop per-project state (brainstorm, cached guidance).
+  onProjectSwitched: (handler: () => void): (() => void) => {
+    const listener = () => handler()
+    ipcRenderer.on(IPC.PROJECTS_SWITCHED, listener)
+    return () => ipcRenderer.removeListener(IPC.PROJECTS_SWITCHED, listener)
+  },
+
   onSendStatus: (handler: (event: unknown, status: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: string) =>
       handler(_event, status)

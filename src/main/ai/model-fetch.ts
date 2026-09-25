@@ -5,6 +5,8 @@
 // filtering lives in model-list.ts and the Suggested tag in model-suggestions.ts.
 
 import type { AppSettings, ModelChoice, ModelListResult } from '../../renderer/src/types'
+import { redactKnownSecrets } from '../secure-store'
+import { providerHttpError } from './provider-errors'
 import { fetchWithTimeout } from './fetch-with-timeout'
 import {
   filterOpenAIModels, filterGeminiModels, filterOpenRouterModels,
@@ -32,8 +34,7 @@ function baseUrlFor(settings: AppSettings): string {
 async function fetchJson(url: string, headers: Record<string, string>, isLocal: boolean): Promise<unknown> {
   const response = await fetchWithTimeout(url, { method: 'GET', headers }, isLocal)
   if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    throw new Error(`Model list error ${response.status}: ${body.slice(0, 300)}`)
+    throw await providerHttpError('Model list', response)
   }
   return response.json()
 }
@@ -98,6 +99,6 @@ export async function fetchModelsForProvider(settings: AppSettings): Promise<Mod
     return { models, error: null }
   } catch (error) {
     console.warn(`[Models] list fetch failed for ${settings.provider}:`, String(error).slice(0, 200))
-    return { models: [], error: mapProviderError(String(error)).message }
+    return { models: [], error: redactKnownSecrets(mapProviderError(String(error)).message) }
   }
 }

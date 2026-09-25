@@ -37,6 +37,7 @@ export function CompanionApp(): React.ReactElement {
   isMutedRef.current = isMuted
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const discardRecordingRef = useRef(false)
   const streamRef = useRef<MediaStream | null>(null)
 
   // ─── Mascot animation signals (Phase 6) ─────────────────────────────
@@ -114,6 +115,8 @@ export function CompanionApp(): React.ReactElement {
         window.mybuildy.showGuidanceAnswer(d)
       }),
       window.mybuildy.onCompanionShutdown(() => window.mybuildy.voice.stop()),
+      // Project switched: nothing from the old project stays on the mascot.
+      window.mybuildy.onProjectSwitched(() => { clearAnalysis(); setLastAnswer(null); resetMascotSignals() }),
       // Brief "Sent" status after a successful Send to Claude Code.
       window.mybuildy.onSendStatus((_: unknown, status: string) => {
         if (status === 'sent') {
@@ -204,6 +207,15 @@ export function CompanionApp(): React.ReactElement {
         stream.getTracks().forEach((t) => t.stop())
         streamRef.current = null
 
+        // Stop pressed mid-question: throw the recording away — never transcribe it.
+        if (discardRecordingRef.current) {
+          discardRecordingRef.current = false
+          audioChunksRef.current = []
+          console.log('[Mic] Recording discarded (Stop) — not transcribed')
+          setMicState('idle')
+          return
+        }
+
         const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         console.log(`[Mic] Recording complete: ${blob.size} bytes`)
 
@@ -251,6 +263,15 @@ export function CompanionApp(): React.ReactElement {
     }
   }, [watchedWindowName])
 
+  // Stop: end the recording and discard it (no upload, no transcription).
+  const discardRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      discardRecordingRef.current = true
+      mediaRecorderRef.current.stop()
+      mediaRecorderRef.current = null
+    }
+  }, [])
+
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop()
@@ -271,8 +292,12 @@ export function CompanionApp(): React.ReactElement {
     else if (lastAnswer) window.mybuildy.showGuidanceAnswer(lastAnswer)
     else openPicker()
   }
+  // Stop means stop: end the watch (main cancels any in-flight analysis), silence
+  // the voice, and discard an active recording without transcribing it.
   function onStop(): void {
-    window.mybuildy.voice.stop(); window.mybuildy.voice.resetDedup(); stopRecording()
+    discardRecording()
+    void window.mybuildy.stopCompanion()
+    window.mybuildy.voice.stop(); window.mybuildy.voice.resetDedup()
     setMicState('idle'); setAvatarState('idle')
     setShowAlertBadge(false)
     window.mybuildy.hideGuidance()
@@ -297,7 +322,7 @@ export function CompanionApp(): React.ReactElement {
   // ─── Render ─────────────────────────────────────────────────────────
 
   const watchLabel = sentFlash
-    ? 'Sent'
+    ? 'Pasted'
     : needsSetup
       ? 'Set me up: click the gear'
       : watchedSourceMessage

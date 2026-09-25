@@ -67,6 +67,10 @@ function MainPanel(): React.ReactElement {
 
   const [goalNudgeVisible, setGoalNudgeVisible] = useState(false)
 
+  // Project switched (from any screen): the brainstorm conversation, its
+  // extracted data and the cached analysis belonged to the old project.
+  useEffect(() => window.mybuildy.onProjectSwitched(() => useAppStore.getState().resetForProjectSwitch()), [])
+
   useEffect(() => {
     let cancelled = false
     async function loadPersistedState(): Promise<void> {

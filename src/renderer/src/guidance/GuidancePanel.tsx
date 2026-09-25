@@ -17,7 +17,9 @@ import type {
   GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer, VerificationStatus,
   SendEligibility, MacPermission,
 } from '../types'
-import { MAC_PERMISSION_MESSAGES, permissionForSendFailure } from '../types'
+import {
+  MAC_PERMISSION_MESSAGES, permissionForSendFailure, PASTE_BUTTON_LABEL, PASTE_SUCCESS_MESSAGE, pasteFailureMessage,
+} from '../types'
 import { HandoffCard } from './HandoffCard'
 
 const AUTO_HIDE_MS = 60_000
@@ -51,6 +53,9 @@ export function GuidancePanel(): React.ReactElement | null {
     })
     return () => unsub()
   }, [])
+
+  // Project switched: drop whatever guidance was showing for the old project.
+  useEffect(() => window.mybuildy.onProjectSwitched(() => setPayload(null)), [])
 
   // ─── Auto-hide timer (resets on every interaction / new payload) ────────────
 
@@ -166,6 +171,8 @@ function AnalysisBody({
   const [copied, setCopied] = useState(false)
   const [sendState, setSendState] = useState<'idle' | 'sending' | 'sent'>('idle')
   const [sendError, setSendError] = useState<string | null>(null)
+  // After a successful paste: remind the user to read the prompt and press Enter themselves.
+  const [pastedNote, setPastedNote] = useState(false)
   // Destructive-prompt guard (speed bump, not a sandbox — main computed the
   // verdict): the first click only ARMS the send and shows the reason in red;
   // a second deliberate click actually sends.
@@ -174,16 +181,15 @@ function AnalysisBody({
   const [permissionNeeded, setPermissionNeeded] = useState<MacPermission | null>(null)
 
   const isMac = window.mybuildy.platform === 'darwin'
-  // Windows and macOS send keystrokes; other platforms only copy.
+  // Windows and macOS paste into the terminal; other platforms only copy.
   const canKeySend = window.mybuildy.platform === 'win32' || isMac
-  const pasteKeys = isMac ? 'Cmd+V then Return' : 'Ctrl+V then Enter'
   const agentLabel = agentDisplayName(analysis.agentName)
-  const pasteTarget = agentLabel ?? 'the terminal'
   const guard = analysis.sendGuard ?? null
 
-  // A different displayed prompt (fresh promptId) resets the armed state.
+  // A different displayed prompt (fresh promptId) resets the armed state and notes.
   useEffect(() => {
     setGuardArmed(false)
+    setPastedNote(false)
   }, [analysis.promptId])
 
   async function copyPrompt(): Promise<void> {
@@ -199,39 +205,38 @@ function AnalysisBody({
     }
   }
 
-  // Windows + macOS: send ONLY the prompt id — main resolves the text and decides.
-  // On any failure the text is left/put on the clipboard for a manual paste.
+  // Windows + macOS: send ONLY the prompt id — main resolves the text, pastes it
+  // (never presses Enter) and decides. Main leaves the prompt on the clipboard
+  // itself when a paste could not complete, so nothing is copied from here.
   async function sendPrompt(): Promise<void> {
     if (!analysis.nextPrompt || !analysis.promptId || sendState === 'sending') return
     setSendState('sending')
     setSendError(null)
+    setPastedNote(false)
     setPermissionNeeded(null)
     try {
       const result = await window.mybuildy.sendPromptToWindow(analysis.promptId)
       if (result.sent) {
         setSendState('sent')
+        setPastedNote(true)
         setTimeout(() => setSendState('idle'), 2000)
         return
       }
-      console.warn('[GuidancePanel] Send failed:', result.reason)
+      console.warn('[GuidancePanel] Paste did not happen:', result.reason)
       setSendState('idle')
       const permission = permissionForSendFailure(result.reason)
       if (permission) {
-        // Main already left the SANITIZED single-line prompt on the clipboard
-        // (the message tells the user to paste it) — don't overwrite it with
-        // the multi-line display text. Stays until the next send attempt.
-        setPermissionNeeded(permission)
+        setPermissionNeeded(permission) // stays until the next attempt
         return
       }
-      await window.mybuildy.copyText(analysis.nextPrompt)
-      setSendError(`Copied instead. Press ${pasteKeys} in ${pasteTarget}.`)
-      setTimeout(() => setSendError(null), 6000)
+      setSendError(pasteFailureMessage(result, isMac))
+      setTimeout(() => setSendError(null), 9000)
     } catch (e) {
-      console.warn('[GuidancePanel] Send failed:', e)
+      console.warn('[GuidancePanel] Paste failed:', e)
       try { await window.mybuildy.copyText(analysis.nextPrompt) } catch { /* clipboard best-effort */ }
       setSendState('idle')
-      setSendError(`Copied instead. Press ${pasteKeys} in ${pasteTarget}.`)
-      setTimeout(() => setSendError(null), 6000)
+      setSendError(pasteFailureMessage({ sent: false, reason: 'unknown' }, isMac))
+      setTimeout(() => setSendError(null), 9000)
     }
   }
 
@@ -256,13 +261,11 @@ function AnalysisBody({
     }
   }
 
-  // Label follows the model-reported agent: "Send to Claude Code" / "Send to
-  // Codex" / plain "Send" when the agent is unknown ('other').
-  const sendActionLabel = agentLabel ? `Send to ${agentLabel}` : 'Send'
+  const sendActionLabel = PASTE_BUTTON_LABEL
   const sendLabel = !canKeySend
     ? (sendState === 'sent' ? 'Copied!' : agentLabel ? `Copy for ${agentLabel}` : 'Copy prompt')
-    : sendState === 'sending' ? 'Sending…'
-    : sendState === 'sent' ? 'Sent'
+    : sendState === 'sending' ? 'Pasting…'
+    : sendState === 'sent' ? 'Pasted'
     : guard && !guardArmed ? 'Review first'
     : sendActionLabel
   const sendDisabled = canKeySend
@@ -324,9 +327,10 @@ function AnalysisBody({
           <div style={S.promptText} data-selectable>{analysis.nextPrompt}</div>
           {canKeySend && guard && guardArmed && (
             <div style={S.guardWarning}>
-              {guard.reason} Click {sendActionLabel} again to send anyway.
+              {guard.reason} Click {sendActionLabel} again to paste it anyway.
             </div>
           )}
+          {pastedNote && <div style={S.pastedNote} role="status">{PASTE_SUCCESS_MESSAGE}</div>}
           {sendError && <div style={S.sendError}>{sendError}</div>}
           {permissionNeeded && <PermissionNotice permission={permissionNeeded} />}
         </div>
@@ -686,6 +690,13 @@ const S = {
     fontSize: 11,
     fontStyle: 'italic' as const,
     color: '#FBBF24',
+    lineHeight: 1.5,
+  },
+  // After a successful paste: the user runs it themselves.
+  pastedNote: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#34D399',
     lineHeight: 1.5,
   },
   // macOS permission notice (amber) with its Open System Settings button.

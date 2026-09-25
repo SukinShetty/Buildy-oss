@@ -1,10 +1,11 @@
 // prompt-sender.ts — main process
 // Executes an approved "Send to Claude Code": puts the sanitized prompt on the
 // clipboard, then runs a FIXED script (see prompt-sender-core.ts) that brings
-// the watched window forward and sends paste + Enter:
-//   - Windows: PowerShell (AppActivate + SendKeys Ctrl+V, Enter)
+// the watched window forward and pastes (it never presses Enter — the user
+// reads the prompt and runs it):
+//   - Windows: PowerShell (AppActivate, foreground check, SendKeys Ctrl+V)
 //   - macOS:   osascript (activate the owning app, verify it is frontmost,
-//              then System Events Cmd+V, Return)
+//              then System Events Cmd+V)
 // The prompt text and the target are never part of the command string — text
 // travels via the clipboard, the target via MYBUILDY_TARGET_* environment
 // variables.
@@ -58,7 +59,11 @@ export async function isWatchedWindowPresent(watchedId: string | null): Promise<
  * failure the sanitized text is left on the clipboard so the user can paste
  * manually. Resolves, never rejects.
  */
-export async function executeSend(promptText: string, target: SendTarget): Promise<SendPromptResult> {
+export async function executeSend(
+  promptText: string,
+  target: SendTarget,
+  bindingChanged?: () => string | null
+): Promise<SendPromptResult> {
   if (sendInFlight) {
     console.log('[Send] rejected: a send is already in flight')
     return { sent: false, reason: 'not_eligible' }
@@ -78,6 +83,7 @@ export async function executeSend(promptText: string, target: SendTarget): Promi
       },
       runScript: runSendScript,
       log: (message) => console.log(message),
+      bindingChanged,
     })
   } catch (error) {
     console.error('[Send] failed:', error)

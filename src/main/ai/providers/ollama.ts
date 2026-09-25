@@ -3,6 +3,9 @@
 // Ollama runs locally — no API key needed, free, private.
 
 import type { WebContents } from 'electron'
+import { redactKnownSecrets } from '../../secure-store'
+import { providerFetch } from '../fetch-with-timeout'
+import { providerHttpError } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -64,8 +67,7 @@ export class OllamaProvider implements AIProvider {
     }, true)
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Ollama error ${response.status}: ${errorText}`)
+      throw await providerHttpError(`Ollama`, response)
     }
 
     const responseJson = (await response.json()) as { message?: { content?: string } }
@@ -97,15 +99,14 @@ export class OllamaProvider implements AIProvider {
     const baseUrl = this.resolveBaseUrl(settings)
 
     try {
-      const response = await fetch(`${baseUrl}/api/chat`, {
+      const response = await providerFetch(`${baseUrl}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Ollama error ${response.status}: ${errorText}`)
+        throw await providerHttpError(`Ollama`, response)
       }
 
       if (!response.body) throw new Error('Ollama returned no response body')
@@ -163,7 +164,7 @@ export class OllamaProvider implements AIProvider {
       }
     } catch (error) {
       if (!senderWebContents.isDestroyed()) {
-        senderWebContents.send(IPC.BRAINSTORM_ERROR, String(error))
+        senderWebContents.send(IPC.BRAINSTORM_ERROR, redactKnownSecrets(String(error)))
       }
     }
   }

@@ -191,13 +191,27 @@ describe('buildSendCommand — no user content in the command string', () => {
     expect(POWERSHELL_SEND_SCRIPT).toContain('$env:MYBUILDY_TARGET_TITLE')
   })
 
-  it('uses the fixed powershell invocation and fixed keystrokes only', () => {
+  it('uses the fixed powershell invocation and pastes only — never presses Enter', () => {
     const cmd = buildSendCommand(prompt, title)
     expect(cmd.exe).toBe('powershell.exe')
     expect(cmd.args.slice(0, 3)).toEqual(['-NoProfile', '-NonInteractive', '-Command'])
     expect(cmd.args[3]).toBe(POWERSHELL_SEND_SCRIPT)
     expect(POWERSHELL_SEND_SCRIPT).toContain("SendWait('^v')")
-    expect(POWERSHELL_SEND_SCRIPT).toContain("SendWait('{ENTER}')")
+    expect(POWERSHELL_SEND_SCRIPT).not.toMatch(/ENTER|~|\{RETURN\}/i)
+  })
+
+  it('checks the foreground window IMMEDIATELY before the paste keystroke', () => {
+    const s = POWERSHELL_SEND_SCRIPT
+    const loadForms = s.indexOf('Add-Type -AssemblyName System.Windows.Forms')
+    const activate = s.indexOf('AppActivate(')
+    const check = s.lastIndexOf('exit 2')
+    const paste = s.indexOf("SendWait('^v')")
+    // The slow assembly load happens BEFORE activation, not between the check and the paste…
+    expect(loadForms).toBeGreaterThan(-1)
+    expect(loadForms).toBeLessThan(activate)
+    // …and the only thing between the last foreground check and the paste is a line break.
+    expect(check).toBeLessThan(paste)
+    expect(s.slice(check + 'exit 2 }'.length, paste).replace(/\[System\.Windows\.Forms\.SendKeys\]::$/, '').trim()).toBe('')
   })
 })
 
@@ -238,13 +252,15 @@ describe('buildMacSendCommand — no user content in the command string', () => 
     expect(MAC_SEND_SCRIPT).toContain("'MYBUILDY_TARGET_TITLE'")
   })
 
-  it('runs the fixed osascript program: verify frontmost, then Cmd+V and Return only', () => {
+  it('runs the fixed osascript program: verify frontmost, then Cmd+V only — never Return', () => {
     const cmd = buildMacSendCommand(prompt, target)
     expect(cmd.exe).toBe('/usr/bin/osascript')
     expect(cmd.args).toEqual(['-l', 'JavaScript', '-e', MAC_SEND_SCRIPT])
     expect(MAC_SEND_SCRIPT).toContain('whose({ frontmost: true })')
     expect(MAC_SEND_SCRIPT).toContain("keystroke('v', { using: 'command down' })")
-    expect(MAC_SEND_SCRIPT).toContain('keyCode(36)') // Return
+    expect(MAC_SEND_SCRIPT).not.toContain('keyCode(36)') // Return
+    expect(MAC_SEND_SCRIPT).not.toContain('keyCode(76)') // keypad Enter
+    expect(MAC_SEND_SCRIPT).not.toMatch(/keystroke\(\s*['"]\\r/)
     // The not-frontmost exit comes BEFORE any keystroke.
     expect(MAC_SEND_SCRIPT.indexOf('$.exit(2)')).toBeLessThan(MAC_SEND_SCRIPT.indexOf('keystroke('))
   })
@@ -364,4 +380,75 @@ describe('performSend', () => {
     expect(calls.clipboard).toHaveLength(0)
     expect(calls.commands).toHaveLength(0)
   })
+
+  it('aborts right before the paste keystroke when the click-time binding no longer holds', async () => {
+    for (const platform of ['win32', 'darwin']) {
+      const { deps, calls } = fakeDeps({
+        platform,
+        bindingChanged: () => 'The project changed before the prompt could be pasted.',
+      })
+      const result = await performSend(PROMPT, macTarget, deps)
+      expect(result).toEqual({
+        sent: false,
+        reason: 'stale',
+        detail: 'The project changed before the prompt could be pasted.',
+      })
+      expect(calls.commands).toHaveLength(0) // no keystroke script ran
+      expect(calls.logs.some((l) => l.startsWith('[Send] aborted'))).toBe(true)
+    }
+  })
+
+  it('checks the binding AFTER the clipboard write and permission check, as the last step before the script', async () => {
+    const order: string[] = []
+    const { deps } = fakeDeps({
+      writeClipboard: () => { order.push('clipboard') },
+      isAccessibilityTrusted: () => { order.push('trust'); return true },
+      bindingChanged: () => { order.push('binding'); return null },
+      runScript: async () => { order.push('script'); return 0 },
+    })
+    await performSend(PROMPT, macTarget, deps)
+    expect(order).toEqual(['clipboard', 'trust', 'binding', 'script'])
+  })
+})
+
+// ─── Destructive guard: Windows shell and disk tools ─────────────────────────
+
+describe('detectDestructivePrompt — rd / rmdir / del / Remove-Item / format / diskpart', () => {
+  const positives = [
+    'rd /s build',
+    'rd /s /q build',
+    'RD /Q /S C:\\temp',
+    'rmdir /s node_modules',
+    'rmdir /s /q dist',
+    'del /f secrets.txt',
+    'del /f /q *.log',
+    'del /s /q *.log',
+    'del /f /s /q C:\\temp',
+    'Remove-Item build -Recurse',
+    'Remove-Item build -Force',
+    'Remove-Item -Force -Recurse build',
+    'remove-item .\\dist -force',
+    'format d:',
+    'Just format C: and start fresh',
+    'open diskpart and clean the disk',
+    'diskpart',
+  ]
+  for (const p of positives) {
+    it(`flags: ${p}`, () => {
+      expect(detectDestructivePrompt(p)).not.toBeNull()
+    })
+  }
+
+  const normal = [
+    'Add a search box to the header and write a test for it',
+    'Remove the unused import from app.tsx',
+    'Format the date column as DD MMM YYYY',
+    'Delete the old TODO comment in utils.ts',
+    'Create a README section describing the disk usage chart',
+  ]
+  for (const p of normal) {
+    it(`does not flag a normal build prompt: ${p}`, () => {
+      expect(detectDestructivePrompt(p)).toBeNull()
+    })
+  }
 })

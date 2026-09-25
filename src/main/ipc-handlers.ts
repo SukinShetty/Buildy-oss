@@ -2,11 +2,15 @@
 // All IPC channels registered in one place.
 // Every channel name is defined in types.ts (IPC constant) to prevent typos.
 
-import { app, ipcMain, clipboard, dialog, shell, systemPreferences } from 'electron'
+import { app, ipcMain, clipboard, dialog, shell, systemPreferences, webContents } from 'electron'
+import { originOf } from './provider-origins'
+import { providerHttpError } from './ai/provider-errors'
+import { providerFetch, withCancellation, CancelledError } from './ai/fetch-with-timeout'
+import { guardedSender } from './project-guard'
 import type { BrowserWindow } from 'electron'
-import { IPC, CHOOSE_MODEL_MESSAGE, MAC_PERMISSION_MESSAGES, MAC_BLANK_CAPTURE_MESSAGE } from '../renderer/src/types'
+import { IPC, CHOOSE_MODEL_MESSAGE, CAPTURE_NOTICE_REQUIRED_MESSAGE, MAC_PERMISSION_MESSAGES, MAC_BLANK_CAPTURE_MESSAGE } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
-import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId, setGuidanceFocusable } from './guidance-window'
+import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId, setGuidanceFocusable, clearGuidanceCache } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
 import { listOpenWindows, captureWindowForAnalysis, probeWatchedWindowFrame } from './capturer'
@@ -15,7 +19,7 @@ import {
   loadSettings, loadNonSecretSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
   deleteAllMyBuildyData,
 } from './memory'
-import { setSecret } from './secure-store'
+import { setSecret, redactKnownSecrets, hasSecret, deleteSecret, getCustomKeyOrigin } from './secure-store'
 import { debugLog, debugError } from './debug-log'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
@@ -62,6 +66,32 @@ export function registerIpcHandlers(
   }
   function invalidateSettingsCache(): void { cachedSettings = null; lastSettingsLoad = 0 }
 
+  /**
+   * The one-time capture disclosure is enforced HERE, before every capture or
+   * upload path (watching, the Guidance analysis flow, manual analysis, spoken
+   * questions) — regardless of what any renderer does or skips.
+   */
+  async function captureNoticeAccepted(channel: string): Promise<boolean> {
+    const accepted = (await loadNonSecretSettings()).captureNoticeAccepted === true
+    if (!accepted) console.warn(`[Privacy] ${channel} refused — the capture notice has not been accepted`)
+    return accepted
+  }
+
+  // Cancels in-flight per-project work (a streaming brainstorm) on project switch.
+  let projectSwitchAbort = new AbortController()
+
+  /** After ANY project switch: cancel old-project work and let every window drop its state. */
+  function onProjectSwitched(): void {
+    projectSwitchAbort.abort()
+    projectSwitchAbort = new AbortController()
+    clearGuidanceCache()
+    for (const win of [getMainWindow(), getCompanionWindow()]) {
+      if (win && !win.isDestroyed()) win.webContents.send(IPC.PROJECTS_SWITCHED)
+    }
+    const guidanceId = getGuidanceWebContentsId()
+    if (guidanceId !== null) webContents.fromId(guidanceId)?.send(IPC.PROJECTS_SWITCHED)
+  }
+
   // Validate renderer-supplied non-secret settings + base-URL allowlist, then
   // resolve the (main-owned) secrets. Renderer keys are never trusted here.
   function resolveValidatedSettings(channel: string, input: unknown): AppSettings {
@@ -100,6 +130,7 @@ export function registerIpcHandlers(
     try {
       const sid = rawSourceId == null ? null : parseInput(sourceIdSchema, 'CAPTURE_WINDOW', rawSourceId)
       const ename = rawExpectedName == null ? null : parseInput(windowNameSchema, 'CAPTURE_WINDOW', rawExpectedName)
+      if (!(await captureNoticeAccepted('CAPTURE_WINDOW'))) throw new Error(CAPTURE_NOTICE_REQUIRED_MESSAGE)
       return await captureWindowForAnalysis(sid, ename)
     } catch (error) {
       console.error('[IPC] CAPTURE_WINDOW error:', error)
@@ -114,6 +145,7 @@ export function registerIpcHandlers(
       const capture = parseInput(captureResultSchema, 'ANALYZE', captureRaw)
       const project = parseInput(projectMemorySchema, 'ANALYZE', projectRaw)
       const settings = resolveValidatedSettings('ANALYZE', settingsRaw)
+      if (!(await captureNoticeAccepted('ANALYZE'))) throw new Error(CAPTURE_NOTICE_REQUIRED_MESSAGE)
       assertModelUsable(settings)
       const provider = getProvider(settings.provider)
       return await provider.analyzeScreen(capture as never, project as never, settings)
@@ -132,10 +164,16 @@ export function registerIpcHandlers(
       const settings = resolveValidatedSettings('BRAINSTORM_START', settingsRaw)
       assertModelUsable(settings)
       const provider = getProvider(settings.provider)
-      await provider.streamBrainstorm(getMainWindow().webContents, userMessage, history as never, settings)
+      // Tag the reply with the project it was asked in: after a switch, late
+      // chunks are dropped and the request itself is cancelled.
+      const projectId = getActiveProject()?.id ?? null
+      const target = guardedSender(getMainWindow().webContents, projectId, () => getActiveProject()?.id ?? null)
+      await withCancellation(projectSwitchAbort.signal, () =>
+        provider.streamBrainstorm(target as never, userMessage, history as never, settings))
     } catch (error) {
+      if (error instanceof CancelledError) return
       console.error('[IPC] BRAINSTORM_START error:', error)
-      getMainWindow().webContents.send(IPC.BRAINSTORM_ERROR, String(error))
+      getMainWindow().webContents.send(IPC.BRAINSTORM_ERROR, redactKnownSecrets(String(error)))
     }
   })
 
@@ -156,7 +194,7 @@ export function registerIpcHandlers(
       const settings = resolveValidatedSettings('TEST_CONNECTION', settingsRaw)
       return await testProviderConnection(settings)
     } catch (error) {
-      return { success: false, message: String(error), latencyMs: null, visionPassed: false }
+      return { success: false, message: redactKnownSecrets(String(error)), latencyMs: null, visionPassed: false }
     }
   })
 
@@ -177,7 +215,7 @@ export function registerIpcHandlers(
       return await fetchModelsForProvider(settings)
     } catch (error) {
       console.error('[IPC] LIST_MODELS error:', error)
-      return { models: [], error: String(error) }
+      return { models: [], error: redactKnownSecrets(String(error)) }
     }
   })
 
@@ -268,7 +306,9 @@ export function registerIpcHandlers(
     try {
       assertFromMainWindow(event, mainWcId(), 'PROJECTS_CREATE')
       const input = parseInput(projectCreateSchema, 'PROJECTS_CREATE', inputRaw)
-      return await createProjectAndSwitch(input)
+      const created = await createProjectAndSwitch(input)
+      onProjectSwitched()
+      return created
     } catch (error) {
       console.error('[IPC] PROJECTS_CREATE error:', error)
       throw error
@@ -290,7 +330,9 @@ export function registerIpcHandlers(
     try {
       assertFromMainWindow(event, mainWcId(), 'PROJECTS_SWITCH')
       const id = parseInput(projectIdSchema, 'PROJECTS_SWITCH', idRaw)
-      return await switchProject(id)
+      const switched = await switchProject(id)
+      onProjectSwitched()
+      return switched
     } catch (error) {
       console.error('[IPC] PROJECTS_SWITCH error:', error)
       throw error
@@ -331,6 +373,13 @@ export function registerIpcHandlers(
         throw new Error('Disallowed base URL on SAVE_SETTINGS')
       }
       await saveNonSecretSettings(nonSecret)
+      // A custom endpoint moved to a different origin: its key is not carried
+      // over — the user enters it again for the new endpoint.
+      if (nonSecret.provider === 'custom' && hasSecret('customApiKey') &&
+          getCustomKeyOrigin() !== originOf(nonSecret.baseUrl)) {
+        deleteSecret('customApiKey')
+        console.log('[SecureStore] custom endpoint changed — its stored key was cleared')
+      }
       invalidateSettingsCache()
     } catch (error) {
       console.error('[IPC] SAVE_SETTINGS error:', error)
@@ -375,7 +424,9 @@ export function registerIpcHandlers(
     try {
       assertFromMainWindow(event, mainWcId(), 'SET_SECRET')
       const { name, value } = parseInput(setSecretSchema, 'SET_SECRET', raw)
-      setSecret(name, value) // never logged
+      // A custom key is bound to the endpoint origin saved just before it.
+      const boundOrigin = name === 'customApiKey' ? originOf((await loadNonSecretSettings()).baseUrl) : null
+      setSecret(name, value, boundOrigin) // never logged
       invalidateSettingsCache()
     } catch (error) {
       console.error('[IPC] SET_SECRET error:', error)
@@ -420,7 +471,15 @@ export function registerIpcHandlers(
           })
           return
         }
-        // Gate 3 (macOS): Screen Recording. Without it macOS returns captures
+        // Gate 3: the one-time capture disclosure — enforced in main, before
+        // any capture (including the macOS frame probe below).
+        if (!(await captureNoticeAccepted('SELECT_WATCH_SOURCE'))) {
+          companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+            windowName: null, message: CAPTURE_NOTICE_REQUIRED_MESSAGE,
+          })
+          return
+        }
+        // Gate 4 (macOS): Screen Recording. Without it macOS returns captures
         // with nothing in them, so watching would analyse blank frames forever.
         // Check the reported status, then one real frame of the chosen window.
         if (process.platform === 'darwin') {
@@ -455,8 +514,15 @@ export function registerIpcHandlers(
     }
   )
 
+  // Stop: end the watch, cancel any in-flight analysis (stopAnalysisLoop aborts
+  // the session's provider requests) and tell the mascot nothing is watched.
   ipcMain.handle(IPC.COMPANION_STOP, async () => {
     stopAnalysisLoop()
+    hideGuidanceWindow()
+    const companion = getCompanionWindow()
+    if (companion && !companion.isDestroyed()) {
+      companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, { windowName: null, message: null })
+    }
   })
 
   ipcMain.handle(IPC.COMPANION_PAUSE, async () => {
@@ -477,6 +543,10 @@ export function registerIpcHandlers(
     if (!companion) return
     try {
       const question = parseInput(shortText, 'ASK_QUESTION', questionRaw)
+      if (!(await captureNoticeAccepted('ASK_QUESTION'))) {
+        companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, { windowName: null, message: CAPTURE_NOTICE_REQUIRED_MESSAGE })
+        return
+      }
       const settings = await getFreshSettings()
       await handleQuestion(companion, question, settings)
     } catch (error) {
@@ -487,11 +557,14 @@ export function registerIpcHandlers(
   // Transcribe audio via ElevenLabs Speech-to-Text
   ipcMain.handle(IPC.TRANSCRIBE_AUDIO, async (_event, audioBuffer: Buffer) => {
     try {
+      if (!(await captureNoticeAccepted('TRANSCRIBE_AUDIO'))) {
+        return { success: false, text: '', error: CAPTURE_NOTICE_REQUIRED_MESSAGE }
+      }
       const settings = await getFreshSettings()
       return await transcribeWithElevenLabs(audioBuffer, settings)
     } catch (error) {
       console.error('[IPC] TRANSCRIBE_AUDIO error:', error)
-      return { success: false, text: '', error: String(error) }
+      return { success: false, text: '', error: redactKnownSecrets(String(error)) }
     }
   })
 
@@ -640,31 +713,21 @@ async function transcribeWithElevenLabs(
     console.log('[ElevenLabs STT] Sending request with FormData...')
     const startTime = Date.now()
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30_000)
-
-    let response: Response
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'xi-api-key': apiKey,
-        },
-        body: formData,
-        signal: controller.signal,
-      })
-    } finally {
-      clearTimeout(timeout)
-    }
+    const response = await providerFetch(url, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+      },
+      body: formData,
+    }, { timeoutMs: 30_000 })
 
     const elapsed = Date.now() - startTime
     console.log(`[ElevenLabs STT] Response: ${response.status} in ${elapsed}ms`)
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '')
-      console.error(`[ElevenLabs STT] API error ${response.status}`)
-      debugError(`[ElevenLabs STT] error body: ${errText.slice(0, 300)}`)
-      return { success: false, text: '', error: `ElevenLabs STT error ${response.status}: ${errText.slice(0, 120)}` }
+      const err = await providerHttpError('ElevenLabs speech-to-text', response)
+      console.error(`[ElevenLabs STT] API error HTTP ${response.status} (${err.kind})`)
+      return { success: false, text: '', error: err.message }
     }
 
     const json = await response.json()

@@ -12,6 +12,8 @@
 //   - use_speaker_boost: true
 
 import { fetchWithTimeout } from './fetch-with-timeout'
+import { redactKnownSecrets } from '../secure-store'
+import { providerHttpError } from './provider-errors'
 import { debugLog, debugError } from '../debug-log'
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1'
@@ -94,14 +96,9 @@ export async function synthesizeSpeech(
     )
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => '')
-      console.error(`[ElevenLabs] TTS failed: ${response.status}`)
-      debugError(`[ElevenLabs] error body: ${errorBody.slice(0, 200)}`)
-      return {
-        success: false,
-        audioBase64: null,
-        error: `ElevenLabs error ${response.status}: ${errorBody.slice(0, 200)}`,
-      }
+      const err = await providerHttpError('ElevenLabs', response)
+      console.error(`[ElevenLabs] TTS failed: HTTP ${response.status} (${err.kind})`)
+      return { success: false, audioBase64: null, error: err.message }
     }
 
     const audioBuffer = await response.arrayBuffer()
@@ -114,7 +111,7 @@ export async function synthesizeSpeech(
     return {
       success: false,
       audioBase64: null,
-      error: `ElevenLabs TTS failed: ${String(error).slice(0, 200)}`,
+      error: `ElevenLabs TTS failed: ${redactKnownSecrets(String(error)).slice(0, 200)}`,
     }
   }
 }

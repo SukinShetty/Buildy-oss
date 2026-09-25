@@ -17,6 +17,7 @@ import * as fs from 'fs'
 import { join } from 'path'
 import type { ProviderType, SecretName } from '../renderer/src/types'
 import { NO_SECURE_STORAGE_MESSAGE } from '../renderer/src/types'
+import { redactSecrets } from './ai/provider-errors'
 
 export type { SecretName }
 
@@ -94,14 +95,37 @@ export function getSecret(key: SecretName): string {
   return load()[key] ?? ''
 }
 
-export function setSecret(key: SecretName, value: string): void {
+// The custom provider's key is bound to the endpoint origin it was entered for:
+// it is only ever sent to that origin (see provider-origins.customKeyAllowed).
+const CUSTOM_KEY_ORIGIN = 'customApiKeyOrigin'
+
+/** Bind an already-stored custom key to an origin (one-time upgrade; see provider-origins). */
+export function bindCustomKeyOrigin(origin: string): void {
+  const map = { ...load() }
+  if (!map.customApiKey || map[CUSTOM_KEY_ORIGIN]) return
+  map[CUSTOM_KEY_ORIGIN] = origin
+  persist(map)
+  console.log('[SecureStore] existing custom key bound to its saved endpoint')
+}
+
+/** Origin the stored custom key was entered for, or null. */
+export function getCustomKeyOrigin(): string | null {
+  return load()[CUSTOM_KEY_ORIGIN] || null
+}
+
+export function setSecret(key: SecretName, value: string, boundOrigin?: string | null): void {
   // Copy before mutating: if persist() refuses (no OS encryption), the cached
   // map must NOT already contain the new value (hasSecret would lie to the UI).
   const map = { ...load() }
   if (value && value.trim()) {
     map[key] = value.trim()
+    if (key === 'customApiKey') {
+      if (boundOrigin) map[CUSTOM_KEY_ORIGIN] = boundOrigin
+      else delete map[CUSTOM_KEY_ORIGIN]
+    }
   } else {
     delete map[key]
+    if (key === 'customApiKey') delete map[CUSTOM_KEY_ORIGIN]
   }
   persist(map)
   // NOTE: never log the value.
@@ -175,4 +199,18 @@ export function migratePlaintextSecrets(settingsFilePath: string): void {
   if (migrated > 0) {
     console.log(`[SecureStore] migrated ${migrated} plaintext key${migrated === 1 ? '' : 's'} to encrypted storage`)
   }
+}
+
+/**
+ * Redact every saved key value (and key-shaped strings) from text that is about
+ * to be logged or sent to a window — a second safeguard behind safe provider errors.
+ */
+export function redactKnownSecrets(text: string): string {
+  let known: string[] = []
+  try {
+    known = SECRET_NAMES.map((name) => getSecret(name)).filter(Boolean)
+  } catch {
+    // secure storage unavailable: pattern-based redaction still applies
+  }
+  return redactSecrets(text, known)
 }

@@ -3,6 +3,9 @@
 // Each gets its own ProviderInfo but shares the same request/response logic.
 
 import type { WebContents } from 'electron'
+import { redactKnownSecrets } from '../../secure-store'
+import { providerFetch } from '../fetch-with-timeout'
+import { providerHttpError } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -150,8 +153,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       }, isLocal)
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`${this.info.displayName} API error ${response.status}: ${errorText}`)
+        throw await providerHttpError(`${this.info.displayName}`, response)
       }
 
       if (!response.body) throw new Error(`${this.info.displayName} returned no response body`)
@@ -195,7 +197,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       }
     } catch (error) {
       if (!senderWebContents.isDestroyed()) {
-        senderWebContents.send(IPC.BRAINSTORM_ERROR, String(error))
+        senderWebContents.send(IPC.BRAINSTORM_ERROR, redactKnownSecrets(String(error)))
       }
     }
   }
@@ -209,15 +211,14 @@ export class OpenAICompatibleProvider implements AIProvider {
     const baseUrl = this.resolveBaseUrl(settings)
     const headers = this.buildHeaders(settings)
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await providerFetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`${this.info.displayName} API error ${response.status}: ${errorText}`)
+      throw await providerHttpError(`${this.info.displayName}`, response)
     }
 
     const responseJson = (await response.json()) as {

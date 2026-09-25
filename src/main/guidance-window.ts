@@ -158,6 +158,13 @@ export function showLastGuidance(): void {
   }
 }
 
+/** Forget the cached guidance (project switch): "show last guidance" must not resurface it. */
+export function clearGuidanceCache(): void {
+  lastGuidancePayload = null
+  pendingPayload = null
+  hideGuidanceWindow()
+}
+
 export function hideGuidanceWindow(): void {
   if (!guidanceRef || guidanceRef.isDestroyed()) return
   // Safety: never leave the window focusable across a hide (see setGuidanceFocusable).

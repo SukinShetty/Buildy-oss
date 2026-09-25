@@ -342,3 +342,32 @@ export async function resetMemory(): Promise<void> {
 function dedupe(items: string[]): string[] {
   return [...new Set(items.filter((s) => s && s.trim()))]
 }
+
+// ─── Scoped writers ───────────────────────────────────────────────────────────
+// A long operation (an analysis cycle, a verifier run) captures memoryScope()
+// when it STARTS and writes through writerFor(scope): if the user switches
+// project before the write happens, the write is rejected instead of landing in
+// the new project.
+
+/** Identifies the active project store; capture it when an operation starts. */
+export function memoryScope(): string {
+  return projectPath
+}
+
+export function writerFor(scope: string) {
+  const guard = <A extends unknown[]>(fn: (...args: A) => Promise<void>) =>
+    async (...args: A): Promise<void> => {
+      if (scope !== projectPath) {
+        console.warn('[Nemp] write rejected — the project changed after this operation started')
+        return
+      }
+      await fn(...args)
+    }
+  return {
+    recordObservation: guard(recordObservation),
+    recordCompletion: guard(recordCompletion),
+    recordBlocker: guard(recordBlocker),
+    recordDecision: guard(recordDecision),
+    recordPattern: guard(recordPattern),
+  }
+}

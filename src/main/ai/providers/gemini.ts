@@ -2,6 +2,9 @@
 // Uses the Gemini REST API directly (not OpenAI-compatible mode).
 
 import type { WebContents } from 'electron'
+import { redactKnownSecrets } from '../../secure-store'
+import { providerFetch } from '../fetch-with-timeout'
+import { providerHttpError } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -85,15 +88,14 @@ export class GeminiProvider implements AIProvider {
     const url = `${baseUrl}/models/${settings.modelId}:streamGenerateContent?alt=sse`
 
     try {
-      const response = await fetch(url, {
+      const response = await providerFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
         body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Gemini API error ${response.status}: ${errorText}`)
+        throw await providerHttpError(`Gemini`, response)
       }
 
       if (!response.body) throw new Error('Gemini API returned no response body')
@@ -137,7 +139,7 @@ export class GeminiProvider implements AIProvider {
       }
     } catch (error) {
       if (!senderWebContents.isDestroyed()) {
-        senderWebContents.send(IPC.BRAINSTORM_ERROR, String(error))
+        senderWebContents.send(IPC.BRAINSTORM_ERROR, redactKnownSecrets(String(error)))
       }
     }
   }
@@ -159,8 +161,7 @@ export class GeminiProvider implements AIProvider {
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Gemini API error ${response.status}: ${errorText}`)
+      throw await providerHttpError(`Gemini`, response)
     }
 
     const responseJson = (await response.json()) as {

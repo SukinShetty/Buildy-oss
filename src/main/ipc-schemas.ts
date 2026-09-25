@@ -5,6 +5,7 @@
 // can't redirect cloud API calls (with the user's key) to an attacker host.
 
 import { z } from 'zod'
+import { isAllowedProviderUrl } from './provider-origins'
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron'
 
 // ─── Validation helper ──────────────────────────────────────────────────────────
@@ -58,50 +59,13 @@ export function assertFromGuidanceWindow(
 
 // ─── Provider URL allowlist ───────────────────────────────────────────────────────
 
-const ALLOWED_CLOUD_HOSTS = new Set([
-  'api.anthropic.com',
-  'api.openai.com',
-  'openrouter.ai',
-  'generativelanguage.googleapis.com',
-  'api.elevenlabs.io',
-])
-
-function hostnameOf(url: string): string {
-  try {
-    return new URL(url).hostname.toLowerCase()
-  } catch {
-    return ''
-  }
-}
-
-function isLocalHost(host: string): boolean {
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.localhost')
-}
-
 /**
- * Validate a provider base URL. Empty → provider default (always fine). Cloud
- * providers may only target allowlisted hosts; local providers must be localhost;
- * a custom base URL is allowed ONLY for the explicit "custom" provider.
+ * Validate a provider base URL (see provider-origins.ts). Empty → provider
+ * default. Cloud providers: exactly their own HTTPS origin. Local providers:
+ * this computer. Custom: any http(s) endpoint.
  */
 export function isAllowedBaseUrl(provider: string, baseUrl: string): boolean {
-  const b = (baseUrl || '').trim()
-  if (!b) return true
-  const host = hostnameOf(b)
-  if (!host) return false
-  switch (provider) {
-    case 'anthropic':
-    case 'openai':
-    case 'gemini':
-    case 'openrouter':
-      return ALLOWED_CLOUD_HOSTS.has(host)
-    case 'ollama':
-    case 'lmstudio':
-      return isLocalHost(host)
-    case 'custom':
-      return b.startsWith('http://') || b.startsWith('https://')
-    default:
-      return false
-  }
+  return isAllowedProviderUrl(provider, baseUrl)
 }
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────────

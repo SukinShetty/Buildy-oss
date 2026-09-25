@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import type { ProviderType, NonSecretSettings, SecretName, ModelChoice } from '../types'
-import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX, NO_SECURE_STORAGE_MESSAGE } from '../types'
+import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX, NO_SECURE_STORAGE_MESSAGE, dataDestinationNote } from '../types'
 
 // IPC errors arrive wrapped ("Error invoking remote method ...: Error: <msg>").
 // Show the clean, user-facing message when we recognise it.
@@ -80,12 +80,12 @@ const RECOMMENDED_PROVIDERS: ProviderMeta[] = [
 const ADVANCED_PROVIDERS: ProviderMeta[] = [
   {
     type: 'ollama', displayName: 'Ollama',
-    description: 'Local models via Ollama. Free and private.',
+    description: 'Local models via Ollama. Free, runs on this computer.',
     needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:11434',
   },
   {
     type: 'lmstudio', displayName: 'LM Studio',
-    description: 'Local models via LM Studio. Free and private.',
+    description: 'Local models via LM Studio. Free, runs on this computer.',
     needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:1234/v1',
   },
   {
@@ -620,12 +620,14 @@ export function SettingsScreen(): React.ReactElement {
         <div style={styles.infoSection}>
           <div style={styles.infoTitle}>About MyBuildy</div>
           <div style={styles.infoText}>
-            MyBuildy — multi-provider builder buddy for Claude Code.
+            MyBuildy — a builder buddy for AI coding agents in your terminal.
           </div>
           <div style={styles.infoText}>
-            {isLocalProvider(provider)
-              ? 'Using a local model — your data never leaves your machine.'
-              : 'Your API key is encrypted on this device (OS keychain) and is never exposed to the app UI.'}
+            {dataDestinationNote({
+              provider,
+              baseUrl,
+              hasElevenLabsKey: !!settings.secretFlags?.elevenLabsApiKey,
+            })}
           </div>
         </div>
 

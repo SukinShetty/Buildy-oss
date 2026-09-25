@@ -8,6 +8,7 @@
 // Keys always go in headers, never the URL.
 
 import type { AppSettings } from '../../renderer/src/types'
+import { providerHttpError } from './provider-errors'
 import { getProviderInfo } from './provider-registry'
 import { fetchWithTimeout } from './fetch-with-timeout'
 
@@ -62,7 +63,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
       },
       body: JSON.stringify(body),
     }, isLocal)
-    if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    if (!res.ok) throw await providerHttpError(`Anthropic`, res)
     const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> }
     return json.content?.find((b) => b.type === 'text')?.text || ''
   }
@@ -83,7 +84,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey },
       body: JSON.stringify(body),
     }, isLocal)
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    if (!res.ok) throw await providerHttpError(`Gemini`, res)
     const json = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
     return json.candidates?.[0]?.content?.parts?.[0]?.text || ''
   }
@@ -113,7 +114,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
         ],
       }),
     }, true)
-    if (!res.ok) throw new Error(`Ollama ${res.status}: ${(await res.text()).slice(0, 200)}`)
+    if (!res.ok) throw await providerHttpError(`Ollama`, res)
     const json = (await res.json()) as { message?: { content?: string } }
     return json.message?.content || ''
   }
@@ -140,7 +141,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
     headers,
     body: JSON.stringify(body),
   }, isLocal)
-  if (!res.ok) throw new Error(`${provider} ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  if (!res.ok) throw await providerHttpError(`${provider}`, res)
   const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
   return json.choices?.[0]?.message?.content || ''
 }

@@ -17,8 +17,9 @@ import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from '.
 import { stopAnalysisLoop } from './analysis-loop'
 import { initProjects } from './projects'
 import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
-import { migratePlaintextSecrets } from './secure-store'
-import { settingsFilePath, loadRedactedSettings } from './memory'
+import { migratePlaintextSecrets, hasSecret, getCustomKeyOrigin, bindCustomKeyOrigin } from './secure-store'
+import { legacyCustomKeyOrigin } from './provider-origins'
+import { settingsFilePath, loadRedactedSettings, loadNonSecretSettings } from './memory'
 import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
 import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
@@ -299,6 +300,13 @@ app.whenReady().then(async () => {
 
   // One-time: move any plaintext API keys out of settings.json into encrypted storage.
   try { migratePlaintextSecrets(settingsFilePath) } catch (e) { console.error('[SecureStore] migration failed:', e) }
+
+  // One-time: a custom key saved before keys were bound to their endpoint is
+  // bound to the endpoint the user had saved, so it keeps working.
+  try {
+    const origin = legacyCustomKeyOrigin(hasSecret('customApiKey'), getCustomKeyOrigin(), (await loadNonSecretSettings()).baseUrl)
+    if (origin) bindCustomKeyOrigin(origin)
+  } catch (e) { console.error('[SecureStore] custom key binding failed:', e) }
 
   // Project-scoped memory: run the one-time legacy migration (idempotent, never
   // deletes data) and activate the persisted active project BEFORE any window

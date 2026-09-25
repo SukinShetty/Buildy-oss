@@ -2,6 +2,9 @@
 // Supports vision, streaming, and Cloudflare Worker proxy mode.
 
 import type { WebContents } from 'electron'
+import { redactKnownSecrets } from '../../secure-store'
+import { providerFetch } from '../fetch-with-timeout'
+import { providerHttpError } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -95,8 +98,7 @@ export class AnthropicProvider implements AIProvider {
       })
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`Anthropic API error ${response.status}: ${errorText}`)
+        throw await providerHttpError(`Anthropic`, response)
       }
 
       if (!response.body) throw new Error('Anthropic API returned no response body')
@@ -143,7 +145,7 @@ export class AnthropicProvider implements AIProvider {
       }
     } catch (error) {
       if (!senderWebContents.isDestroyed()) {
-        senderWebContents.send(IPC.BRAINSTORM_ERROR, String(error))
+        senderWebContents.send(IPC.BRAINSTORM_ERROR, redactKnownSecrets(String(error)))
       }
     }
   }
@@ -157,15 +159,14 @@ export class AnthropicProvider implements AIProvider {
     const apiUrl = this.resolveUrl(settings, '/v1/messages')
     const headers = this.buildHeaders(settings)
 
-    const response = await fetch(apiUrl, {
+    const response = await providerFetch(apiUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Anthropic API error ${response.status}: ${errorText}`)
+      throw await providerHttpError(`Anthropic`, response)
     }
 
     const responseJson = (await response.json()) as {

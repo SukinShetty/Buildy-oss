@@ -218,6 +218,11 @@ export const CAPTURE_NOTICE_MESSAGE =
   "MyBuildy sends screenshots of the window you pick, plus this project's memory, " +
   'to the AI provider you chose. Your keys and memory are stored only on this computer.'
 
+// Main refuses every capture/upload path until the notice above is accepted —
+// whatever a renderer does. This is the refusal text (renderers match on it).
+export const CAPTURE_NOTICE_REQUIRED_MESSAGE =
+  'Accept the one-time notice first: it explains what MyBuildy sends and to whom.'
+
 // ─── macOS privacy permissions ───────────────────────────────────────────────
 // Without these, macOS fails SILENTLY (black captures, keystrokes that do
 // nothing), so MyBuildy checks first and says exactly what to turn on. Shown on
@@ -246,6 +251,64 @@ export const MAC_PERMISSION_MESSAGES: Record<MacPermission, string> = {
 export const MAC_BLANK_CAPTURE_MESSAGE =
   "MyBuildy can't see anything in that window. If you just turned on Screen Recording, " +
   'quit and reopen MyBuildy. If the window is minimized or on another desktop, bring it into view and pick it again.'
+
+// ─── Where your data goes (Settings wording) ─────────────────────────────────
+// Every privacy sentence in Settings comes from here so it is always true:
+// "local" only when the model really runs on this computer, the real host for a
+// remote custom endpoint, and ElevenLabs named whenever a voice key is saved.
+
+const CLOUD_PROVIDER_NAMES: Partial<Record<ProviderType, string>> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  gemini: 'Google Gemini',
+  openrouter: 'OpenRouter',
+}
+
+function isLocalEndpoint(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.replace(/^\[|\]$/g, '').toLowerCase()
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1'
+  } catch {
+    return false
+  }
+}
+
+export function dataDestinationNote(input: { provider: ProviderType; baseUrl: string; hasElevenLabsKey: boolean }): string {
+  const voice = input.hasElevenLabsKey ? ' Spoken guidance and voice questions are sent to ElevenLabs.' : ''
+  const keys = 'Saved keys are stored encrypted on this computer and are never sent back to this screen.'
+  if (input.provider === 'ollama' || input.provider === 'lmstudio' ||
+      (input.provider === 'custom' && isLocalEndpoint(input.baseUrl))) {
+    return `Your model runs on this computer, so screenshots and prompts stay on this computer.${voice}`
+  }
+  if (input.provider === 'custom') {
+    let host = 'your custom endpoint'
+    try { host = new URL(input.baseUrl).host || host } catch { /* keep the generic name */ }
+    return `Screenshots and prompts are sent to ${host}.`
+  }
+  return `Screenshots and prompts are sent to ${CLOUD_PROVIDER_NAMES[input.provider] ?? 'your AI provider'}. ${keys}`
+}
+
+// ─── Paste into terminal ─────────────────────────────────────────────────────
+// MyBuildy pastes the prompt into the watched terminal but NEVER presses Enter:
+// the user reads it and runs it.
+
+export const PASTE_BUTTON_LABEL = 'Paste into terminal'
+export const PASTE_SUCCESS_MESSAGE = 'Pasted into your terminal. Read it, then press Enter to run it.'
+
+/** Plain-English message for a paste that did not happen (permission failures have their own notice). */
+export function pasteFailureMessage(result: SendPromptResult, isMac: boolean): string {
+  const pasteKey = isMac ? 'Cmd+V' : 'Ctrl+V'
+  switch (result.reason) {
+    case 'stale':
+      return `${result.detail || 'The prompt changed before it could be pasted.'} Nothing was pasted.`
+    case 'not_eligible':
+      return `${result.detail || "Pasting isn't possible right now."} Nothing was pasted.`
+    case 'window_not_in_front':
+      return `Your terminal wasn't in front at the last moment, so nothing was pasted. The prompt is on your clipboard: press ${pasteKey} in your terminal, read it, then press Enter.`
+    default:
+      return `Pasting didn't finish, so the prompt is on your clipboard instead: press ${pasteKey} in your terminal, read it, then press Enter.`
+  }
+}
 
 /** Which permission a failed send needs, or null if the failure was something else. */
 export function permissionForSendFailure(reason: SendFailureReason | undefined): MacPermission | null {
@@ -401,6 +464,8 @@ export type SendFailureReason =
 export interface SendPromptResult {
   sent: boolean
   reason?: SendFailureReason
+  /** Plain-English explanation when a paste was aborted (e.g. what changed since the click). */
+  detail?: string
 }
 
 // ─── Guidance panel ───────────────────────────────────────────────────────────
@@ -499,6 +564,7 @@ export const IPC = {
   PROJECTS_LIST:       'projects:list',            // renderer → main → ProjectSummary[]
   PROJECTS_CREATE:     'projects:create',          // renderer → main (create + switch) → ProjectRecord
   PROJECTS_RENAME:     'projects:rename',          // renderer → main → ProjectRecord
+  PROJECTS_SWITCHED:   'projects:switched',        // main → all windows (active project changed: drop per-project UI state)
   PROJECTS_SWITCH:     'projects:switch',          // renderer → main (set active) → ProjectRecord
   PROJECTS_GET_ACTIVE: 'projects:get-active',      // renderer → main → ProjectRecord | null
   // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────

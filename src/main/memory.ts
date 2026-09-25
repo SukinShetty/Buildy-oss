@@ -6,6 +6,7 @@
 // On macOS:   ~/Library/Application Support/MyBuildy/
 
 import { app } from 'electron'
+import { isAllowedProviderUrl, customKeyAllowed } from './provider-origins'
 import { promises as fs } from 'fs'
 import { join, dirname } from 'path'
 import type {
@@ -19,7 +20,7 @@ import {
   emptyProjectMemory, defaultNonSecretSettings,
   HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX,
 } from '../renderer/src/types'
-import { getSecret, hasSecret, secretKeyForProvider, getAllRedacted } from './secure-store'
+import { getSecret, hasSecret, secretKeyForProvider, getAllRedacted, getCustomKeyOrigin } from './secure-store'
 
 const userDataDirectory = app.getPath('userData')
 export const settingsFilePath = join(userDataDirectory, 'settings.json')
@@ -39,15 +40,23 @@ export function setActiveMemoryDir(directory: string): void {
   activeMemoryDirectory = directory
 }
 
-function projectMemoryFilePath(): string {
-  return activeMemoryDirectory
-    ? join(activeMemoryDirectory, 'project-memory.json')
+/** Thrown when the active project changed while a write for another project was in flight. */
+export class ProjectChangedError extends Error {
+  constructor() {
+    super('The project changed while this was being saved, so nothing was saved.')
+    this.name = 'ProjectChangedError'
+  }
+}
+
+function projectMemoryFilePath(directory: string | null = activeMemoryDirectory): string {
+  return directory
+    ? join(directory, 'project-memory.json')
     : join(userDataDirectory, 'project-memory.json') // pre-init legacy fallback
 }
 
-export async function loadProjectMemory(): Promise<ProjectMemory> {
+export async function loadProjectMemory(directory: string | null = activeMemoryDirectory): Promise<ProjectMemory> {
   try {
-    const fileContent = await fs.readFile(projectMemoryFilePath(), 'utf-8')
+    const fileContent = await fs.readFile(projectMemoryFilePath(directory), 'utf-8')
     const raw = JSON.parse(fileContent) as Partial<ProjectMemory>
     // Merge over defaults so files written by older versions gain new fields
     // (goal, goalPromptSeen) without breaking.
@@ -58,8 +67,14 @@ export async function loadProjectMemory(): Promise<ProjectMemory> {
   }
 }
 
-export async function saveProjectMemory(projectMemory: ProjectMemory): Promise<void> {
-  const filePath = projectMemoryFilePath()
+/**
+ * Save project memory. With `expectedDirectory` (captured when the operation
+ * started) the write goes ONLY to that project and is refused if the active
+ * project has changed since.
+ */
+export async function saveProjectMemory(projectMemory: ProjectMemory, expectedDirectory?: string | null): Promise<void> {
+  if (expectedDirectory !== undefined && expectedDirectory !== activeMemoryDirectory) throw new ProjectChangedError()
+  const filePath = projectMemoryFilePath(expectedDirectory === undefined ? activeMemoryDirectory : expectedDirectory)
   await fs.mkdir(dirname(filePath), { recursive: true })
   const updatedMemory: ProjectMemory = {
     ...projectMemory,
@@ -81,7 +96,8 @@ export async function loadGoal(): Promise<Goal | null> {
  * goal prompt as seen so the first-launch screen won't reappear.
  */
 export async function setGoal(input: Partial<Goal>): Promise<Goal> {
-  const project = await loadProjectMemory()
+  const directory = activeMemoryDirectory // the project this save is for
+  const project = await loadProjectMemory(directory)
   const now = new Date().toISOString()
   const goal: Goal = {
     purpose: (input.purpose ?? '').trim(),
@@ -91,7 +107,7 @@ export async function setGoal(input: Partial<Goal>): Promise<Goal> {
     createdAt: project.goal?.createdAt ?? now,
     lastReviewedAt: now,
   }
-  await saveProjectMemory({ ...project, goal, goalPromptSeen: true })
+  await saveProjectMemory({ ...project, goal, goalPromptSeen: true }, directory)
   return goal
 }
 
@@ -100,10 +116,11 @@ export async function setGoal(input: Partial<Goal>): Promise<Goal> {
  * No-op (returns null) if no goal exists yet.
  */
 export async function updateGoal(partial: Partial<Goal>): Promise<Goal | null> {
-  const project = await loadProjectMemory()
+  const directory = activeMemoryDirectory // the project this update is for
+  const project = await loadProjectMemory(directory)
   if (!project.goal) return null
   const goal: Goal = { ...project.goal, ...partial }
-  await saveProjectMemory({ ...project, goal })
+  await saveProjectMemory({ ...project, goal }, directory)
   return goal
 }
 
@@ -140,9 +157,16 @@ export async function loadNonSecretSettings(): Promise<NonSecretSettings> {
 /** Inject secrets from the encrypted store → main-internal full settings. */
 export function resolveSettings(nonSecret: NonSecretSettings): AppSettings {
   const providerSecret = secretKeyForProvider(nonSecret.provider)
+  // A saved base URL that isn't allowed for this provider (e.g. from an older
+  // version) is ignored: the provider's own default origin is used instead.
+  const baseUrl = isAllowedProviderUrl(nonSecret.provider, nonSecret.baseUrl) ? nonSecret.baseUrl : ''
+  let apiKey = providerSecret ? getSecret(providerSecret) : ''
+  // The custom key only ever goes to the origin it was entered for.
+  if (nonSecret.provider === 'custom' && apiKey && !customKeyAllowed(getCustomKeyOrigin(), baseUrl)) apiKey = ''
   return {
     ...nonSecret,
-    apiKey: providerSecret ? getSecret(providerSecret) : '',
+    baseUrl,
+    apiKey,
     elevenLabsApiKey: getSecret('elevenLabsApiKey'),
   }
 }

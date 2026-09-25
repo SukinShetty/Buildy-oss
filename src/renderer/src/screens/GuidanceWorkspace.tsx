@@ -10,6 +10,7 @@ import { useAppStore } from '../store/useAppStore'
 import { GuidanceSections } from '../components/GuidanceSections'
 import { PromptCard } from '../components/PromptCard'
 import { WindowPicker } from '../components/WindowPicker'
+import { CAPTURE_NOTICE_MESSAGE, CAPTURE_NOTICE_REQUIRED_MESSAGE } from '../types'
 
 const AUTO_ANALYSIS_INTERVAL_SECONDS = 30
 
@@ -33,6 +34,7 @@ export function GuidanceWorkspace(): React.ReactElement {
     setAutoAnalysisEnabled,
     setSecondsUntilNextAutoAnalysis,
     setCurrentScreen,
+    setSettings,
   } = useAppStore()
 
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -40,6 +42,8 @@ export function GuidanceWorkspace(): React.ReactElement {
   const countdownRef = useRef(AUTO_ANALYSIS_INTERVAL_SECONDS)
   const [windowPickerVisible, setWindowPickerVisible] = useState(false)
   const [pendingWindowId, setPendingWindowId] = useState<string | null>(null)
+  // The one-time capture notice, shown before this screen captures anything.
+  const [noticePending, setNoticePending] = useState<{ sourceId: string | null; expectedName: string | null } | null>(null)
 
   // Refs so the auto-analysis timer reads CURRENT values, not stale closures.
   const selectedSourceRef = useRef(selectedWindowSourceId)
@@ -68,6 +72,13 @@ export function GuidanceWorkspace(): React.ReactElement {
 
     setAnalysisError(null)
 
+    // First capture ever: show the one-time notice before anything is captured.
+    // (Main enforces this too and refuses until it is accepted.)
+    if (!settings.captureNoticeAccepted) {
+      setNoticePending({ sourceId, expectedName })
+      return
+    }
+
     try {
       // Step 1: Capture the window by id + selection-time name. If that exact
       // window is gone (or its id was reused by another window), HALT — never
@@ -93,9 +104,22 @@ export function GuidanceWorkspace(): React.ReactElement {
       setLatestAnalysis(result)
       setAnalysisPhase('done')
     } catch (error) {
+      if (String(error).includes(CAPTURE_NOTICE_REQUIRED_MESSAGE)) {
+        setNoticePending({ sourceId, expectedName })
+        setAnalysisPhase('idle')
+        return
+      }
       setAnalysisError(String(error))
       setAnalysisPhase('error')
     }
+  }
+
+  async function acceptNoticeAndContinue(): Promise<void> {
+    const pending = noticePending
+    setNoticePending(null)
+    await window.mybuildy.acceptCaptureNotice()
+    setSettings({ ...settings, captureNoticeAccepted: true })
+    if (pending) await startAnalysis(pending.sourceId, pending.expectedName)
   }
 
   async function handleAnalyzeNowClick(): Promise<void> {
@@ -198,6 +222,17 @@ export function GuidanceWorkspace(): React.ReactElement {
           onConfirm={handleWindowPickerConfirm}
           onCancel={handleWindowPickerCancel}
         />
+      )}
+
+      {/* One-time capture notice: nothing is captured until Continue */}
+      {noticePending && (
+        <div style={styles.noticeCard} role="alertdialog" aria-label="Before MyBuildy looks at your screen">
+          <div style={styles.noticeText}>{CAPTURE_NOTICE_MESSAGE}</div>
+          <div style={styles.noticeActions}>
+            <button className="btn-primary" onClick={() => { void acceptNoticeAndContinue() }}>Continue</button>
+            <button className="btn-icon" onClick={() => setNoticePending(null)}>Cancel</button>
+          </div>
+        </div>
       )}
 
       {/* Current goal — always visible during the build session */}
@@ -402,6 +437,23 @@ function phaseButtonLabel(phase: string): string {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = {
+  noticeCard: {
+    margin: '12px 0',
+    padding: '14px 16px',
+    borderRadius: 12,
+    border: '1px solid rgba(252, 132, 0, 0.45)',
+    background: 'rgba(252, 132, 0, 0.08)',
+  } as React.CSSProperties,
+  noticeText: {
+    fontSize: 13,
+    lineHeight: 1.55,
+    color: 'var(--color-text)',
+  } as React.CSSProperties,
+  noticeActions: {
+    display: 'flex',
+    gap: 8,
+    marginTop: 12,
+  } as React.CSSProperties,
   container: {
     display: 'flex',
     flexDirection: 'column' as const,

@@ -16,6 +16,7 @@
 //   Cleared on window switch. NOT persisted. NOT old project memory.
 
 import type { BrowserWindow } from 'electron'
+import { providerHttpError } from './ai/provider-errors'
 import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
 import { emptyProjectMemory, CHOOSE_MODEL_MESSAGE, MAC_PERMISSION_MESSAGES } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
@@ -29,17 +30,18 @@ import {
 import type { AnalysisChangeResult } from './change-detector'
 import { formatSpokenGuidance } from './ai/speech-formatter'
 import { buildQuestionSystemPrompt, buildQuestionUserPrompt } from './ai/prompt-builder'
-import { fetchWithTimeout } from './ai/fetch-with-timeout'
+import { fetchWithTimeout, withCancellation } from './ai/fetch-with-timeout'
 import * as nemp from './nemp-bridge'
-import { checkPromptQuality, buildQualityPatch, patchDropsPrompt } from './ai/prompt-quality-check'
+import { checkPromptQuality, buildQualityPatch } from './ai/prompt-quality-check'
 import { verifyPromptOutcome } from './ai/verifier-check'
 import {
-  recordPendingOutcome, getMostRecentPending, resolveOutcome, clearOutcomes,
-  replacePendingOutcome, removePendingOutcome,
+  getMostRecentPending, resolveOutcome, clearOutcomes, replacePendingOutcome,
 } from './verifier'
 import type { PromptOutcome } from './verifier'
 import { evaluateSendEligibility, sanitizePromptForSend, detectDestructivePrompt } from './prompt-sender-core'
 import { executeSend, isSendInFlight, isWatchedWindowPresent } from './prompt-sender'
+import { SendAuthorizer, shouldRegisterOutcome, type SendContext } from './send-authorization'
+import { getActiveProject } from './projects'
 import { sendGuidanceSendState, showGuidanceWindow } from './guidance-window'
 import { recordProviderCall, getCallsThisHour, isAtHourlyCap } from './cost-guard'
 import { mapProviderError, isAuthOrBillingError } from './ai/provider-errors'
@@ -105,6 +107,9 @@ let watchedGoal: Goal | null = null   // injected into every analysis prompt so 
 // discarded. The async getters are reloaded EVERY cycle so editing the goal or
 // changing settings mid-watch takes effect without restarting.
 let currentSession = 0
+// Cancels every provider request of the current watch session (analysis,
+// grading, verification, spoken questions) the moment the user presses Stop.
+let watchAbort = new AbortController()
 let inFlight = false
 let getSettingsFn: (() => Promise<AppSettings>) | null = null
 let getGoalFn: (() => Promise<Goal | null>) | null = null
@@ -274,7 +279,7 @@ async function runCycleAndReschedule(companionWindow: BrowserWindow, mySession: 
     } else {
       inFlight = true
       try {
-        await runOneAnalysisCycle(companionWindow, mySession)
+        await withCancellation(watchAbort.signal, () => runOneAnalysisCycle(companionWindow, mySession))
       } catch (error) {
         debugError('[AnalysisLoop] Cycle error:', error)
         notifyCompanionState(companionWindow, 'idle')
@@ -293,6 +298,9 @@ function scheduleNextCycle(companionWindow: BrowserWindow, mySession: number): v
 
 export function stopAnalysisLoop(): void {
   if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
+  // Cancel whatever is in flight right now (a provider call mid-analysis).
+  watchAbort.abort()
+  watchAbort = new AbortController()
   // Bump the session so any in-flight cycle discards its result.
   currentSession++
   clearStaleState()
@@ -325,6 +333,9 @@ export function stopWatchForProjectSwitch(): void {
   const wasWatching = isRunning
   const companion = companionRef
   stopAnalysisLoop()
+  // The displayed analysis (and its paste authorization) belonged to the old project.
+  displayAnalysis = null
+  displaySession = -1
   if (wasWatching && companion && !companion.isDestroyed()) {
     companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
       windowName: null,
@@ -481,6 +492,14 @@ export async function handleQuestion(
   question: string,
   settings: AppSettings
 ): Promise<void> {
+  return withCancellation(watchAbort.signal, () => answerQuestion(companionWindow, question, settings))
+}
+
+async function answerQuestion(
+  companionWindow: BrowserWindow,
+  question: string,
+  settings: AppSettings
+): Promise<void> {
   if (companionWindow.isDestroyed()) return
 
   debugLog(`[AnalysisLoop] Question: "${question}"`)
@@ -613,8 +632,7 @@ async function callProviderForAnswer(
   }, isLocal)
 
   if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`Provider returned ${response.status}: ${text.slice(0, 200)}`)
+    throw await providerHttpError('Provider', response)
   }
 
   const json = await response.json()
@@ -635,6 +653,8 @@ async function runOneAnalysisCycle(
   companionWindow: BrowserWindow,
   mySession: number
 ): Promise<void> {
+  // Memory writes from this cycle go ONLY to the project active right now.
+  const memScope = nemp.memoryScope()
   if (companionWindow.isDestroyed() || !watchedSourceId) {
     stopAnalysisLoop()
     return
@@ -701,6 +721,7 @@ async function runOneAnalysisCycle(
   } catch (error) {
     console.warn('[AnalysisLoop] memory context unavailable:', error)
   }
+  if (isStaleSession(mySession, currentSession)) return // stopped/switched meanwhile: no provider call
   const analysisProject = {
     ...EMPTY_PROJECT,
     ...(watchedGoal ? { goal: watchedGoal } : {}),
@@ -768,21 +789,19 @@ async function runOneAnalysisCycle(
   // outcome BEFORE recording the new one below. Runs in parallel, never blocks.
   const toVerify = getMostRecentPending()
   if (toVerify) {
-    runVerifier(companionWindow, toVerify, analysis, memoryContext, settings, mySession)
+    runVerifier(companionWindow, toVerify, analysis, memoryContext, settings, mySession, memScope)
   }
-  // Record the CURRENT suggestion as the thing to verify NEXT cycle (no-op if the
-  // model produced no prompt / no expected outcome). Keep the id so the grader
-  // can RETRACT it if it later drops the prompt (see gradePromptQuality).
-  const recordedOutcome = recordPendingOutcome(analysis.nextPrompt, analysis.expectedOutcome || '')
+  // A suggestion is NOT recorded for verification: only a prompt the user
+  // actually pasted is (see handleSendPromptRequest).
 
   // Tee the analysis into the memory layer AFTER the UI has it (fire-and-forget,
   // never blocks display).
-  teeAnalysisToMemory(analysis)
+  teeAnalysisToMemory(analysis, memScope)
 
   // Second-pass prompt-quality grade — runs in parallel, never blocks. If it
   // improves or blanks the prompt, re-send the corrected analysis so the panel
   // updates in place (unless the watch session has since changed).
-  gradePromptQuality(companionWindow, analysis, memoryContext, settings, mySession, recordedOutcome?.id ?? null)
+  gradePromptQuality(companionWindow, analysis, memoryContext, settings, mySession)
 
   // Permission alert (spec item 2): the agent is asking for approval — ONE
   // short spoken line + the mascot label. Spoken only on the TRANSITION into
@@ -988,15 +1007,16 @@ async function speakText(
  * Push the analysis into the Nemp memory layer. Fire-and-forget — the bridge
  * functions log + swallow their own errors, so this never affects the UI.
  */
-function teeAnalysisToMemory(analysis: AnalysisResult): void {
+function teeAnalysisToMemory(analysis: AnalysisResult, memScope: string): void {
+  const memory = nemp.writerFor(memScope)
   try {
     const id = analysis.analyzedAt
-    if (analysis.whatIsHappening) void nemp.recordObservation(analysis.whatIsHappening, id)
+    if (analysis.whatIsHappening) void memory.recordObservation(analysis.whatIsHappening, id)
     if (analysis.goalAlignment === 'on-track') {
-      for (const feature of analysis.whatIsBuilt.slice(0, 5)) void nemp.recordCompletion(feature)
+      for (const feature of analysis.whatIsBuilt.slice(0, 5)) void memory.recordCompletion(feature)
     }
     if (analysis.goalAlignment === 'blocked') {
-      for (const broken of analysis.whatIsBroken.slice(0, 5)) void nemp.recordBlocker(broken)
+      for (const broken of analysis.whatIsBroken.slice(0, 5)) void memory.recordBlocker(broken)
     }
   } catch (error) {
     console.warn('[AnalysisLoop] memory tee failed:', error)
@@ -1013,8 +1033,7 @@ function gradePromptQuality(
   analysis: AnalysisResult,
   memoryContext: string,
   settings: AppSettings,
-  mySession: number,
-  recordedOutcomeId: string | null
+  mySession: number
 ): void {
   void (async () => {
     try {
@@ -1032,13 +1051,6 @@ function gradePromptQuality(
         console.log('[AnalysisLoop] Prompt replaced by grader-improved version')
       } else {
         console.log('[AnalysisLoop] Prompt blanked by grader (no improvement available)')
-      }
-      // A DROPPED prompt must also retract its pending verifier outcome — the
-      // suggestion was recorded before grading, and verifying a prompt that was
-      // never kept on screen would write a spurious verdict into memory. After a
-      // real send the outcome was replaced (new id), so this never touches it.
-      if (patchDropsPrompt(patch)) {
-        removePendingOutcome(recordedOutcomeId)
       }
       patchDisplayAndResend(companionWindow, patch, mySession)
     } catch (error) {
@@ -1109,65 +1121,96 @@ async function pushSendEligibility(): Promise<void> {
   }
 }
 
+// One authorizer for the app's lifetime: each prompt id can be pasted once.
+const sendAuthorizer = new SendAuthorizer()
+
+/** Current main-side state a paste is bound to (see send-authorization.ts). */
+function currentSendContext(): SendContext {
+  return {
+    promptId: displayAnalysis?.promptId ?? null,
+    promptText: displayAnalysis?.nextPrompt ?? '',
+    projectId: getActiveProject()?.id ?? null,
+    session: currentSession,
+    sourceId: watchedSourceId,
+  }
+}
+
 /**
- * Handle a send request from the guidance window. The renderer supplies ONLY a
- * prompt id — the prompt text is resolved here from the currently displayed
- * analysis (main is the source of truth). Serialized: a second send while one
- * is in flight is rejected, not queued.
+ * Handle a paste request from the guidance window. The renderer supplies ONLY a
+ * prompt id; main resolves the text itself and binds the paste, at click time,
+ * to the exact prompt text and id, the active project, the watch session and
+ * the watched window. The binding is re-checked after every await (and once
+ * more immediately before the paste keystroke) and can be used only once.
+ * Serialized: a second request while one is in flight is rejected, not queued.
  */
 export async function handleSendPromptRequest(promptId: string): Promise<SendPromptResult> {
   console.log('[Send] request received')
 
-  const current = displayAnalysis
-  if (!current?.promptId || current.promptId !== promptId) {
-    console.log('[Send] rejected: id does not match the currently displayed prompt (stale)')
-    return { sent: false, reason: 'stale' }
+  const authorization = sendAuthorizer.authorize(promptId, currentSendContext())
+  if (!authorization.ok) {
+    console.log(`[Send] rejected: ${authorization.reason}`)
+    return { sent: false, reason: 'stale', detail: authorization.reason }
   }
+  const binding = authorization.binding
+  let pasted = false
+  try {
+    const expectedOutcome = displayAnalysis?.expectedOutcome || ''
 
-  const eligibility = await computeSendEligibility()
-  if (!eligibility.canSend) {
-    console.log(`[Send] rejected: not eligible (${eligibility.sendBlockedReason})`)
-    return { sent: false, reason: 'not_eligible' }
-  }
-
-  const mySession = currentSession
-  const promptText = current.nextPrompt
-  const expectedOutcome = current.expectedOutcome || ''
-
-  const sendPromise = executeSend(promptText, { title: watchedWindowName || '', sourceId: watchedSourceId })
-  void pushSendEligibility() // in-flight now → button disables while sending
-  const result = await sendPromise
-
-  // macOS permission problems: the guidance panel shows the fix inline (it got
-  // the reason); the mascot label says it too, until the next good cycle.
-  if (!result.sent && (result.reason === 'accessibility_permission' || result.reason === 'automation_permission')) {
-    const permission = result.reason === 'accessibility_permission' ? 'accessibility' : 'automation'
-    if (companionRef && !companionRef.isDestroyed()) {
-      errorLabelShown = true
-      companionRef.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-        windowName: watchedWindowName, message: MAC_PERMISSION_MESSAGES[permission],
-      })
+    const eligibility = await computeSendEligibility()
+    const changedAfterEligibility = sendAuthorizer.changed(binding, currentSendContext())
+    if (changedAfterEligibility) {
+      console.log(`[Send] aborted: ${changedAfterEligibility}`)
+      return { sent: false, reason: 'stale', detail: changedAfterEligibility }
     }
-  }
-
-  if (result.sent && !isStaleSession(mySession, currentSession)) {
-    // The SENT prompt becomes the single pending outcome (replacing any
-    // stacked suggestions) so the verifier judges what actually ran.
-    const outcome = replacePendingOutcome(sanitizePromptForSend(promptText), expectedOutcome)
-    console.log(`[Send] ${outcome ? 'registered sent prompt as the pending outcome' : 'no expected outcome — nothing registered for verification'}`)
-
-    if (companionRef && !companionRef.isDestroyed()) {
-      companionRef.webContents.send(IPC.SEND_STATUS, 'sent')
+    if (!eligibility.canSend) {
+      console.log(`[Send] rejected: not eligible (${eligibility.sendBlockedReason})`)
+      return { sent: false, reason: 'not_eligible', detail: eligibility.sendBlockedReason }
     }
-    // The agent is presumably chewing on the sent prompt: the next 3 minutes
-    // count as working mode (no timer AI calls; the 5s local poll takes over
-    // after the immediate confirmation analysis below).
-    turnDetector.noteSend(Date.now())
-    triggerImmediateAnalysis(mySession)
-  }
 
-  void pushSendEligibility()
-  return result
+    const sendPromise = executeSend(
+      binding.promptText,
+      { title: watchedWindowName || '', sourceId: binding.sourceId },
+      () => sendAuthorizer.changed(binding, currentSendContext()),
+    )
+    void pushSendEligibility() // in-flight now → button disables while pasting
+    const result = await sendPromise
+    const changedAfterPaste = sendAuthorizer.changed(binding, currentSendContext())
+    pasted = result.sent
+
+    // macOS permission problems: the guidance panel shows the fix inline (it got
+    // the reason); the mascot label says it too, until the next good cycle.
+    if (!result.sent && (result.reason === 'accessibility_permission' || result.reason === 'automation_permission')) {
+      const permission = result.reason === 'accessibility_permission' ? 'accessibility' : 'automation'
+      if (companionRef && !companionRef.isDestroyed()) {
+        errorLabelShown = true
+        companionRef.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+          windowName: watchedWindowName, message: MAC_PERMISSION_MESSAGES[permission],
+        })
+      }
+    }
+
+    if (shouldRegisterOutcome(result, changedAfterPaste)) {
+      // Only a prompt that was actually PASTED becomes the pending outcome
+      // (replacing any earlier one) so the verifier judges what the user ran.
+      const outcome = replacePendingOutcome(sanitizePromptForSend(binding.promptText), expectedOutcome)
+      console.log(`[Send] ${outcome ? 'registered pasted prompt as the pending outcome' : 'no expected outcome — nothing registered for verification'}`)
+
+      if (companionRef && !companionRef.isDestroyed()) {
+        companionRef.webContents.send(IPC.SEND_STATUS, 'sent')
+      }
+      // The user runs the pasted prompt themselves; treat the next 3 minutes as
+      // working mode (no timer AI calls; the 5s local poll decides when the
+      // agent's turn ends).
+      turnDetector.noteSend(Date.now())
+      triggerImmediateAnalysis(binding.session)
+    }
+
+    void pushSendEligibility()
+    return result
+  } finally {
+    // Only a successful paste uses the authorization up; failures can be retried.
+    sendAuthorizer.finish(binding.promptId ?? '', pasted)
+  }
 }
 
 /**
@@ -1203,8 +1246,10 @@ function runVerifier(
   analysis: AnalysisResult,
   memoryContext: string,
   settings: AppSettings,
-  mySession: number
+  mySession: number,
+  memScope: string
 ): void {
+  const memory = nemp.writerFor(memScope)
   void (async () => {
     try {
       const verdict = await verifyPromptOutcome(pending, analysis, watchedGoal, memoryContext, settings)
@@ -1217,9 +1262,9 @@ function runVerifier(
 
       const note = verdict.note || pending.expectedOutcome
       if (verdict.status === 'success') {
-        void nemp.recordCompletion(pending.expectedOutcome)
+        void memory.recordCompletion(pending.expectedOutcome)
       } else if (verdict.status === 'failed') {
-        void nemp.recordBlocker(note)
+        void memory.recordBlocker(note)
       }
 
       const verification: VerificationVerdict = { status: verdict.status, note }
