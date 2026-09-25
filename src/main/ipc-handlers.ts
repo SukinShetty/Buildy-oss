@@ -46,7 +46,7 @@ import {
 } from './ipc-schemas'
 import { permissionSettingsUrl, screenPermissionMissing } from './mac-permissions-core'
 import {
-  listProjectSummaries, getActiveProject, createProjectAndSwitch, switchProject,
+  listProjectSummaries, getActiveProject, createProjectAndSwitch, switchProject, deleteProject,
   renameProject, noteGoalSaved,
 } from './projects'
 
@@ -358,6 +358,22 @@ export function registerIpcHandlers(
       return switched
     } catch (error) {
       console.error('[IPC] PROJECTS_SWITCH error:', error)
+      throw error
+    }
+  })
+
+  // Delete a project (Goal screen → Manage projects). Main applies every rule
+  // (projects-core.planProjectDeletion): never the last project, never the one
+  // being watched; the active one is switched away from first.
+  ipcMain.handle(IPC.PROJECTS_DELETE, async (event, idRaw: unknown) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'PROJECTS_DELETE')
+      const id = parseInput(projectIdSchema, 'PROJECTS_DELETE', idRaw)
+      const result = await deleteProject(id)
+      if (result.deleted && result.switched) onProjectSwitched()
+      return result
+    } catch (error) {
+      console.error('[IPC] PROJECTS_DELETE error:', error)
       throw error
     }
   })

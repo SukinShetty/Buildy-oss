@@ -306,3 +306,18 @@ textarea::placeholder {
   align-items: center;
   gap: 10px;
 }
+
+/* ─── macOS title bar (titleBarStyle hiddenInset) ────────────────────────────────
+   The traffic lights sit at the top-left, centred in the 48px top bar
+   (index.ts trafficLightPosition x 16 / y 17, three ~14px buttons). Keep the
+   title and every control clear of them at every width; below 660px there is
+   no room for the name as well as all five tabs, so the name steps aside.
+   Windows has a native title bar and gets none of this. */
+.platform-darwin .app-titlebar { padding-left: 84px !important; }
+@media (max-width: 660px) {
+  .platform-darwin .app-titlebar-logo { display: none !important; }
+  .platform-darwin .app-titlebar { justify-content: flex-end !important; }
+}
+/* The setup wizard has no top bar: start its header below the traffic lights,
+   and let the user drag the window by it. */
+.platform-darwin .setup-header { padding-top: 48px !important; -webkit-app-region: drag; }

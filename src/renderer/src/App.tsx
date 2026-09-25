@@ -38,6 +38,10 @@ if (isGuidanceMode) {
   document.body.classList.add('guidance-mode')
 }
 
+// Platform-specific layout (e.g. macOS keeps the title clear of the traffic
+// lights — global.css .platform-darwin). Windows gets no extra rules.
+document.documentElement.classList.add(`platform-${window.mybuildy.platform}`)
+
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 
 export function App(): React.ReactElement | null {

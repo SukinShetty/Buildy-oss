@@ -23,9 +23,9 @@ export function NavBar(): React.ReactElement {
   const { currentScreen, setCurrentScreen } = useAppStore()
 
   return (
-    <nav style={styles.nav}>
+    <nav style={styles.nav} className="app-titlebar">
       {/* Logo */}
-      <div style={styles.logo}>
+      <div style={styles.logo} className="app-titlebar-logo">
         <span style={styles.logoIcon}>🔨</span>
         <span style={styles.logoText}>MyBuildy</span>
       </div>

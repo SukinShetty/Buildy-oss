@@ -13,6 +13,7 @@ import type {
   CaptureResult,
   CaptureOutcome,
   WatchStartResult,
+  DeleteProjectResult,
   SetupInfo,
   SetupPermissionStatus,
   AnalysisResult,
@@ -124,6 +125,8 @@ const mybuildyAPI = {
       ipcRenderer.invoke(IPC.PROJECTS_RENAME, { id, name }),
     switch: (id: string): Promise<ProjectRecord> =>
       ipcRenderer.invoke(IPC.PROJECTS_SWITCH, id),
+    delete: (id: string): Promise<DeleteProjectResult> =>
+      ipcRenderer.invoke(IPC.PROJECTS_DELETE, id),
     getActive: (): Promise<ProjectRecord | null> =>
       ipcRenderer.invoke(IPC.PROJECTS_GET_ACTIVE),
   },

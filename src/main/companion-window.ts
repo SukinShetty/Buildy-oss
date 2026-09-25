@@ -9,6 +9,7 @@
 //   - Detailed startup logging
 
 import { BrowserWindow, screen } from 'electron'
+import { floatingWindowOptions, floatOnAllWorkspaces } from './floating-window'
 import { join } from 'path'
 import { IPC } from '../renderer/src/types'
 import { repositionGuidanceWindow, hideGuidanceWindow } from './guidance-window'
@@ -91,6 +92,7 @@ export function createCompanionWindow(): BrowserWindow {
     // some platforms. Visibility is guaranteed by the 'screen-saver' always-on-top
     // level + visibleOnAllWorkspaces below, not by focus behaviour.
     show: false,
+    ...floatingWindowOptions(), // macOS: a panel, so MyBuildy keeps its Dock icon (floating-window.ts)
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -100,7 +102,7 @@ export function createCompanionWindow(): BrowserWindow {
   })
 
   window.setAlwaysOnTop(true, 'screen-saver')
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  floatOnAllWorkspaces(window)
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}?companion=true`)

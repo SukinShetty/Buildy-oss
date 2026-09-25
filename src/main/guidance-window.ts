@@ -15,6 +15,7 @@
 //   - Hidden until the first guidance arrives (never shown on launch).
 
 import { BrowserWindow, screen } from 'electron'
+import { floatingWindowOptions, floatOnAllWorkspaces } from './floating-window'
 import { join } from 'path'
 import { IPC } from '../renderer/src/types'
 import type { GuidancePayload, SendEligibility } from '../renderer/src/types'
@@ -85,6 +86,7 @@ export function createGuidanceWindow(companionWindow: BrowserWindow): BrowserWin
     focusable: false,
     alwaysOnTop: true,
     show: false,
+    ...floatingWindowOptions(), // macOS: a panel, so MyBuildy keeps its Dock icon (floating-window.ts)
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -94,7 +96,7 @@ export function createGuidanceWindow(companionWindow: BrowserWindow): BrowserWin
   })
 
   window.setAlwaysOnTop(true, 'screen-saver')
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  floatOnAllWorkspaces(window)
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}?guidance=true`)

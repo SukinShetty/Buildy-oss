@@ -10,12 +10,13 @@
 // The ACTIVE project is the only one any analysis context ever reads.
 
 import { app } from 'electron'
-import type { ProjectRecord, ProjectSummary } from '../renderer/src/types'
+import type { DeleteProjectResult, ProjectRecord, ProjectSummary } from '../renderer/src/types'
 import * as core from './projects-core'
 import { init as initNemp } from './nemp-bridge'
 import { setVerifierProject } from './verifier'
 import { setActiveMemoryDir } from './memory'
-import { stopWatchForProjectSwitch } from './analysis-loop'
+import { stopWatchForProjectSwitch, isWatching } from './analysis-loop'
+import { logWatchEvent } from './watch-log'
 
 let projectsFile: core.ProjectsFile | null = null
 
@@ -95,6 +96,32 @@ export async function switchProject(projectId: string): Promise<ProjectRecord> {
   await activate(active)
   console.log(`[Projects] switched to "${active.name}" (${active.id})`)
   return active
+}
+
+/**
+ * Delete a project: its record in projects.json and its memory folder
+ * (userData/mybuildy-memory/<projectId>) — nothing of any other project.
+ * Refused for an unknown id, the last remaining project, and the project being
+ * watched. Deleting the active project first switches to another one (the
+ * normal switch path), so no memory write can land in a folder being removed.
+ */
+export async function deleteProject(projectId: string): Promise<DeleteProjectResult> {
+  const file = currentFile()
+  if (!file) return { deleted: false, reason: 'unknown' }
+  const plan = core.planProjectDeletion(file, projectId, isWatching())
+  const record = file.projects.find((p) => p.id === projectId)
+  if (!plan.ok) {
+    logWatchEvent('project-delete-refused', { project: projectId, reason: plan.reason })
+    return { deleted: false, reason: plan.reason }
+  }
+  if (plan.nextActiveId) await switchProject(plan.nextActiveId)
+  projectsFile = core.removeProjectRecord(userDataDir(), projectId)
+  core.deleteProjectStore(userDataDir(), projectId)
+  const active = projectsFile.activeProjectId
+  // Ids only; the project's name (user content) only in debug mode.
+  logWatchEvent('project-deleted', { project: projectId, wasActive: plan.wasActive, active }, { name: record?.name ?? '' })
+  console.log(`[Projects] deleted project ${projectId}${plan.wasActive ? ` — switched to ${active}` : ''}`)
+  return { deleted: true, activeProjectId: active, switched: plan.wasActive }
 }
 
 /** Rename a project. Renaming never touches its memory. */

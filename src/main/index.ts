@@ -16,13 +16,14 @@ import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosi
 import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
 import { initProjects } from './projects'
-import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
+import { createVoicePlayerWindow, destroyVoicePlayer, stopVoice } from './voice-player'
 import { migratePlaintextSecrets } from './secure-store'
 import { settingsFilePath, loadRedactedSettings, loadGoal } from './memory'
 import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
 import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
 import { registerE2eTestHooks } from './e2e-hooks'
+import { macAppMenuTemplate, macDockMenuTemplate, type MenuActions } from './app-menu'
 import { loadSetupState, needsSetup } from './setup-state'
 import { initWatchLog } from './watch-log'
 
@@ -66,17 +67,28 @@ app.on('web-contents-created', (_event, contents) => {
 
 // ─── Application menu ────────────────────────────────────────────────────────
 // The stock Electron menu exposes Reload and Toggle Developer Tools — remove it.
-// Windows/Linux: no menu at all. macOS: minimal app + Edit menu only (Edit keeps
-// the standard clipboard shortcuts working).
+// Windows/Linux: no menu at all. macOS: a proper app menu (About, Settings…,
+// Hide, Quit MyBuildy Cmd+Q), Edit and Window (app-menu.ts), plus a Dock menu.
+const menuActions: MenuActions = {
+  openSettings: () => showMainPanel(),
+  showRobot: () => showCompanion(),
+  hideRobot: () => hideCompanion(),
+  quit: () => shutdownApp(),
+}
+
 function installAppMenu(): void {
   if (process.platform === 'darwin') {
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { role: 'appMenu' },
-      { role: 'editMenu' },
-    ]))
+    Menu.setApplicationMenu(Menu.buildFromTemplate(macAppMenuTemplate(menuActions)))
+    app.dock?.setMenu(Menu.buildFromTemplate(macDockMenuTemplate(menuActions)))
   } else {
     Menu.setApplicationMenu(null)
   }
+}
+
+function showMainPanel(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.show()
+  mainWindow.focus()
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -98,13 +110,32 @@ const LOGO_PATH = app.isPackaged
 
 /**
  * Clean shutdown: stop analysis, stop speech, close all windows, quit.
- * Called from every exit path to guarantee no orphaned processes.
+ * Tray "Quit MyBuildy" and the macOS menu's Quit (Cmd+Q) call this; every
+ * other quit path (Dock → Quit, logout, app.quit()) runs the same clean-up
+ * from 'before-quit'.
  */
 function shutdownApp(): void {
-  ;(app as any).isQuitting = true
+  cleanUpForQuit()
+  app.quit()
+}
 
-  // 1. Stop the background analysis loop
+let cleanedUp = false
+
+/** Everything a quit must stop — idempotent, so every quit path can call it. */
+function cleanUpForQuit(): void {
+  ;(app as any).isQuitting = true
+  if (cleanedUp) return
+  cleanedUp = true
+
+  // 1. Stop the background analysis loop (watching)
   stopAnalysisLoop('quit')
+
+  // 1b. Stop speaking and clear the voice queue
+  try {
+    stopVoice()
+  } catch {
+    // The voice player may already be gone
+  }
 
   // 2. Tell the companion renderer to stop TTS immediately
   if (companionWindow && !companionWindow.isDestroyed()) {
@@ -138,9 +169,6 @@ function shutdownApp(): void {
     tray.destroy()
   }
   tray = null
-
-  // 6. Quit the process
-  app.quit()
 }
 
 // ─── Main panel window (hidden by default — companion is primary UI) ─────────
@@ -154,6 +182,9 @@ function createMainWindow(): BrowserWindow {
     title: 'MyBuildy Settings',
     icon: LOGO_PATH,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // macOS: centre the traffic lights in the 48px top bar; the renderer keeps
+    // the title and controls clear of them (global.css .platform-darwin).
+    ...(process.platform === 'darwin' ? { trafficLightPosition: { x: 16, y: 17 } } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -218,14 +249,14 @@ function createSystemTray(): Tray {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show MyBuildy',
+      label: 'Show robot',
       click: () => {
         // showCompanion() re-asserts the screen-saver always-on-top level.
         showCompanion()
       },
     },
     {
-      label: 'Hide MyBuildy',
+      label: 'Hide robot',
       click: () => {
         hideCompanion()
       },
@@ -291,6 +322,11 @@ app.whenReady().then(async () => {
 
   // No stock menu (it exposes Reload / Toggle Developer Tools).
   installAppMenu()
+  readyAt = Date.now()
+
+  // macOS: MyBuildy is a normal app with a Dock icon and a menu bar (the
+  // floating windows no longer hide it — see floating-window.ts).
+  if (process.platform === 'darwin') void app.dock?.show()
 
   // macOS Dock: packaged builds get the icon from the bundle's .icns; a dev
   // run would otherwise show the stock Electron icon.
@@ -361,18 +397,21 @@ app.whenReady().then(async () => {
   }
 })
 
-// macOS: re-open when dock icon is clicked — show the companion, not the panel
+// macOS: clicking the Dock icon reopens the main window (and brings the robot back).
+let readyAt = 0
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  if (!app.isReady() || (app as any).isQuitting) return
+  if (!mainWindow || mainWindow.isDestroyed()) {
     // Recreate windows; IPC handlers are NOT re-registered (they were registered
     // once at startup with getters that read these mutable refs).
     mainWindow = createMainWindow()
     companionWindow = createCompanionWindow()
     guidanceWindow = createGuidanceWindow(companionWindow)
     voicePlayerWindow = createVoicePlayerWindow()
-  } else {
-    showCompanion()
   }
+  showCompanion()
+  // An 'activate' fired by the launch itself must not pop the panel open.
+  if (Date.now() - readyAt > 1500) showMainPanel()
 })
 
 // Safety net: if all windows close for any reason, quit
@@ -386,6 +425,5 @@ app.on('window-all-closed', () => {
 // its 'close' handler hides instead of closing unless isQuitting is set, which
 // would otherwise cancel the quit and leave the app running.
 app.on('before-quit', () => {
-  ;(app as any).isQuitting = true
-  stopAnalysisLoop('quit')
+  cleanUpForQuit()
 })

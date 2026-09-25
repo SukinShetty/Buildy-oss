@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import type { ProjectMemory } from '../types'
+import { ProjectManager } from '../components/ProjectManager'
 
 const PLACEHOLDER =
   'Example: I want to build a simple CRM for my small business to track customers and follow-ups. The main users are me and 2 employees who are not technical.'
@@ -34,6 +35,7 @@ export function GoalScreen(): React.ReactElement {
   const [switching, setSwitching] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [managing, setManaging] = useState(false)
 
   const canSave = purpose.trim().length > 0
 
@@ -166,14 +168,19 @@ export function GoalScreen(): React.ReactElement {
             </button>
           </div>
           {!renaming ? (
-            <button
-              type="button"
-              onClick={() => { setRenameValue(activeProject?.name ?? ''); setRenaming(true) }}
-              disabled={!activeProject}
-              style={styles.renameLink}
-            >
-              Rename
-            </button>
+            <div style={styles.linkRow}>
+              <button
+                type="button"
+                onClick={() => { setRenameValue(activeProject?.name ?? ''); setRenaming(true) }}
+                disabled={!activeProject}
+                style={styles.renameLink}
+              >
+                Rename
+              </button>
+              <button type="button" onClick={() => setManaging((m) => !m)} style={styles.renameLink} aria-expanded={managing}>
+                {managing ? 'Done managing' : 'Manage projects'}
+              </button>
+            </div>
           ) : (
             <div style={styles.renameRow}>
               <input
@@ -194,6 +201,17 @@ export function GoalScreen(): React.ReactElement {
             </div>
           )}
         </div>
+
+        {managing && (
+          <ProjectManager
+            projects={projects}
+            activeId={activeProject?.id ?? null}
+            onChanged={async (switched) => {
+              if (switched) applyLoadedProject(await window.mybuildy.loadProject())
+              await refreshProjects()
+            }}
+          />
+        )}
 
         <h1 style={styles.heading}>What are you building?</h1>
         <p style={styles.subheading}>
@@ -327,6 +345,10 @@ const styles = {
     cursor: 'pointer',
     fontSize: 12,
     padding: 0,
+  },
+  linkRow: {
+    display: 'flex',
+    gap: 14,
   },
   renameRow: {
     display: 'flex',

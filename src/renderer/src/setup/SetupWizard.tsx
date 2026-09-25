@@ -91,7 +91,7 @@ export function SetupWizard({
 
   return (
     <div style={S.root} data-testid="setup-wizard" data-step={step}>
-      <div style={S.header}>
+      <div style={S.header} className="setup-header">
         <div style={S.progressText}>{progressLabel(steps, step)}</div>
         <div style={S.progressTrack}>
           <div style={{ ...S.progressFill, width: `${((steps.indexOf(step) + 1) / steps.length) * 100}%` }} />

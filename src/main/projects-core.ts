@@ -13,9 +13,9 @@
 // prompt-sender-core.ts).
 
 import {
-  mkdirSync, readFileSync, writeFileSync, existsSync, cpSync, copyFileSync,
+  mkdirSync, readFileSync, writeFileSync, existsSync, cpSync, copyFileSync, rmSync,
 } from 'fs'
-import { join, dirname } from 'path'
+import { join, dirname, resolve, basename } from 'path'
 import { randomUUID } from 'crypto'
 import type { ProjectRecord, Goal } from '../renderer/src/types'
 import { emptyProjectMemory } from '../renderer/src/types'
@@ -303,6 +303,56 @@ export function setActiveProjectRecord(
   }
   saveProjectsFile(userDataDir, updated)
   return updated
+}
+
+// ─── Delete a project ─────────────────────────────────────────────────────────
+
+export type DeleteRefusal = 'unknown' | 'last' | 'watching'
+
+export type DeletionPlan =
+  | { ok: true; wasActive: boolean; nextActiveId: string | null }
+  | { ok: false; reason: DeleteRefusal }
+
+/**
+ * PURE: may this project be deleted, and which project becomes active if it
+ * was the active one? Rules: it must exist; the last remaining project can't
+ * be deleted; the project being watched (always the active one) can't be
+ * deleted while watching. When the active project goes, the most recently
+ * used other project takes over.
+ */
+export function planProjectDeletion(file: ProjectsFile, projectId: string, watching: boolean): DeletionPlan {
+  if (!file.projects.some((p) => p.id === projectId)) return { ok: false, reason: 'unknown' }
+  if (file.projects.length <= 1) return { ok: false, reason: 'last' }
+  const wasActive = file.activeProjectId === projectId
+  if (wasActive && watching) return { ok: false, reason: 'watching' }
+  if (!wasActive) return { ok: true, wasActive, nextActiveId: null }
+  const next = file.projects
+    .filter((p) => p.id !== projectId)
+    .sort((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))[0]
+  return { ok: true, wasActive, nextActiveId: next.id }
+}
+
+/** Remove a project's record from projects.json. It must not be the active one. */
+export function removeProjectRecord(userDataDir: string, projectId: string): ProjectsFile {
+  const file = requireFile(userDataDir)
+  if (file.activeProjectId === projectId) throw new Error('Switch away from a project before removing it')
+  const updated: ProjectsFile = { ...file, projects: file.projects.filter((p) => p.id !== projectId) }
+  saveProjectsFile(userDataDir, updated)
+  return updated
+}
+
+/**
+ * Delete ONE project's memory folder (userData/mybuildy-memory/<projectId>) and
+ * nothing else: the path must resolve to a direct child of mybuildy-memory, so
+ * an id like "../x" or "" can never reach another folder.
+ */
+export function deleteProjectStore(userDataDir: string, projectId: string): void {
+  const root = resolve(userDataDir, 'mybuildy-memory')
+  const target = resolve(projectStoreDir(userDataDir, projectId))
+  if (dirname(target) !== root || basename(target) !== projectId || !projectId || projectId === '.' || projectId === '..') {
+    throw new Error('Refusing to delete a folder outside this project')
+  }
+  rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 })
 }
 
 /**

@@ -104,12 +104,12 @@ test('window.open is denied (no new window is created)', async () => {
 })
 
 test('application menu is null (Windows / Linux)', async () => {
-  test.skip(process.platform === 'darwin', 'macOS keeps a minimal app + Edit menu — covered by the macOS menu test')
+  test.skip(process.platform === 'darwin', 'macOS has its own app menu — covered by the macOS menu test')
   const menuIsNull = await mybuildy.app.evaluate(({ Menu }) => Menu.getApplicationMenu() === null)
   expect(menuIsNull).toBe(true)
 })
 
-test('application menu on macOS is only app + Edit, with no Reload or DevTools', async () => {
+test('application menu on macOS is app + Edit + Window with Quit (Cmd+Q), and no Reload or DevTools', async () => {
   test.skip(process.platform !== 'darwin', 'macOS-only: Windows and Linux have no application menu at all')
   const menu = await mybuildy.app.evaluate(({ Menu }) => {
     const appMenu = Menu.getApplicationMenu()
@@ -120,8 +120,9 @@ test('application menu on macOS is only app + Edit, with no Reload or DevTools',
       : null
   })
   expect(menu, 'macOS needs an Edit menu for copy/paste in inputs').not.toBeNull()
-  expect(menu!.topLevel).toHaveLength(2)
+  expect(menu!.topLevel).toHaveLength(3)
   expect(menu!.all.map((r) => r.toLowerCase())).toContain('paste')
+  expect(menu!.all).toContain('Quit MyBuildy')
   for (const forbidden of ['reload', 'forcereload', 'toggledevtools']) {
     expect(menu!.all.map((r) => r.toLowerCase())).not.toContain(forbidden)
   }

@@ -38,6 +38,11 @@ export interface ProjectRecord {
   lastActiveAt: string  // ISO timestamp — bumped when the project becomes active
 }
 
+// Result of deleting a project (main/projects.ts deleteProject).
+export type DeleteProjectResult =
+  | { deleted: true; activeProjectId: string; switched: boolean }
+  | { deleted: false; reason: 'unknown' | 'last' | 'watching' }
+
 // Record + derived info for the project switcher UI.
 export interface ProjectSummary extends ProjectRecord {
   featureCount: number  // completed features recorded in this project's memory
@@ -611,6 +616,7 @@ export const IPC = {
   STOPPED:             'mybuildy:stopped',         // main → main window (Stop pressed: cancel Guidance runs + auto timer)
   PROJECTS_SWITCHED:   'projects:switched',        // main → all windows (active project changed: drop per-project UI state)
   PROJECTS_SWITCH:     'projects:switch',          // renderer → main (set active) → ProjectRecord
+  PROJECTS_DELETE:     'projects:delete',          // main window → main (delete a project + its memory) → DeleteProjectResult
   PROJECTS_GET_ACTIVE: 'projects:get-active',      // renderer → main → ProjectRecord | null
   // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────
   MEMORY_GET:             'memory:get',                  // → MemorySnapshot

@@ -368,6 +368,8 @@ export function pauseAnalysisLoop(): void { isPaused = true }
 export function resumeAnalysisLoop(): void { isPaused = false }
 export function setQuietMode(quiet: boolean): void { isQuietMode = quiet }
 export function isAnalysisLoopRunning(): boolean { return isRunning && !isPaused && watchedSourceId !== null }
+/** A window is being watched (paused or not; a watch whose window was lost has ended) — its project must not be deleted. */
+export function isWatching(): boolean { return isRunning && watchedSourceId !== null && continuity?.state !== 'lost' }
 
 // ─── Watch continuity poll (every 2s, independent of the analysis cycle) ─────
 
