@@ -12,7 +12,7 @@
 //   5. User picks different window → clear session → restart
 //
 // Session context:
-//   Lightweight memory of what My Buildy has observed in the current watched window.
+//   Lightweight memory of what MyBuildy has observed in the current watched window.
 //   Cleared on window switch. NOT persisted. NOT old project memory.
 
 import type { BrowserWindow } from 'electron'
@@ -586,7 +586,7 @@ async function callProviderForAnswer(
     }
     if (providerType === 'openrouter') {
       headers['HTTP-Referer'] = 'https://github.com/SukinShetty/mybuildy'
-      headers['X-Title'] = 'My Buildy'
+      headers['X-Title'] = 'MyBuildy'
     }
 
     const userContent: any[] = []
@@ -787,7 +787,7 @@ async function runOneAnalysisCycle(
   // Permission alert (spec item 2): the agent is asking for approval — ONE
   // short spoken line + the mascot label. Spoken only on the TRANSITION into
   // permission_prompt (never re-spoken while the same prompt stays on screen),
-  // and My Buildy NEVER answers the permission prompt itself.
+  // and MyBuildy NEVER answers the permission prompt itself.
   let spokePermissionAlert = false
   if (analysis.terminalState === 'permission_prompt') {
     // Prefer the model-reported agentName; the title heuristic is the fallback.

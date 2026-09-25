@@ -2,7 +2,7 @@
 // Captures the user's goal — their stated purpose for what they're building.
 // Shown on first launch, from the "Set Goal" nav tab, and when starting a new
 // project. The goal is stored locally (project memory) and injected into every
-// analysis so My Buildy can tell the user whether each step moves toward the goal.
+// analysis so MyBuildy can tell the user whether each step moves toward the goal.
 //
 // Also hosts the PROJECT SWITCHER: each project has its own memory, and
 // switching re-points the whole memory layer. Editing the goal text keeps the

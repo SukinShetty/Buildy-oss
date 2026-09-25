@@ -281,7 +281,7 @@ export function SettingsScreen(): React.ReactElement {
     }
   }
 
-  // Delete all My Buildy data: keys, settings, every project's memory — then the
+  // Delete all MyBuildy data: keys, settings, every project's memory — then the
   // app relaunches to first run. Main performs the wipe (main-window-only IPC).
   async function handleDeleteAllData(): Promise<void> {
     setIsWiping(true)
@@ -399,7 +399,7 @@ export function SettingsScreen(): React.ReactElement {
               // looks like it came from nowhere.
               <div style={styles.sectionHint}>
                 On a Mac your keys are encrypted with the macOS Keychain. macOS may ask
-                whether My Buildy can use the &quot;MyBuildy Safe Storage&quot; keychain item
+                whether MyBuildy can use the &quot;MyBuildy Safe Storage&quot; keychain item
                 (on first save, or after reinstalling). Choose Always Allow.
               </div>
             )}
@@ -581,7 +581,7 @@ export function SettingsScreen(): React.ReactElement {
               {configuredCorrectly
                 ? `Ready — ${meta.displayName} / ${effectiveModelId}`
                 : effectiveModelId
-                  ? 'Fill in the required fields above to use My Buildy'
+                  ? 'Fill in the required fields above to use MyBuildy'
                   : 'Choose a model in Settings — pick one from the list above'}
             </span>
           </div>
@@ -618,9 +618,9 @@ export function SettingsScreen(): React.ReactElement {
 
         {/* Info */}
         <div style={styles.infoSection}>
-          <div style={styles.infoTitle}>About My Buildy</div>
+          <div style={styles.infoTitle}>About MyBuildy</div>
           <div style={styles.infoText}>
-            My Buildy — multi-provider builder buddy for Claude Code.
+            MyBuildy — multi-provider builder buddy for Claude Code.
           </div>
           <div style={styles.infoText}>
             {isLocalProvider(provider)
@@ -633,13 +633,13 @@ export function SettingsScreen(): React.ReactElement {
         <div style={styles.section}>
           <div style={styles.sectionLabel}>Danger zone</div>
           <div style={styles.sectionHint}>
-            Remove everything My Buildy stores on this computer and start over.
+            Remove everything MyBuildy stores on this computer and start over.
           </div>
           <button
             onClick={() => { setWipeError(null); setConfirmWipe(true) }}
             style={styles.dangerOutlineBtn}
           >
-            Delete all My Buildy data
+            Delete all MyBuildy data
           </button>
           {wipeError && <div style={styles.modelsError}>{wipeError}</div>}
         </div>
@@ -648,10 +648,10 @@ export function SettingsScreen(): React.ReactElement {
       {confirmWipe && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard}>
-            <div style={styles.modalTitle}>Delete all My Buildy data?</div>
+            <div style={styles.modalTitle}>Delete all MyBuildy data?</div>
             <div style={styles.modalText}>
               This deletes your keys, settings and all project memory from this
-              computer. This cannot be undone. My Buildy will restart as if freshly
+              computer. This cannot be undone. MyBuildy will restart as if freshly
               installed.
             </div>
             <div style={styles.modalButtons}>

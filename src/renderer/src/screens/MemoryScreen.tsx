@@ -1,6 +1,6 @@
 // MemoryScreen.tsx
-// My Buildy's project memory, backed by the Nemp memory layer (loop engineering
-// Block 2). Shows what My Buildy knows — completed work, blockers, decisions,
+// MyBuildy's project memory, backed by the Nemp memory layer (loop engineering
+// Block 2). Shows what MyBuildy knows — completed work, blockers, decisions,
 // patterns, and recent activity — plus export + reset.
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -85,7 +85,7 @@ export function MemoryScreen(): React.ReactElement {
           <button className="btn-ghost" onClick={load} style={S.smallBtn} title="Refresh">↻</button>
         </div>
         <div style={S.headerSub}>
-          What My Buildy remembers about this project. Stored only on this computer.
+          What MyBuildy remembers about this project. Stored only on this computer.
           Relevant entries are sent to your AI provider with each analysis.
         </div>
       </div>
@@ -106,7 +106,7 @@ export function MemoryScreen(): React.ReactElement {
 
         {!loading && totalCount === 0 && snap.recent.length === 0 && (
           <div style={S.empty}>
-            My Buildy hasn't learned anything yet. Start a watching session and it will
+            MyBuildy hasn't learned anything yet. Start a watching session and it will
             remember what you build.
           </div>
         )}
@@ -131,7 +131,7 @@ export function MemoryScreen(): React.ReactElement {
           <EntryList items={snap.decisions} color="var(--color-accent)" />
         </Section>
 
-        <Section title="Patterns My Buildy noticed" count={snap.patterns.length} color="var(--color-warning)">
+        <Section title="Patterns MyBuildy noticed" count={snap.patterns.length} color="var(--color-warning)">
           <EntryList items={snap.patterns} color="var(--color-warning)" />
         </Section>
 
@@ -157,7 +157,7 @@ export function MemoryScreen(): React.ReactElement {
           <div style={S.modalCard}>
             <div style={S.modalTitle}>Reset all memory?</div>
             <div style={S.modalText}>
-              This permanently deletes everything My Buildy has learned about this
+              This permanently deletes everything MyBuildy has learned about this
               project (completed work, blockers, decisions, patterns). Your goal is
               kept. This cannot be undone.
             </div>

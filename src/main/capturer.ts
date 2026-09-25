@@ -1,7 +1,7 @@
 // capturer.ts — main process
 // Screen and window capture via Electron's desktopCapturer API.
 //
-// SAFETY: My Buildy does NOT auto-detect windows and NEVER falls back to capturing
+// SAFETY: MyBuildy does NOT auto-detect windows and NEVER falls back to capturing
 // the full desktop. The user explicitly chooses which window to watch. If that
 // window disappears, capture HALTS (returns null / a halt outcome) so we never
 // silently send the user's whole screen to an AI provider.

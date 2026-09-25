@@ -1,6 +1,6 @@
-# Testing My Buildy on a Mac
+# Testing MyBuildy on a Mac
 
-This is the first time My Buildy runs on a real Mac. Everything below was built and unit-tested on macOS in CI, but **nobody has clicked through it on a Mac yet** — that is what this checklist is for. It takes about 20 minutes.
+This is the first time MyBuildy runs on a real Mac. Everything below was built and unit-tested on macOS in CI, but **nobody has clicked through it on a Mac yet** — that is what this checklist is for. It takes about 20 minutes.
 
 You will need: a Mac (Apple Silicon or Intel), a terminal app (Terminal, iTerm2, …) running an AI coding agent — [Claude Code](https://docs.anthropic.com/en/docs/claude-code) is the one tested so far, but any terminal agent or a plain shell works for this checklist — and an API key for Anthropic, OpenAI, Google Gemini or OpenRouter.
 
@@ -28,17 +28,17 @@ Then open MyBuildy again.
 
 ## 2. The three macOS permissions
 
-macOS will ask for these. If one is missing, My Buildy shows a message on the mascot and in its guidance panel saying exactly what to turn on, with an **Open System Settings** button that goes straight to the right place. In System Settings the app may be listed as **MyBuildy** (one word).
+macOS will ask for these. If one is missing, MyBuildy shows a message on the mascot and in its guidance panel saying exactly what to turn on, with an **Open System Settings** button that goes straight to the right place.
 
 | Permission | Where | Needed for | Restart needed? |
 |---|---|---|---|
-| **Screen Recording** | System Settings > Privacy & Security > Screen Recording | Watching a window (without it macOS hands My Buildy blank pictures) | **Yes — quit My Buildy (right-click the Dock icon > Quit, or the menu bar icon > Quit My Buildy) and open it again.** macOS ignores the permission until the app restarts. |
+| **Screen Recording** | System Settings > Privacy & Security > Screen Recording | Watching a window (without it macOS hands MyBuildy blank pictures) | **Yes — quit MyBuildy (right-click the Dock icon > Quit, or the menu bar icon > Quit MyBuildy) and open it again.** macOS ignores the permission until the app restarts. |
 | **Accessibility** | System Settings > Privacy & Security > Accessibility | **Send** (typing Cmd+V and Return into your terminal) | No |
 | **Automation → System Events** | System Settings > Privacy & Security > Automation > MyBuildy > System Events | **Send** (same reason — macOS asks "MyBuildy wants to control System Events" the first time; click **OK**) | No |
 
 macOS may also ask whether MyBuildy can use the **"MyBuildy Safe Storage"** keychain item when you save your API key. That is where your key is encrypted — choose **Always Allow**.
 
-**To quit** (needed after granting Screen Recording): press **Cmd+Q** while My Buildy is the active app, or right-click the Dock icon > **Quit**, or use the menu bar icon > **Quit My Buildy**. Check the Dock: the icon's dot should disappear.
+**To quit** (needed after granting Screen Recording): press **Cmd+Q** while MyBuildy is the active app, or right-click the Dock icon > **Quit**, or use the menu bar icon > **Quit MyBuildy**. Check the Dock: the icon's dot should disappear.
 
 **If you install a newer build later:** the app is ad-hoc signed, so macOS treats each build as a new app and forgets these permissions, even if the switch in System Settings still looks **on**. In each list, select MyBuildy, click **−**, then add it again with **+** (or toggle it back on). The Keychain may ask again too.
 
@@ -52,14 +52,14 @@ For any step that doesn't match what it says you should see, send:
 2. **A screenshot** (Cmd+Shift+4, then drag over the area; it lands on your Desktop).
 3. **Your Mac**: Apple menu > About This Mac — the chip (Apple M… or Intel) and the macOS version.
 4. **The log**, captured like this:
-   1. Quit My Buildy (menu bar icon > Quit My Buildy).
+   1. Quit MyBuildy (menu bar icon > Quit MyBuildy).
    2. In Terminal, run:
 
       ```bash
       /Applications/MyBuildy.app/Contents/MacOS/MyBuildy 2>&1 | tee ~/Desktop/mybuildy-log.txt
       ```
 
-   3. Repeat the failing step, then quit My Buildy and send **`mybuildy-log.txt`** from your Desktop. It contains lines like `[Send] …`, `[Watch] …`, `[Companion] …` and never contains your API key. (Keep this Terminal window out of the way — don't pick it as the window to watch.)
+   3. Repeat the failing step, then quit MyBuildy and send **`mybuildy-log.txt`** from your Desktop. It contains lines like `[Send] …`, `[Watch] …`, `[Companion] …` and never contains your API key. (Keep this Terminal window out of the way — don't pick it as the window to watch.)
 
 ---
 
@@ -81,7 +81,7 @@ Click your terminal window, then make it full screen (green button, or Ctrl+Cmd+
 **3. Screen Recording: the prompt appears, and capture works after granting.**
 Right-click the mascot to open the window picker.
 *You should see:* macOS asks to let MyBuildy record the screen (or the picker shows windows without real previews). If watching is refused, the mascot and the guidance panel say **"macOS needs permission to see your screen…"** with an **Open System Settings** button.
-Click the button, turn on **MyBuildy** under Screen Recording, then **quit and reopen My Buildy**.
+Click the button, turn on **MyBuildy** under Screen Recording, then **quit and reopen MyBuildy**.
 *You should see:* after reopening, the window picker shows real miniature previews of your windows.
 *If not:* screenshot of the picker + screenshot of the Screen Recording list in System Settings + the log.
 
@@ -98,7 +98,7 @@ Right-click the mascot, pick your terminal window. Accept the one-time privacy n
 
 **6. The guidance panel shows an analysis.**
 Wait up to ~30 seconds (or type something in the terminal).
-*You should see:* a panel appears next to the mascot with an ON TRACK / DRIFTING / BLOCKED pill, a plain-English explanation of what's on screen, and usually a **Prompt to paste** with a **Send** button (it reads **Send to Claude Code** or **Send to Codex** when My Buildy recognises the agent).
+*You should see:* a panel appears next to the mascot with an ON TRACK / DRIFTING / BLOCKED pill, a plain-English explanation of what's on screen, and usually a **Prompt to paste** with a **Send** button (it reads **Send to Claude Code** or **Send to Codex** when MyBuildy recognises the agent).
 *If not:* screenshot + the log.
 
 **7. Send pastes and submits.**
@@ -111,7 +111,7 @@ With your agent (or a shell) waiting for input in the watched terminal, click **
 
 **8. A turn-end report arrives.**
 After a Send, let your agent (or your shell command) finish its work.
-*You should see:* within about 10 seconds of it finishing, a fresh analysis in the guidance panel (and a spoken summary if voice is on). While it is still working, My Buildy stays quiet.
+*You should see:* within about 10 seconds of it finishing, a fresh analysis in the guidance panel (and a spoken summary if voice is on). While it is still working, MyBuildy stays quiet.
 *If not:* roughly how long it took (or never) + the log.
 
 **9. Voice plays.**
@@ -120,8 +120,8 @@ Make sure quiet mode is off on the mascot (speaker icon).
 *If not:* your Mac's output volume/device + the log.
 
 **10. Delete all data returns to first run.**
-Settings > **Delete all My Buildy data** > confirm.
-*You should see:* My Buildy restarts to first run: Settings opens, no key saved, no model selected, the mascot says **"Set me up: click the gear"**, and the Memory tab is empty.
+Settings > **Delete all MyBuildy data** > confirm.
+*You should see:* MyBuildy restarts to first run: Settings opens, no key saved, no model selected, the mascot says **"Set me up: click the gear"**, and the Memory tab is empty.
 *If not:* screenshot + the log.
 
 ---

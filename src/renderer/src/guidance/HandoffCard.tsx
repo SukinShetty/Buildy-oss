@@ -64,7 +64,7 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
 
       {!answering ? (
         <div style={S.buttons}>
-          <button onClick={() => setAnswering(true)} style={S.primary} title="Type your answer — My Buildy remembers it for this project">
+          <button onClick={() => setAnswering(true)} style={S.primary} title="Type your answer — MyBuildy remembers it for this project">
             I'll decide
           </button>
           <button onClick={() => setDismissed(true)} style={S.ghost} title="Dismiss without recording">

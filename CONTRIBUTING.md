@@ -1,6 +1,6 @@
-# Contributing to My Buildy
+# Contributing to MyBuildy
 
-Thanks for your interest in contributing. My Buildy is a small open-source project — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
+Thanks for your interest in contributing. MyBuildy is a small open-source project — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
 
 ## Ways to contribute
 
@@ -74,5 +74,5 @@ Read [`AGENTS.md`](./AGENTS.md) for the full architecture, the IPC channel map, 
 
 ## What's out of scope for now
 
-- The `worker/` directory is not used by My Buildy v0.1 (see [`worker/README.md`](./worker/README.md)). PRs that re-enable it will not be merged until the authentication work planned for a later release is in place.
+- The `worker/` directory is not used by MyBuildy v0.1 (see [`worker/README.md`](./worker/README.md)). PRs that re-enable it will not be merged until the authentication work planned for a later release is in place.
 - Bundled binaries or pre-built installers are not accepted as PR content.

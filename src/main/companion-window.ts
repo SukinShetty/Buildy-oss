@@ -218,7 +218,7 @@ export function showCompanion(): void {
 }
 
 /**
- * Hide the companion (used by the tray "Hide My Buildy" action). The guidance window
+ * Hide the companion (used by the tray "Hide MyBuildy" action). The guidance window
  * follows automatically via the companion's 'hide' event.
  */
 export function hideCompanion(): void {

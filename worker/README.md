@@ -1,6 +1,6 @@
-Not used by My Buildy v0.1. Kept for a possible hosted option later.
+Not used by MyBuildy v0.1. Kept for a possible hosted option later.
 
-# My Buildy Worker proxy — DISABLED in v0.1
+# MyBuildy Worker proxy — DISABLED in v0.1
 
 > ⚠️ **This Cloudflare Worker proxy is not used by the app in v0.1.** The "Use proxy"
 > option was removed from Settings and the Anthropic provider always calls the API

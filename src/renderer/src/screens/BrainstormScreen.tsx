@@ -1,8 +1,8 @@
 // BrainstormScreen.tsx
-// The first screen the user sees. A chat interface where My Buildy helps them
+// The first screen the user sees. A chat interface where MyBuildy helps them
 // define their product idea: what to build, who it's for, and what the MVP should be.
 //
-// Once My Buildy extracts enough context, it generates a structured project summary
+// Once MyBuildy extracts enough context, it generates a structured project summary
 // that auto-populates the Memory screen.
 
 import React, { useState, useEffect, useRef } from 'react'
@@ -48,7 +48,7 @@ export function BrainstormScreen(): React.ReactElement {
 
     const unsubDone = window.mybuildy.onBrainstormDone(({ fullText, extractedProjectData }) => {
       finalizeBrainstormAssistantMessage(fullText, extractedProjectData)
-      // If My Buildy extracted project data, offer to save it
+      // If MyBuildy extracted project data, offer to save it
     })
 
     const unsubError = window.mybuildy.onBrainstormError((errorMessage) => {
@@ -134,7 +134,7 @@ export function BrainstormScreen(): React.ReactElement {
       <div style={styles.header}>
         <div style={styles.headerTitle}>💡 Let's figure out what you're building</div>
         <div style={styles.headerSub}>
-          Chat with My Buildy to define your product. Then go to Guidance to start building.
+          Chat with MyBuildy to define your product. Then go to Guidance to start building.
         </div>
         {brainstormMessages.length > 0 && (
           <button className="btn-ghost" style={styles.clearButton} onClick={clearBrainstormMessages}>
@@ -155,7 +155,7 @@ export function BrainstormScreen(): React.ReactElement {
             >
               Settings
             </button>
-            {' '}to use My Buildy.
+            {' '}to use MyBuildy.
           </span>
         </div>
       )}
@@ -186,7 +186,7 @@ export function BrainstormScreen(): React.ReactElement {
         {brainstormPhase === 'waiting-for-response' && !brainstormStreamingBuffer && (
           <div style={styles.typingIndicator}>
             <span>🔨</span>
-            <span style={styles.typingDots}>My Buildy is thinking…</span>
+            <span style={styles.typingDots}>MyBuildy is thinking…</span>
           </div>
         )}
 
@@ -213,7 +213,7 @@ export function BrainstormScreen(): React.ReactElement {
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your idea, or answer My Buildy's question…"
+          placeholder="Describe your idea, or answer MyBuildy's question…"
           style={styles.input}
           rows={2}
           disabled={isStreaming || !apiIsConfigured}
@@ -239,7 +239,7 @@ function WelcomeMessage(): React.ReactElement {
   return (
     <div style={styles.welcomeMessage}>
       <div style={styles.welcomeIcon}>🔨</div>
-      <div style={styles.welcomeTitle}>Hey! My Buildy here, your builder buddy.</div>
+      <div style={styles.welcomeTitle}>Hey! MyBuildy here, your builder buddy.</div>
       <div style={styles.welcomeText}>
         Tell me what you want to build. No need to be technical — just describe your idea
         in plain words and I'll help you figure out what to make first.
@@ -288,7 +288,7 @@ function ExtractedDataCard({
 }): React.ReactElement {
   return (
     <div style={styles.extractedCard}>
-      <div style={styles.extractedCardTitle}>✅ My Buildy understands your product</div>
+      <div style={styles.extractedCardTitle}>✅ MyBuildy understands your product</div>
       <div style={styles.extractedField}>
         <span style={styles.extractedLabel}>Product name</span>
         <span style={styles.extractedValue}>{data.projectName}</span>

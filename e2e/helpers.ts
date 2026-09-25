@@ -25,7 +25,7 @@ export const PACKAGED_EXE = process.env.MYBUILDY_E2E_EXE || null
 export const IS_PACKAGED_RUN = !!PACKAGED_EXE
 
 /**
- * The REAL My Buildy profile on this machine — must never be touched by e2e.
+ * The REAL MyBuildy profile on this machine — must never be touched by e2e.
  * Mirrors Electron's userData default for productName "MyBuildy".
  */
 export function realUserDataDir(): string {

@@ -1,5 +1,5 @@
 // NavBar.tsx
-// Top navigation bar with 5 tabs and the My Buildy name.
+// Top navigation bar with 5 tabs and the MyBuildy name.
 // Stays fixed at the top of the app — screen content scrolls below it.
 
 import React from 'react'
@@ -27,7 +27,7 @@ export function NavBar(): React.ReactElement {
       {/* Logo */}
       <div style={styles.logo}>
         <span style={styles.logoIcon}>🔨</span>
-        <span style={styles.logoText}>My Buildy</span>
+        <span style={styles.logoText}>MyBuildy</span>
       </div>
 
       {/* Tab buttons */}

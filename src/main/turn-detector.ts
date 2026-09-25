@@ -1,5 +1,5 @@
 // turn-detector.ts — main process (ELECTRON-FREE, pure decision logic)
-// Turn-end detection: while the coding agent is mid-turn, My Buildy must spend
+// Turn-end detection: while the coding agent is mid-turn, MyBuildy must spend
 // nothing — no AI calls on the normal 10s timer. Instead the loop takes a cheap
 // LOW-RESOLUTION local capture every 5s (never sent anywhere) and feeds the
 // change fraction into this state machine, which decides when ONE analysis is

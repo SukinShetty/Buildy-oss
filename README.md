@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/mybuildy-logo.png" width="360" alt="My Buildy logo" />
+  <img src="docs/mybuildy-logo.png" width="360" alt="MyBuildy logo" />
 </p>
 
-<p align="center"><strong>Every loop engineering tool assumes you can read code. My Buildy is that loop, for people who can't.</strong></p>
+<p align="center"><strong>Every loop engineering tool assumes you can read code. MyBuildy is that loop, for people who can't.</strong></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078D4" alt="Platform: Windows and macOS" />
@@ -47,13 +47,13 @@
 
 ---
 
-## What My Buildy does
+## What MyBuildy does
 
 AI coding agents in the terminal are astonishing — and they were built by developers, for developers. If you can't read code, 400 lines of terminal output fly past and you have no idea whether something brilliant just happened or your project is on fire.
 
-My Buildy was built and tested against Claude Code first, and works with any coding agent that runs in a terminal window — see [Works with your agent](#works-with-your-agent).
+MyBuildy was built and tested against Claude Code first, and works with any coding agent that runs in a terminal window — see [Works with your agent](#works-with-your-agent).
 
-My Buildy is a desktop companion that sits next to your AI coding agent's terminal and translates:
+MyBuildy is a desktop companion that sits next to your AI coding agent's terminal and translates:
 
 - **Watches only the window you pick** — one explicit choice, never your whole screen
 - **Explains what just happened** in plain English, no jargon
@@ -65,27 +65,27 @@ My Buildy is a desktop companion that sits next to your AI coding agent's termin
 - **Speaks guidance out loud** (optional) so you can stay heads-up
 - **Remembers your project across sessions** — decisions, blockers, what's been built
 
-My Buildy runs the loop. You approve each step.
+MyBuildy runs the loop. You approve each step.
 
 ---
 
 ## How the loop works
 
 1. **Goal** — you say what you're building once. Every step is judged against it.
-2. **Watch** — you pick the terminal window your agent is running in. My Buildy captures only that window.
-3. **Explain** — a vision model reads the screenshot and tells you, in plain English, what the agent just did. My Buildy detects when the agent's turn ends and analyzes within about 10 seconds of it stopping.
-4. **Next prompt** — My Buildy writes the exact prompt that moves your goal forward.
+2. **Watch** — you pick the terminal window your agent is running in. MyBuildy captures only that window.
+3. **Explain** — a vision model reads the screenshot and tells you, in plain English, what the agent just did. MyBuildy detects when the agent's turn ends and analyzes within about 10 seconds of it stopping.
+4. **Next prompt** — MyBuildy writes the exact prompt that moves your goal forward.
 5. **Send when you approve** — one click sends the prompt into the watched window (Windows and macOS). Nothing is ever sent without your click.
 6. **Verify** — a separate check confirms whether the last prompt achieved its intended outcome before the loop moves on.
-7. **Hand-off** — when a decision needs a human (choosing a database, a payment provider, deleting data), My Buildy stops and asks instead of guessing.
+7. **Hand-off** — when a decision needs a human (choosing a database, a payment provider, deleting data), MyBuildy stops and asks instead of guessing.
 
 ---
 
 ## Loop engineering
 
-Loop engineering is the pattern of building a system that prompts the AI, checks the result, corrects course, and repeats — instead of typing every prompt yourself. My Buildy has **four of the six loop engineering blocks** built:
+Loop engineering is the pattern of building a system that prompts the AI, checks the result, corrects course, and repeats — instead of typing every prompt yourself. MyBuildy has **four of the six loop engineering blocks** built:
 
-| Block | Status | What it does in My Buildy |
+| Block | Status | What it does in MyBuildy |
 |---|---|---|
 | **Goal** | ✅ Built | You state the goal once; every analysis reports on track / drifting / blocked against it. |
 | **Memory** | ✅ Built | Per-project memory (powered by [Nemp Memory](https://github.com/SukinShetty/Nemp-memory)) persists decisions, blockers, and completed features across sessions — local JSON, namespaced per project. |
@@ -98,7 +98,7 @@ Loop engineering is the pattern of building a system that prompts the AI, checks
 
 ## Providers
 
-My Buildy brings no model of its own — you connect a provider with your own key. **There is no default model: you choose one in Settings**, from a live model list fetched from your provider.
+MyBuildy brings no model of its own — you connect a provider with your own key. **There is no default model: you choose one in Settings**, from a live model list fetched from your provider.
 
 **Recommended:**
 
@@ -109,7 +109,7 @@ My Buildy brings no model of its own — you connect a provider with your own ke
 
 **Advanced: run models locally** — Ollama, LM Studio, or any custom OpenAI-compatible endpoint.
 
-Whatever you pick, the model must **pass the vision check** (My Buildy sends it a tiny test image and asks what color it is) before watching is enabled — analysis is screenshot-based, so a text-only model cannot do the job.
+Whatever you pick, the model must **pass the vision check** (MyBuildy sends it a tiny test image and asks what color it is) before watching is enabled — analysis is screenshot-based, so a text-only model cannot do the job.
 
 ---
 
@@ -132,11 +132,11 @@ Whatever you pick, the model must **pass the vision check** (My Buildy sends it 
    xattr -dr com.apple.quarantine /Applications/MyBuildy.app
    ```
 
-5. macOS asks for three privacy permissions. My Buildy checks each one, tells you exactly what to turn on, and has a button that opens the right System Settings pane:
-   - **Screen Recording** — required to watch a window. **macOS only applies it after you quit and reopen My Buildy.**
+5. macOS asks for three privacy permissions. MyBuildy checks each one, tells you exactly what to turn on, and has a button that opens the right System Settings pane:
+   - **Screen Recording** — required to watch a window. **macOS only applies it after you quit and reopen MyBuildy.**
    - **Accessibility** and **Automation → System Events** — needed only for **Send** (pressing Cmd+V and Return in your terminal). Without them, the prompt stays on your clipboard to paste yourself.
 
-**After installing a new version:** because the app is ad-hoc signed (no Apple Developer identity), macOS treats every new build as a different app and forgets its permissions — System Settings may still show the switch **on** while My Buildy says it is missing. Fix it once per update: in that System Settings list select MyBuildy, click **−** to remove it, then turn it back on (or re-add it with **+**). The Keychain may also ask again — choose **Always Allow**.
+**After installing a new version:** because the app is ad-hoc signed (no Apple Developer identity), macOS treats every new build as a different app and forgets its permissions — System Settings may still show the switch **on** while MyBuildy says it is missing. Fix it once per update: in that System Settings list select MyBuildy, click **−** to remove it, then turn it back on (or re-add it with **+**). The Keychain may also ask again — choose **Always Allow**.
 
 `SHA256SUMS.txt` covers the DMGs too. Testing a Mac build? Follow [docs/MAC-TESTING.md](./docs/MAC-TESTING.md).
 
@@ -161,20 +161,20 @@ Linux runs from source but is **untested** — see [Known limitations](#known-li
 
 ## First run
 
-1. My Buildy opens **Settings** on first launch.
+1. MyBuildy opens **Settings** on first launch.
 2. Pick a provider and paste your API key (it is encrypted on save — see [Security model](#security-model)).
-3. Choose a model from the live list. My Buildy runs the **vision check**; watching stays disabled until a model passes it.
+3. Choose a model from the live list. MyBuildy runs the **vision check**; watching stays disabled until a model passes it.
 4. Optionally add an **ElevenLabs** key for spoken guidance (the mic button only appears once a key is saved).
 5. Pick or create a **project** — each project gets its own memory.
-6. Set your **goal**, pick the terminal window your agent is running in, and start. The first time you pick a window, My Buildy shows a one-time disclosure explaining exactly what gets captured and where it goes.
+6. Set your **goal**, pick the terminal window your agent is running in, and start. The first time you pick a window, MyBuildy shows a one-time disclosure explaining exactly what gets captured and where it goes.
 
 ---
 
 ## Cost
 
-My Buildy uses **your** API key, and **each analysis is a paid API call** to your provider. What that means in practice:
+MyBuildy uses **your** API key, and **each analysis is a paid API call** to your provider. What that means in practice:
 
-- My Buildy is aggressive about not wasting calls: while the agent is working, it takes cheap low-resolution local snapshots (never sent anywhere) and only runs a real analysis when the agent's turn ends.
+- MyBuildy is aggressive about not wasting calls: while the agent is working, it takes cheap low-resolution local snapshots (never sent anywhere) and only runs a real analysis when the agent's turn ends.
 - There is an **hourly cap** — at most 120 provider calls per rolling hour by default, editable from 20 to 600 in Settings. Watching pauses at the cap.
 - To keep costs low: pick a cheaper vision-capable model, lower the cap, pause watching when you step away, or run a local model via Ollama/LM Studio for zero API cost.
 
@@ -193,7 +193,7 @@ No accounts, no servers, **no telemetry**. Everything lives on your machine; the
 | Settings | Plain JSON in your user-data directory (secrets are stripped out) | Nobody |
 | Anything else | — | **Nothing else is sent to anyone.** |
 
-**Delete everything:** Settings has a **Delete all My Buildy data** button that removes keys, settings, and every project's memory. Uninstalling and deleting the `MyBuildy` user-data folder does the same.
+**Delete everything:** Settings has a **Delete all MyBuildy data** button that removes keys, settings, and every project's memory. Uninstalling and deleting the `MyBuildy` user-data folder does the same.
 
 Screenshots may contain whatever is visible in the watched window — code, secrets, personal data. Watch only the window you intend to share; your provider's data-retention policies apply to what you send.
 
@@ -201,13 +201,13 @@ Screenshots may contain whatever is visible in the watched window — code, secr
 
 ## Security model
 
-- **Encrypted keys** — API keys are stored with Electron `safeStorage` (DPAPI on Windows, the Keychain on macOS). If OS encryption is unavailable, My Buildy **refuses to save keys in plaintext**. Keys never cross into the renderer — the UI only ever sees `hasKey: true/false`.
+- **Encrypted keys** — API keys are stored with Electron `safeStorage` (DPAPI on Windows, the Keychain on macOS). If OS encryption is unavailable, MyBuildy **refuses to save keys in plaintext**. Keys never cross into the renderer — the UI only ever sees `hasKey: true/false`.
 - **Sandboxed renderers** — `contextIsolation: true`, `nodeIntegration: false`; the UI cannot touch Node, the filesystem, or the network directly.
 - **Validated IPC** — every IPC channel validates its payload shape in the main process before acting.
 - **Strict CSP** and navigation guards — renderer windows cannot load or navigate to remote content.
 - **Send safety guard** — prompts about to be sent are scanned for destructive patterns (deletes, force-pushes, secrets exfiltration). Flagged prompts need a second, explicit confirmation click.
 
-One honest caveat: My Buildy reads your screen, and **text on the screen can influence the prompts it suggests** (a form of prompt injection). That is exactly why My Buildy never sends anything on its own — every send needs your click, and the guard adds a second click on anything that looks destructive.
+One honest caveat: MyBuildy reads your screen, and **text on the screen can influence the prompts it suggests** (a form of prompt injection). That is exactly why MyBuildy never sends anything on its own — every send needs your click, and the guard adds a second click on anything that looks destructive.
 
 See [SECURITY.md](./SECURITY.md) for the reporting policy.
 
@@ -215,7 +215,7 @@ See [SECURITY.md](./SECURITY.md) for the reporting policy.
 
 ## Works with your agent
 
-My Buildy watches pixels, not an API — so **watching, explaining, the verifier and hand-off work with any coding agent that runs in a terminal window**. It detects which agent it is looking at and labels the button accordingly ("Send to Claude Code", "Send to Codex", or plain "Send").
+MyBuildy watches pixels, not an API — so **watching, explaining, the verifier and hand-off work with any coding agent that runs in a terminal window**. It detects which agent it is looking at and labels the button accordingly ("Send to Claude Code", "Send to Codex", or plain "Send").
 
 Only **Send** depends on the agent accepting a pasted prompt and Enter, and that is where testing so far is uneven:
 
@@ -225,7 +225,7 @@ Only **Send** depends on the agent accepting a pasted prompt and Enter, and that
 | **Codex CLI** | Recognised, Send implemented — not yet tested end to end. |
 | **Any other terminal agent** (Gemini CLI, Cursor CLI, Aider, and so on) | Watching and explaining work. Send is untested. Copy and paste always works. |
 
-Tried My Buildy with another agent? Please [open an issue](https://github.com/SukinShetty/mybuildy/issues) with what worked and what didn't — this table will be updated as results come in.
+Tried MyBuildy with another agent? Please [open an issue](https://github.com/SukinShetty/mybuildy/issues) with what worked and what didn't — this table will be updated as results come in.
 
 ---
 
@@ -233,10 +233,10 @@ Tried My Buildy with another agent? Please [open an issue](https://github.com/Su
 
 - **Send works on Windows and macOS.** On Linux you copy the prompt and paste it yourself.
 - **macOS is new in this release.** It is built, type-checked and unit-tested on macOS in CI, and the in-app permission checks explain every macOS prompt — but first hands-on testing on a real Mac is still under way ([docs/MAC-TESTING.md](./docs/MAC-TESTING.md)). Reports welcome.
-- **macOS Send targets the watched app, then its window by title.** If the app (say Terminal) has several windows open, macOS brings the app forward and My Buildy raises the watched window by its exact title; if the title changed that instant, another window of the same app could receive the paste. My Buildy checks the right *app* is in front before typing, but it cannot prove which of its windows is.
+- **macOS Send targets the watched app, then its window by title.** If the app (say Terminal) has several windows open, macOS brings the app forward and MyBuildy raises the watched window by its exact title; if the title changed that instant, another window of the same app could receive the paste. MyBuildy checks the right *app* is in front before typing, but it cannot prove which of its windows is.
 - **The macOS app is not notarized** — first launch needs right-click > Open (see [Install](#macos-dmg)).
 - **Linux is untested.** It can run from source, but no testing has been done there yet.
-- **Window identity edge case:** if the watched window closes and, within ~15 seconds, a brand-new window appears that reuses the same OS window handle, My Buildy can follow the new window. Closing and reopening normally is handled; this narrow reuse window is not.
+- **Window identity edge case:** if the watched window closes and, within ~15 seconds, a brand-new window appears that reuses the same OS window handle, MyBuildy can follow the new window. Closing and reopening normally is handled; this narrow reuse window is not.
 - **The Send guard is heuristic.** It is a speed bump against destructive prompts, not a guarantee — you remain the final check.
 - **The verifier judges from screenshots.** It confirms what is visible on screen, not what happened inside your codebase; it can be wrong when the screen doesn't tell the whole story.
 
@@ -270,10 +270,10 @@ Voice uses ElevenLabs when a key is saved in Settings, otherwise the system voic
 You likely hit the hourly call cap. Raise it in Settings or wait for the rolling hour to pass.
 
 **macOS: watching won't start and it asks for Screen Recording.**
-Turn My Buildy on in System Settings > Privacy & Security > Screen Recording, then **quit and reopen My Buildy** — macOS ignores the permission until the app restarts.
+Turn MyBuildy on in System Settings > Privacy & Security > Screen Recording, then **quit and reopen MyBuildy** — macOS ignores the permission until the app restarts.
 
 **macOS: Send pastes nothing.**
-Send needs Accessibility and Automation → System Events for My Buildy (System Settings > Privacy & Security). The panel tells you which one is missing and opens it; the prompt stays on your clipboard meanwhile.
+Send needs Accessibility and Automation → System Events for MyBuildy (System Settings > Privacy & Security). The panel tells you which one is missing and opens it; the prompt stays on your clipboard meanwhile.
 
 **Can I run it fully offline?**
 Yes — pick Ollama or LM Studio under Advanced, point the Base URL at your local server, choose a vision-capable local model, and skip the ElevenLabs key.
@@ -294,4 +294,4 @@ Contributions are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). The shor
 
 ---
 
-<p align="center">Built for non-technical builders who want to ship.<br/>My Buildy runs the loop. You approve each step.</p>
+<p align="center">Built for non-technical builders who want to ship.<br/>MyBuildy runs the loop. You approve each step.</p>

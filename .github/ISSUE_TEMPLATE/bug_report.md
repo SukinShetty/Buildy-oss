@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in My Buildy isn't working
+about: Something in MyBuildy isn't working
 title: "[Bug] "
 labels: bug
 assignees: ''
@@ -16,7 +16,7 @@ A clear description of the bug and what you expected instead.
 
 **Environment**
 - OS and version: (e.g. macOS 14, Windows 11, Ubuntu 24.04)
-- My Buildy version or commit:
+- MyBuildy version or commit:
 - AI provider and model: (e.g. Anthropic claude-sonnet, Ollama llava)
 - Voice: (ElevenLabs / system voice)
 

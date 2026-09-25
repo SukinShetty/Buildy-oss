@@ -20,7 +20,7 @@ import { findWatchedSource } from './capture-guard'
 import { debugLog } from './debug-log'
 
 const SEND_TIMEOUT_MS = 5_000
-// macOS shows a one-time "My Buildy wants to control System Events" consent
+// macOS shows a one-time "MyBuildy wants to control System Events" consent
 // dialog on the first send; osascript waits while it is open, so allow time to
 // answer it instead of killing the script mid-dialog.
 const MAC_SEND_TIMEOUT_MS = 30_000

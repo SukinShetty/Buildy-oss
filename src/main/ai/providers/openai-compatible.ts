@@ -245,7 +245,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     // OpenRouter requires extra headers
     if (this.info.type === 'openrouter') {
       headers['HTTP-Referer'] = 'https://github.com/SukinShetty/mybuildy'
-      headers['X-Title'] = 'My Buildy'
+      headers['X-Title'] = 'MyBuildy'
     }
 
     return headers

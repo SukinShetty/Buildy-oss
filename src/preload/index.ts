@@ -153,11 +153,11 @@ const mybuildyAPI = {
   setSecret: (name: SecretName, value: string): Promise<void> =>
     ipcRenderer.invoke(IPC.SET_SECRET, { name, value }),
 
-  // Persist the one-time privacy disclosure ("My Buildy sends screenshots…") as accepted.
+  // Persist the one-time privacy disclosure ("MyBuildy sends screenshots…") as accepted.
   acceptCaptureNotice: (): Promise<void> =>
     ipcRenderer.invoke(IPC.CAPTURE_NOTICE_ACCEPT),
 
-  // Delete ALL My Buildy data (keys, settings, every project's memory) and restart
+  // Delete ALL MyBuildy data (keys, settings, every project's memory) and restart
   // to first run. Main re-confirms nothing — the Settings UI owns the confirm.
   deleteAllData: (): Promise<void> =>
     ipcRenderer.invoke(IPC.DELETE_ALL_DATA),

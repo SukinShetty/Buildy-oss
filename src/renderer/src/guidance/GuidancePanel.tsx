@@ -4,7 +4,7 @@
 //
 // Renders one of two payloads pushed from the main process:
 //   - kind 'analysis' — alignment pill + note + best next move + prompt-to-paste
-//   - kind 'answer'   — the user's spoken question + My Buildy's answer
+//   - kind 'answer'   — the user's spoken question + MyBuildy's answer
 //
 // Self-managing behaviour:
 //   - Reports its content height to main so the window resizes to fit (capped at
@@ -287,7 +287,7 @@ function AnalysisBody({
 
       {analysis.projectUnderstandingNote && (
         <div style={S.understanding}>
-          My Buildy thinks you're building: {analysis.projectUnderstandingNote}
+          MyBuildy thinks you're building: {analysis.projectUnderstandingNote}
         </div>
       )}
 

@@ -1,7 +1,7 @@
 // WindowPicker.tsx
 // Shows all open windows so the user can choose which one to watch.
 // Thumbnails come from desktopCapturer — deliberately low-resolution.
-// (My Buildy does NOT auto-detect Claude Code — the user always picks.)
+// (MyBuildy does NOT auto-detect Claude Code — the user always picks.)
 
 import React from 'react'
 import type { WindowSource } from '../types'
@@ -25,7 +25,7 @@ export function WindowPicker({
     <div style={styles.overlay}>
       <div style={styles.panel}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Which window should My Buildy watch?</h2>
+          <h2 style={styles.title}>Which window should MyBuildy watch?</h2>
           <p style={styles.subtitle}>
             Pick the window you want guidance on (e.g. your AI coding tool), then hit Confirm.
           </p>

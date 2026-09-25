@@ -1,6 +1,6 @@
 // GuidanceWorkspace.tsx
 // The main analysis screen. User clicks "Analyze Now" (or enables auto),
-// My Buildy captures the Claude Code window and returns 7-section guidance.
+// MyBuildy captures the Claude Code window and returns 7-section guidance.
 //
 // State flow:
 //   idle → listing-windows → awaiting-window-selection → capturing → analyzing → done
@@ -312,7 +312,7 @@ function CurrentGoalCard({
         {hasGoal ? (
           <div style={styles.goalCardText}>{goalPurpose}</div>
         ) : (
-          <div style={styles.goalCardEmpty}>No goal set yet — set one so My Buildy can keep you on track.</div>
+          <div style={styles.goalCardEmpty}>No goal set yet — set one so MyBuildy can keep you on track.</div>
         )}
       </div>
       <button
@@ -339,7 +339,7 @@ function EmptyState({
       <div style={styles.emptyStateIcon}>👁️</div>
       <div style={styles.emptyStateTitle}>Ready to watch Claude Code</div>
       <p style={styles.emptyStateText}>
-        Open Claude Code, start working, then click Analyze Now. My Buildy will look at your
+        Open Claude Code, start working, then click Analyze Now. MyBuildy will look at your
         screen and tell you exactly what's happening and what to do next.
       </p>
       {apiConfigured ? (
@@ -359,7 +359,7 @@ function LoadingCard({ phase }: { phase: string }): React.ReactElement {
   const message =
     phase === 'capturing'
       ? '📸 Taking a screenshot of Claude Code…'
-      : '🤖 My Buildy is reading your screen and thinking…'
+      : '🤖 MyBuildy is reading your screen and thinking…'
 
   return (
     <div style={styles.loadingCard}>

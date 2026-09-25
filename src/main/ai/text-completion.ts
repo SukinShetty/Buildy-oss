@@ -94,7 +94,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
   if (settings.apiKey) headers['Authorization'] = `Bearer ${settings.apiKey}`
   if (provider === 'openrouter') {
     headers['HTTP-Referer'] = 'https://github.com/SukinShetty/mybuildy'
-    headers['X-Title'] = 'My Buildy'
+    headers['X-Title'] = 'MyBuildy'
   }
 
   // Ollama's /v1 OpenAI-compatible endpoint has patchy image_url support, so

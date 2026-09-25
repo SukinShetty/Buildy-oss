@@ -208,19 +208,19 @@ export function isModelConfigured(
 export const CHOOSE_MODEL_MESSAGE = 'Choose a model in Settings'
 
 // Shown when the OS offers no encrypted key storage (safeStorage unavailable).
-// My Buildy REFUSES to write keys in plain text — saving fails with this message.
+// MyBuildy REFUSES to write keys in plain text — saving fails with this message.
 export const NO_SECURE_STORAGE_MESSAGE =
-  "This computer has no secure key storage, so My Buildy won't save keys in plain text."
+  "This computer has no secure key storage, so MyBuildy won't save keys in plain text."
 
 // One-time privacy disclosure shown the FIRST time the user picks a window to
 // watch. Continue persists captureNoticeAccepted; Cancel aborts the pick.
 export const CAPTURE_NOTICE_MESSAGE =
-  "My Buildy sends screenshots of the window you pick, plus this project's memory, " +
+  "MyBuildy sends screenshots of the window you pick, plus this project's memory, " +
   'to the AI provider you chose. Your keys and memory are stored only on this computer.'
 
 // ─── macOS privacy permissions ───────────────────────────────────────────────
 // Without these, macOS fails SILENTLY (black captures, keystrokes that do
-// nothing), so My Buildy checks first and says exactly what to turn on. Shown on
+// nothing), so MyBuildy checks first and says exactly what to turn on. Shown on
 // the mascot label and in the guidance panel with an "Open System Settings"
 // button (main maps the kind to a fixed System Settings URL).
 
@@ -229,14 +229,14 @@ export type MacPermission = 'screen' | 'accessibility' | 'automation'
 export const MAC_PERMISSION_MESSAGES: Record<MacPermission, string> = {
   screen:
     'macOS needs permission to see your screen. Open System Settings > Privacy & Security > ' +
-    'Screen Recording, turn on My Buildy, then quit and reopen My Buildy. ' +
+    'Screen Recording, turn on MyBuildy, then quit and reopen MyBuildy. ' +
     'macOS only applies this permission after a restart.',
   accessibility:
     'macOS needs permission to type for you. Open System Settings > Privacy & Security > ' +
-    'Accessibility and turn on My Buildy. The prompt is on your clipboard: press Cmd+V, then Return.',
+    'Accessibility and turn on MyBuildy. The prompt is on your clipboard: press Cmd+V, then Return.',
   automation:
-    'macOS needs permission for My Buildy to control System Events (that is how it presses Cmd+V and Return). ' +
-    'Open System Settings > Privacy & Security > Automation, and under My Buildy turn on System Events. ' +
+    'macOS needs permission for MyBuildy to control System Events (that is how it presses Cmd+V and Return). ' +
+    'Open System Settings > Privacy & Security > Automation, and under MyBuildy turn on System Events. ' +
     'The prompt is on your clipboard: press Cmd+V, then Return.',
 }
 
@@ -244,8 +244,8 @@ export const MAC_PERMISSION_MESSAGES: Record<MacPermission, string> = {
 // either the permission was just granted (macOS applies it only after a
 // restart) or the window is minimized / on another desktop.
 export const MAC_BLANK_CAPTURE_MESSAGE =
-  "My Buildy can't see anything in that window. If you just turned on Screen Recording, " +
-  'quit and reopen My Buildy. If the window is minimized or on another desktop, bring it into view and pick it again.'
+  "MyBuildy can't see anything in that window. If you just turned on Screen Recording, " +
+  'quit and reopen MyBuildy. If the window is minimized or on another desktop, bring it into view and pick it again.'
 
 /** Which permission a failed send needs, or null if the failure was something else. */
 export function permissionForSendFailure(reason: SendFailureReason | undefined): MacPermission | null {
@@ -318,7 +318,7 @@ export type TerminalState =
   | 'unknown'
 
 // ─── Verifier (loop engineering Block 4) ──────────────────────────────────────
-// After My Buildy suggests a prompt, the NEXT analysis verifies whether the pasted
+// After MyBuildy suggests a prompt, the NEXT analysis verifies whether the pasted
 // prompt achieved its intended outcome. This verdict is computed in the main
 // process (verifier-check.ts) and attached transiently to the following analysis.
 export type VerificationStatus = 'success' | 'failed' | 'partial'
@@ -341,18 +341,18 @@ export interface AnalysisResult {
   // Verifier (Block 4): a one-sentence description of what success looks like for
   // nextPrompt. Present whenever nextPrompt is non-empty; the next cycle checks it.
   expectedOutcome?: string
-  builderNote: string               // Encouraging, buddy-style note from My Buildy
+  builderNote: string               // Encouraging, buddy-style note from MyBuildy
   // Goal alignment — present only when the user has set a goal (see Goal type).
   goalAlignment?: GoalAlignment | null
   alignmentNote?: string            // One-sentence plain-English reason for the alignment judgment
-  // One sentence: what My Buildy currently understands the user is building (memory + screen).
+  // One sentence: what MyBuildy currently understands the user is building (memory + screen).
   projectUnderstandingNote?: string
   // True only for a NEW, fundamentally different blocker. When true the voice
   // queue truncates after the current chunk so the alert is spoken next.
   isCriticalOverride?: boolean
   // Hand-off detection (Block 6): true ONLY for genuine human-judgment moments
   // (architectural tradeoffs, irreversible commitments, legal/compliance, or two
-  // equally-valid approaches). Never for routine coding choices My Buildy can default.
+  // equally-valid approaches). Never for routine coding choices MyBuildy can default.
   needsHumanJudgment?: boolean
   humanJudgmentReason?: string      // one plain-English sentence describing the decision
   // Verifier (Block 4): verdict on the PREVIOUS suggested prompt, attached by the
@@ -395,8 +395,8 @@ export type SendFailureReason =
   | 'not_eligible'
   | 'stale'
   | 'unknown'
-  | 'accessibility_permission'  // macOS: My Buildy may not post keystrokes (Accessibility)
-  | 'automation_permission'     // macOS: My Buildy may not control System Events (Automation)
+  | 'accessibility_permission'  // macOS: MyBuildy may not post keystrokes (Accessibility)
+  | 'automation_permission'     // macOS: MyBuildy may not control System Events (Automation)
 
 export interface SendPromptResult {
   sent: boolean

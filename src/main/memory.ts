@@ -173,7 +173,7 @@ export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void>
   await ensureUserDataDirectoryExists()
   // captureNoticeAccepted is STICKY-TRUE: once the user has accepted the
   // one-time disclosure, a stale settings save from another window can't
-  // silently reset it. Only "Delete all My Buildy data" clears it (fresh file).
+  // silently reset it. Only "Delete all MyBuildy data" clears it (fresh file).
   const onDisk = await loadNonSecretSettings()
   const clean: NonSecretSettings = {
     provider: s.provider,
@@ -187,8 +187,8 @@ export async function saveNonSecretSettings(s: NonSecretSettings): Promise<void>
   await fs.writeFile(settingsFilePath, JSON.stringify(clean, null, 2), 'utf-8')
 }
 
-// ─── Delete all My Buildy data (Settings → restart to first run) ─────────────────
-// Deletes ONLY My Buildy's own files inside its userData directory: encrypted
+// ─── Delete all MyBuildy data (Settings → restart to first run) ─────────────────
+// Deletes ONLY MyBuildy's own files inside its userData directory: encrypted
 // keys, settings, project records, every project's memory (mybuildy-memory/*,
 // including each project's Nemp store), the legacy un-namespaced memory file,
 // and the vision-check approvals. Nothing outside userData is ever touched.
@@ -220,7 +220,7 @@ export async function deleteAllMyBuildyData(): Promise<void> {
       `Could not delete: ${failed.join(', ')}. Close other programs using these files and try again.`
     )
   }
-  console.log('[DataWipe] My Buildy data deleted (keys, settings, all project memory)')
+  console.log('[DataWipe] MyBuildy data deleted (keys, settings, all project memory)')
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

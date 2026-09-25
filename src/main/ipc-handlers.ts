@@ -354,7 +354,7 @@ export function registerIpcHandlers(
     }
   })
 
-  // Delete ALL My Buildy data (keys, settings, every project's memory) and restart
+  // Delete ALL MyBuildy data (keys, settings, every project's memory) and restart
   // to first run. User-confirmed in the Settings UI; main-window-only.
   ipcMain.handle(IPC.DELETE_ALL_DATA, async (event) => {
     try {

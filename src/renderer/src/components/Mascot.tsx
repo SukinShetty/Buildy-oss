@@ -1,5 +1,5 @@
 // Mascot.tsx
-// My Buildy's character mascot. Renders one of five PNG poses with a soft,
+// MyBuildy's character mascot. Renders one of five PNG poses with a soft,
 // state-colored glow layer, gentle idle motion (breathing + float + occasional
 // look-around), per-state effects (orbiting thinking dots, speaking bounce +
 // ripples, listening pings), and one-shot event reactions (hop + sparkles,
@@ -241,7 +241,7 @@ export function Mascot({
                     <motion.img
                       key={poseSrc}
                       src={poseSrc}
-                      alt="My Buildy"
+                      alt="MyBuildy"
                       draggable={false}
                       style={styles.img}
                       initial={{ opacity: 0, scale: reducedMotion ? 1 : 0.92 }}

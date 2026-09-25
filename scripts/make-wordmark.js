@@ -1,6 +1,6 @@
-// make-wordmark.js — one-off README/brand wordmark generator (rename to My Buildy).
+// make-wordmark.js — one-off README/brand wordmark generator (rename to MyBuildy).
 // Renders the 1536x1024 banner used at the top of the README: the orange mascot
-// badge (build/icon.png, produced by make-app-icon.js) plus a white "My Buildy"
+// badge (build/icon.png, produced by make-app-icon.js) plus a white "MyBuildy"
 // wordmark on a near-black background, and writes it to both logo locations:
 //   docs/mybuildy-logo.png                   (README header)
 //   src/renderer/src/assets/mybuildy-logo.png (source for make-app-icon.js)
@@ -39,7 +39,7 @@ const html = `<!doctype html><html><head><style>
     color: #fff; font: 800 190px/1 "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     letter-spacing: -6px; white-space: nowrap;
   }
-</style></head><body><img src="${badgeDataUrl}" alt=""><span>My Buildy</span></body></html>`
+</style></head><body><img src="${badgeDataUrl}" alt=""><span>MyBuildy</span></body></html>`
 
 app.disableHardwareAcceleration()
 app.whenReady().then(async () => {

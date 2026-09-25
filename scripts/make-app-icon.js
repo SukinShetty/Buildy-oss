@@ -1,6 +1,6 @@
 // make-app-icon.js — one-off installer/app icon generator (Phase 9).
-// The My Buildy wordmark (src/renderer/src/assets/mybuildy-logo.png) is a 1536x1024
-// wordmark banner: a rounded orange mascot badge + white "My Buildy" text on a
+// The MyBuildy wordmark (src/renderer/src/assets/mybuildy-logo.png) is a 1536x1024
+// wordmark banner: a rounded orange mascot badge + white "MyBuildy" text on a
 // black background. A letterboxed banner makes a terrible app icon, so this
 // script extracts the BADGE:
 //

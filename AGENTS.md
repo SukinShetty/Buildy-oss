@@ -1,10 +1,10 @@
-# My Buildy — Agent Instructions
+# MyBuildy — Agent Instructions
 
 <!-- Single source of truth for all AI coding agents working on this project. -->
 
-## What is My Buildy?
+## What is MyBuildy?
 
-A desktop companion (Windows and macOS; Linux runs from source, untested) that helps non-technical builders work with AI coding agents in a terminal (any agent for watching, explaining, verifying and hand-off; Send is built and tested against Claude Code, implemented but not yet end-to-end tested for Codex CLI, untested for others). My Buildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. My Buildy runs the loop; the user approves each step.
+A desktop companion (Windows and macOS; Linux runs from source, untested) that helps non-technical builders work with AI coding agents in a terminal (any agent for watching, explaining, verifying and hand-off; Send is built and tested against Claude Code, implemented but not yet end-to-end tested for Codex CLI, untested for others). MyBuildy watches the coding tool's window, explains what's happening in plain language, judges it against the user's stated goal, tracks what's built and what's missing, and gives the user the exact next prompt — which it can send into the watched window on an approving click (Windows). Narrated out loud by an always-on-top voice mascot. MyBuildy runs the loop; the user approves each step.
 
 Inspired by Clicky's screen-aware companion model — adapted to a different problem and a different tech stack.
 
@@ -169,4 +169,4 @@ The proxy in `worker/` is **not used by the app in v0.1** and is kept only for a
 - All external API calls happen in the main process (API keys never reach the renderer; `mybuildy:set-secret` is one-way)
 - CSP in `index.html` restricts what the renderer can load
 - API keys stored encrypted (Electron `safeStorage`) in userData, never in the app bundle or version control; plaintext saving is refused
-- My Buildy sends screen captures to the AI provider the user configures — treat capture contents as sensitive (see `SECURITY.md`)
+- MyBuildy sends screen captures to the AI provider the user configures — treat capture contents as sensitive (see `SECURITY.md`)

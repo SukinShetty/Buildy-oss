@@ -189,7 +189,7 @@ export function CompanionApp(): React.ReactElement {
 
     try {
       // NOTE: deliberately does NOT stop audio (Invariant 2). Starting the mic
-      // while My Buildy is talking lets it finish; recording proceeds in parallel.
+      // while MyBuildy is talking lets it finish; recording proceeds in parallel.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
@@ -392,7 +392,7 @@ export function CompanionApp(): React.ReactElement {
       {/* One-time privacy disclosure — shown before the FIRST watch ever starts */}
       {pendingPick && (
         <div style={S.picker}>
-          <div style={S.noticeTitle}>Before My Buildy starts watching</div>
+          <div style={S.noticeTitle}>Before MyBuildy starts watching</div>
           <div style={S.noticeText}>{CAPTURE_NOTICE_MESSAGE}</div>
           <div style={S.noticeButtons}>
             <button onClick={onCaptureNoticeCancel} style={S.noticeCancel}>Cancel</button>

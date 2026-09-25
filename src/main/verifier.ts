@@ -1,5 +1,5 @@
 // verifier.ts — main process (loop engineering Block 4)
-// Tracks the prompts My Buildy has suggested so the NEXT analysis can verify whether
+// Tracks the prompts MyBuildy has suggested so the NEXT analysis can verify whether
 // the pasted prompt achieved its intended outcome. This is a companion app, not a
 // database: we keep only the most recent 1-2 pending outcomes in memory. Nothing
 // here is persisted, and the store is cleared whenever the watch session changes.
@@ -8,7 +8,7 @@ export type PromptOutcomeStatus = 'pending' | 'success' | 'failed' | 'partial'
 
 export interface PromptOutcome {
   id: string
-  suggestedAt: string          // ISO timestamp when My Buildy suggested the prompt
+  suggestedAt: string          // ISO timestamp when MyBuildy suggested the prompt
   promptText: string           // the nextPrompt the user was told to paste
   expectedOutcome: string      // one-sentence success description
   status: PromptOutcomeStatus

@@ -6,7 +6,7 @@ import {
   toAgentName,
 } from './response-parser'
 
-// A representative model output for a routine coding step — My Buildy can default it,
+// A representative model output for a routine coding step — MyBuildy can default it,
 // so needsHumanJudgment must be false.
 const ROUTINE_STEP = JSON.stringify({
   screenContentVisible: true,

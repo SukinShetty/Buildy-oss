@@ -2,7 +2,7 @@
   "name": "mybuildy",
   "productName": "MyBuildy",
   "version": "0.1.0",
-  "description": "My Buildy: an AI builder companion that watches your Claude Code terminal and tells non-technical builders what happened and what to type next.",
+  "description": "MyBuildy: an AI builder companion that watches your Claude Code terminal and tells non-technical builders what happened and what to type next.",
   "author": "Sukin Shetty",
   "homepage": "https://github.com/SukinShetty/mybuildy",
   "license": "MIT",
@@ -86,8 +86,8 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "My Buildy uses the microphone only when you click the mic to ask a question.",
-        "NSAppleEventsUsageDescription": "My Buildy asks System Events to press Cmd+V and Return in your terminal when you click Send."
+        "NSMicrophoneUsageDescription": "MyBuildy uses the microphone only when you click the mic to ask a question.",
+        "NSAppleEventsUsageDescription": "MyBuildy asks System Events to press Cmd+V and Return in your terminal when you click Send."
       }
     },
     "dmg": {

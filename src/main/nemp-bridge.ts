@@ -30,10 +30,10 @@
 //       schema re-implementation (Option C).
 //   Nuance: the package MAIN is not a library, so we import the internal module
 //   paths. They are stable ESM with .d.ts. Because Nemp is ESM ("type":"module")
-//   and My Buildy's main process is CJS, we load them via dynamic import() (the only
+//   and MyBuildy's main process is CJS, we load them via dynamic import() (the only
 //   CJS→ESM bridge) and type the result against local interfaces — so a future
 //   internal reshuffle degrades gracefully (logged, memory simply no-ops) rather
-//   than crashing My Buildy.
+//   than crashing MyBuildy.
 //
 // All memory stays 100% LOCAL (Nemp's guarantee) — JSON on disk, nothing leaves
 // the device. Every read/write logs for debugging.
@@ -210,7 +210,7 @@ export async function getContextSummary(maxTokens = 2000): Promise<string> {
   list('Open blockers', snap.blockersOpen.map((m) => m.value))
   list('Resolved blockers', snap.blockersResolved.map((m) => m.value))
   list('Key decisions', snap.decisions.map((m) => m.value))
-  list('Patterns My Buildy noticed', snap.patterns.map((m) => m.value))
+  list('Patterns MyBuildy noticed', snap.patterns.map((m) => m.value))
   list('Recent activity', snap.recent.slice(0, 8).map((m) => m.value))
 
   let text = lines.join('\n').trim()
@@ -309,21 +309,21 @@ export async function exportToMyBuildyMd(filePath: string): Promise<void> {
   const section = (title: string, items: MemoryEntry[]): string =>
     items.length ? `\n## ${title}\n` + items.map((m) => `- ${m.value.replace(/\n/g, ' ')} _(${m.timestamp.slice(0, 10)})_`).join('\n') + '\n' : ''
 
-  let md = `# MYBUILDY.md\n\n> My Buildy's project memory. Auto-generated ${nowISO().slice(0, 10)}. Stored only on this computer.\n`
+  let md = `# MYBUILDY.md\n\n> MyBuildy's project memory. Auto-generated ${nowISO().slice(0, 10)}. Stored only on this computer.\n`
   if (snap.goal?.purpose) md += `\n## Goal\n${snap.goal.purpose}\n`
   md += section('Completed features', snap.completed)
   md += section('In progress', snap.inProgress)
   md += section('Open blockers', snap.blockersOpen)
   md += section('Resolved blockers', snap.blockersResolved)
   md += section('Key decisions', snap.decisions)
-  md += section('Patterns My Buildy noticed', snap.patterns)
+  md += section('Patterns MyBuildy noticed', snap.patterns)
   md += section('Recent activity', snap.recent)
 
   await fs.writeFile(filePath, md, 'utf-8')
   console.log(`[Nemp] Exported MYBUILDY.md → ${filePath}`)
 }
 
-/** Wipe every memory My Buildy wrote to the store. */
+/** Wipe every memory MyBuildy wrote to the store. */
 export async function resetMemory(): Promise<void> {
   if (!storage) return
   const all = readAll()
@@ -331,7 +331,7 @@ export async function resetMemory(): Promise<void> {
   try {
     storage.writeMemories(keep, projectPath)
     storage.updateMemoryIndex(projectPath)
-    console.log(`[Nemp] RESET — removed ${all.length - keep.length} My Buildy memories (kept ${keep.length} others)`)
+    console.log(`[Nemp] RESET — removed ${all.length - keep.length} MyBuildy memories (kept ${keep.length} others)`)
   } catch (error) {
     console.error('[Nemp] reset failed:', error)
   }

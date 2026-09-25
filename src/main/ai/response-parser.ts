@@ -97,7 +97,7 @@ export function routeHumanQuestionToHandoff(analysis: AnalysisResult): AnalysisR
     needsHumanJudgment: true,
     humanJudgmentReason:
       (analysis.humanJudgmentReason || '').trim() ||
-      'My Buildy needs your answer before it can suggest the next prompt: ' +
+      'MyBuildy needs your answer before it can suggest the next prompt: ' +
         (analysis.nextPrompt || '').trim(),
   }
 }
@@ -358,7 +358,7 @@ function buildFallbackAnalysisResult(rawText: string, startTime: number): Analys
   return {
     screenContentVisible: false,
     whatIsHappening: rawText.slice(0, 300),
-    whatItMeans: 'My Buildy had trouble reading the response. Try analyzing again.',
+    whatItMeans: 'MyBuildy had trouble reading the response. Try analyzing again.',
     whatIsBuilt: [],
     whatIsMissing: [],
     whatIsBroken: [],
