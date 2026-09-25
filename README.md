@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS-0078D4" alt="Platform: Windows and macOS" />
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-blue.svg" alt="PolyForm Shield License 1.0.0" /></a>
   <a href="https://github.com/SukinShetty/mybuildy/releases/latest"><img src="https://img.shields.io/github/v/release/SukinShetty/mybuildy" alt="Latest release" /></a>
   <a href="https://www.electronjs.org/"><img src="https://img.shields.io/badge/Built%20with-Electron%2044-47848F?logo=electron&logoColor=white" alt="Built with Electron" /></a>
 </p>
@@ -305,9 +305,9 @@ Contributions are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md). The shor
 
 ---
 
-## License
+## Licence
 
-[MIT](./LICENSE) © Sukin Shetty
+MyBuildy is source-available under the [PolyForm Shield License 1.0.0](./LICENSE). Anyone can use it for free, including for their own work and business. You may not sell MyBuildy, or use its code to build a product that competes with it. Versions published before 25 September 2026 were released under the MIT licence.
 
 ---
 

@@ -1,6 +1,10 @@
 # Contributing to MyBuildy
 
-Thanks for your interest in contributing. MyBuildy is a small open-source project — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
+Thanks for your interest in contributing. MyBuildy is a small source-available project under the [PolyForm Shield License 1.0.0](./LICENSE) — contributions are welcome, and the bar to getting a PR merged is low as long as it keeps the build and tests green.
+
+## Licence of contributions
+
+By submitting a contribution, you agree that it is licensed under the same licence as the project, the [PolyForm Shield License 1.0.0](./LICENSE).
 
 ## Ways to contribute
 

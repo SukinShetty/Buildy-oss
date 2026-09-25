@@ -6,7 +6,7 @@ All notable changes to MyBuildy are documented here. The format follows
 
 ## [0.1.0] — 2026-09-23
 
-First public release (MIT). Windows installer and macOS DMGs (Apple Silicon and Intel) via GitHub Releases; Linux runs from source (untested).
+First public release, source-available under the PolyForm Shield License 1.0.0. Windows installer and macOS DMGs (Apple Silicon and Intel) via GitHub Releases; Linux runs from source (untested).
 
 ### Added
 
