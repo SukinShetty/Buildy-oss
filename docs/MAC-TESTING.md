@@ -12,7 +12,12 @@ You will need: a Mac (Apple Silicon or Intel), a terminal app (Terminal, iTerm2,
    - **Apple Silicon** (Apple menu > About This Mac says "Chip: Apple M…"): `MyBuildy-0.1.0-arm64.dmg`
    - **Intel** ("Processor: Intel…"): `MyBuildy-0.1.0-x64.dmg`
 2. Open the DMG and drag **MyBuildy** into **Applications**.
-3. In Applications, **right-click (or Control-click) MyBuildy > Open**, then click **Open** in the dialog. (The app is not notarized by Apple, so a normal double-click is blocked the first time. After this once, double-click works.)
+3. The app is not notarized by Apple, so macOS blocks the first launch. On **macOS 15 Sequoia and later**:
+   1. Double-click **MyBuildy** in Applications. macOS says it was **"Not Opened"** — click **Done** (not Move to Trash).
+   2. Open **System Settings → Privacy & Security**, scroll to the bottom, and next to **"MyBuildy was blocked to protect your Mac"** click **Open Anyway**.
+   3. Enter your password, then click **Open Anyway** again — within about an hour of step 1.
+
+   On **macOS 14 Sonoma**: right-click (or Control-click) **MyBuildy** in Applications, choose **Open**, then **Open** again. After this once, double-click works.
 
 ### If macOS says "MyBuildy is damaged and can't be opened"
 
@@ -32,7 +37,7 @@ macOS will ask for these. If one is missing, MyBuildy shows a message on the mas
 
 | Permission | Where | Needed for | Restart needed? |
 |---|---|---|---|
-| **Screen Recording** | System Settings > Privacy & Security > Screen Recording | Watching a window (without it macOS hands MyBuildy blank pictures) | **Yes — quit MyBuildy (right-click the Dock icon > Quit, or the menu bar icon > Quit MyBuildy) and open it again.** macOS ignores the permission until the app restarts. |
+| **Screen Recording** (**Screen & System Audio Recording** on newer macOS) | System Settings > Privacy & Security > Screen Recording | Watching a window (without it macOS hands MyBuildy blank pictures) | **Yes — quit MyBuildy (right-click the Dock icon > Quit, or the menu bar icon > Quit MyBuildy) and open it again.** macOS ignores the permission until the app restarts. |
 | **Accessibility** | System Settings > Privacy & Security > Accessibility | **Paste into terminal** (typing Cmd+V into your terminal) | No |
 | **Automation → System Events** | System Settings > Privacy & Security > Automation > MyBuildy > System Events | **Paste into terminal** (same reason — macOS asks "MyBuildy wants to control System Events" the first time; click **OK**) | No |
 
@@ -81,7 +86,7 @@ Click your terminal window, then make it full screen (green button, or Ctrl+Cmd+
 **3. Screen Recording: the prompt appears, and capture works after granting.**
 Right-click the mascot to open the window picker.
 *You should see:* macOS asks to let MyBuildy record the screen (or the picker shows windows without real previews). If watching is refused, the mascot and the guidance panel say **"macOS needs permission to see your screen…"** with an **Open System Settings** button.
-Click the button, turn on **MyBuildy** under Screen Recording, then **quit and reopen MyBuildy**.
+Click the button, turn on **MyBuildy** under Screen Recording (**Screen & System Audio Recording** on newer macOS), then **quit and reopen MyBuildy**.
 *You should see:* after reopening, the window picker shows real miniature previews of your windows.
 *If not:* screenshot of the picker + screenshot of the Screen Recording list in System Settings + the log.
 

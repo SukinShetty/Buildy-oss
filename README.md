@@ -51,7 +51,7 @@
 
 AI coding agents in the terminal are astonishing — and they were built by developers, for developers. If you can't read code, 400 lines of terminal output fly past and you have no idea whether something brilliant just happened or your project is on fire.
 
-MyBuildy was built and tested against Claude Code first, and works with any coding agent that runs in a terminal window — see [Works with your agent](#works-with-your-agent).
+MyBuildy is a companion for any AI coding agent that runs in a terminal window. Built and tested with Claude Code; with other agents watching works and paste is untested — see [Works with your agent](#works-with-your-agent).
 
 MyBuildy is a desktop companion that sits next to your AI coding agent's terminal and translates:
 
@@ -125,7 +125,12 @@ Whatever you pick, the model must **pass the vision check** (MyBuildy sends it a
 
 1. Download the DMG for your Mac from the [latest release](https://github.com/SukinShetty/mybuildy/releases/latest): **`MyBuildy-0.1.0-arm64.dmg`** for Apple Silicon (M1 and later) or **`MyBuildy-0.1.0-x64.dmg`** for Intel. Not sure? Apple menu > About This Mac: "Chip: Apple M…" means arm64.
 2. Open the DMG and drag **MyBuildy** into **Applications**.
-3. The app is ad-hoc signed but **not notarized** (that needs a paid Apple Developer account), so the first launch is blocked by Gatekeeper. In Applications, **right-click (or Control-click) MyBuildy > Open**, then click **Open** in the dialog. You only need to do this once.
+3. The app is ad-hoc signed but **not notarized** (that needs a paid Apple Developer account), so macOS blocks the first launch. On **macOS 15 Sequoia and later**:
+   1. Double-click **MyBuildy** in Applications. macOS says it was **"Not Opened"** — click **Done** (not Move to Trash).
+   2. Open **System Settings → Privacy & Security** and scroll to the bottom. Next to **"MyBuildy was blocked to protect your Mac"**, click **Open Anyway**.
+   3. Enter your password, then click **Open Anyway** again. Do this within about an hour of step 1, or the button disappears and you start again.
+
+   On **macOS 14 Sonoma**, right-click (or Control-click) **MyBuildy** in Applications, choose **Open**, then **Open** again. Either way you only need to do this once.
 4. If macOS instead says **"MyBuildy is damaged and can't be opened"**, that is the download quarantine flag on an un-notarized app, not real damage. Run this once in Terminal, then open the app again:
 
    ```bash
@@ -133,7 +138,7 @@ Whatever you pick, the model must **pass the vision check** (MyBuildy sends it a
    ```
 
 5. macOS asks for three privacy permissions. MyBuildy checks each one, tells you exactly what to turn on, and has a button that opens the right System Settings pane:
-   - **Screen Recording** — required to watch a window. **macOS only applies it after you quit and reopen MyBuildy.**
+   - **Screen Recording** (called **Screen & System Audio Recording** on newer macOS) — required to watch a window. **macOS only applies it after you quit and reopen MyBuildy.**
    - **Accessibility** and **Automation → System Events** — needed only for **Paste into terminal** (pressing Cmd+V in your terminal). Without them, the prompt stays on your clipboard to paste yourself.
 
 **After installing a new version:** because the app is ad-hoc signed (no Apple Developer identity), macOS treats every new build as a different app and forgets its permissions — System Settings may still show the switch **on** while MyBuildy says it is missing. Fix it once per update: in that System Settings list select MyBuildy, click **−** to remove it, then turn it back on (or re-add it with **+**). The Keychain may also ask again — choose **Always Allow**.
@@ -233,8 +238,8 @@ Only **Paste into terminal** depends on how the agent's terminal accepts a paste
 
 | Agent | Status |
 |---|---|
-| **Claude Code** | Built and tested against this. |
-| **Codex CLI** | Recognised, paste implemented — not yet tested end to end. |
+| **Claude Code** | Built and tested with this. |
+| **Codex CLI** | Recognised; watching works. Paste is untested. Copy and paste always works. |
 | **Any other terminal agent** (Gemini CLI, Cursor CLI, Aider, and so on) | Watching and explaining work. Paste is untested. Copy and paste always works. |
 
 Tried MyBuildy with another agent? Please [open an issue](https://github.com/SukinShetty/mybuildy/issues) with what worked and what didn't — this table will be updated as results come in.
@@ -246,7 +251,7 @@ Tried MyBuildy with another agent? Please [open an issue](https://github.com/Suk
 - **Paste into terminal works on Windows and macOS.** On Linux you copy the prompt and paste it yourself. It never presses Enter.
 - **macOS is new in this release.** It is built, type-checked and unit-tested on macOS in CI, and the in-app permission checks explain every macOS prompt — but first hands-on testing on a real Mac is still under way ([docs/MAC-TESTING.md](./docs/MAC-TESTING.md)). Reports welcome.
 - **macOS paste targets the watched app, then its window by title.** If the app (say Terminal) has several windows open, macOS brings the app forward and MyBuildy raises the watched window by its exact title; if the title changed that instant, another window of the same app could receive the paste. MyBuildy checks the right *app* is in front before typing, but it cannot prove which of its windows is.
-- **The macOS app is not notarized** — first launch needs right-click > Open (see [Install](#macos-dmg)).
+- **The macOS app is not notarized** — the first launch needs a one-time **Open Anyway** in System Settings (right-click > Open on macOS 14; see [Install](#macos-dmg)).
 - **Linux is untested.** It can run from source, but no testing has been done there yet.
 - **Window identity edge case:** if the watched window closes and, within ~15 seconds, a brand-new window appears that reuses the same OS window handle, MyBuildy can follow the new window. Closing and reopening normally is handled; this narrow reuse window is not.
 - **The paste guard is heuristic.** It is a speed bump against destructive prompts, not a guarantee — you remain the final check.
@@ -259,7 +264,7 @@ Tried MyBuildy with another agent? Please [open an issue](https://github.com/Suk
 - **Autopilot (v1.1)** — sends prompts automatically while the loop stays on track, within a step budget you set; stops the moment things drift, block, or need a hand-off decision.
 - **Heartbeat** — scheduled loop runs without a manual trigger.
 - **MCP connectors** — GitHub, Slack, Linear as loop inputs/outputs.
-- **Notarized macOS build** (no right-click > Open step).
+- **Notarized macOS build** (no Open Anyway step).
 - **Signed Windows installer** (goodbye SmartScreen warning).
 
 ---
@@ -282,7 +287,7 @@ Voice uses ElevenLabs when a key is saved in Settings, otherwise the system voic
 You likely hit the hourly call cap. Raise it in Settings or wait for the rolling hour to pass.
 
 **macOS: watching won't start and it asks for Screen Recording.**
-Turn MyBuildy on in System Settings > Privacy & Security > Screen Recording, then **quit and reopen MyBuildy** — macOS ignores the permission until the app restarts.
+Turn MyBuildy on in System Settings > Privacy & Security > Screen Recording (**Screen & System Audio Recording** on newer macOS), then **quit and reopen MyBuildy** — macOS ignores the permission until the app restarts.
 
 **macOS: Paste into terminal pastes nothing.**
 Pasting needs Accessibility and Automation → System Events for MyBuildy (System Settings > Privacy & Security). The panel tells you which one is missing and opens it; the prompt stays on your clipboard meanwhile.
