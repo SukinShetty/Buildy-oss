@@ -89,3 +89,19 @@ describe('replacing release files in place', () => {
     expect(findReleaseForTag(releases, 'v9.9.9')).toBeNull()
   })
 })
+
+describe('the release script never deletes a release', () => {
+  it('only ever deletes release ASSETS, and never changes draft/published state', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const src = ['release-assets.mjs', 'release-assets-lib.mjs'].map((f) => readFileSync(join(__dirname, f), 'utf8')).join('\n')
+    // Every DELETE goes to /releases/assets/<id>; nothing deletes /releases/<id> or a tag.
+    const deletes = [...src.matchAll(/gh\('DELETE',\s*`([^`]+)`/g)].map((m) => m[1])
+    expect(deletes).toEqual(['${API}/releases/assets/${assetId}'])
+    expect(src).not.toMatch(/git\/refs\/tags/)
+    // The release object is only ever created as a draft, never patched.
+    expect(src).not.toMatch(/gh\('PATCH',\s*`\$\{API\}\/releases\/\$\{/)
+    expect(src).toMatch(/draft: true/)
+    expect(src).not.toMatch(/draft: false/)
+  })
+})

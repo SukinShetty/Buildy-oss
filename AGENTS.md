@@ -142,7 +142,13 @@ The Playwright suite in `e2e/` launches the real Electron app. Isolation works v
 
 ## Release pipeline
 
-`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/mybuildy`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`MyBuildy-Setup-<version>.exe`, unsigned) on windows-latest and macOS DMGs for arm64 + x64 (`MyBuildy-<version>-<arch>.dmg`, ad-hoc signed by `scripts/after-pack.js`, not notarized) on macos-latest; a final job writes one `SHA256SUMS.txt` over all files and creates ONE **draft** GitHub release — publishing is a manual step. `ci.yml` runs typecheck + build + test on Node 22 on ubuntu-latest and macos-latest for every push/PR to main.
+`.github/workflows/release.yml` triggers on `v*` tags, guarded to the canonical repo (`SukinShetty/mybuildy`) so forks don't cut releases. It runs typecheck + tests, builds, packages a Windows NSIS installer (`MyBuildy-Setup-<version>.exe`, unsigned) on windows-latest and macOS DMGs for arm64 + x64 (`MyBuildy-<version>-<arch>.dmg`, ad-hoc signed by `scripts/after-pack.js`, not notarized) on macos-latest; a final job writes one `SHA256SUMS.txt` over all files and puts them on the release for the tag with `scripts/release-assets.mjs`: an existing release (draft or published) gets its files replaced in place and keeps its state; with no release yet, ONE **draft** is created — publishing is a manual step. `ci.yml` runs typecheck + build + test on Node 22 on ubuntu-latest and macos-latest for every push/PR to main.
+
+## Release rule
+
+- **Never delete a published release**, and never delete its tag. Download links (the website, testers) point straight at `releases/download/<tag>/<file>`; deleting the release or tag takes every one of them offline.
+- **Always replace assets in place.** To re-release the same version, move the tag with a single force-update (never delete and re-push it); `release.yml` then replaces each file on the existing release one at a time (upload under a temporary name, move the old file aside, give the new file the real name, delete the old one — `SHA256SUMS.txt` last), re-downloads every file to check its SHA256, and leaves the release published or draft exactly as it was.
+- Only a person publishes a release. The version number changes only when the maintainer says so.
 
 ## Worker (not used in v0.1)
 
