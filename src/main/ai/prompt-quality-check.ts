@@ -12,6 +12,7 @@
 // { valid: true } so the original prompt is kept untouched.
 
 import type { AnalysisResult, AppSettings, Goal } from '../../renderer/src/types'
+import { readJson } from './provider-errors'
 import { fetchWithTimeout } from './fetch-with-timeout'
 import { debugLog } from '../debug-log'
 import { recordProviderCall } from '../cost-guard'
@@ -201,7 +202,7 @@ async function callGrader(
     console.warn(`[PromptQuality] Grader HTTP ${response.status} — skipping`)
     return ''
   }
-  const json = (await response.json()) as { content?: Array<{ type: string; text?: string }> }
+  const json = await readJson<{ content?: Array<{ type: string; text?: string }> }>(response, 'Anthropic')
   return json.content?.find((b) => b.type === 'text')?.text || ''
 }
 

@@ -10,6 +10,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
+import { artifactProblems } from './release-version-lib.mjs'
 
 const require = createRequire(import.meta.url)
 const asar = require('@electron/asar')
@@ -46,11 +47,10 @@ for (const file of asars) {
   }
 }
 
-const artifacts = existsSync(dist) ? readdirSync(dist).filter((f) => /^MyBuildy-.*\.(exe|dmg)$/.test(f)) : []
-for (const a of artifacts) {
-  seen.push(`artifact ${a}`)
-  if (!a.includes(`-${tagVersion}`)) problems.push(`artifact ${a} does not carry version ${tagVersion}`)
-}
+// Every installer file in dist/ must be EXACTLY one of this version's names.
+const artifacts = existsSync(dist) ? readdirSync(dist).filter((f) => /\.(exe|dmg)$/i.test(f) && !/__uninstaller/i.test(f)) : []
+for (const a of artifacts) seen.push(`artifact ${a}`)
+problems.push(...artifactProblems(tagVersion, artifacts))
 
 console.log(`[version-check] ${seen.join(' | ')}`)
 if (problems.length) {

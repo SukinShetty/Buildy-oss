@@ -159,6 +159,8 @@ export interface RedactedSettings extends NonSecretSettings {
   hasApiKey: boolean             // a key for the SELECTED provider exists (convenience)
   hasElevenLabsKey: boolean      // an ElevenLabs key exists in secure-store
   secretFlags: Partial<Record<SecretName, boolean>>  // per-secret existence (for the UI)
+  /** A custom key saved by an earlier version is stored but not yet linked to an endpoint, so it is not used. */
+  customKeyNeedsEndpoint?: boolean
 }
 
 const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM' // Rachel — warm, conversational
@@ -234,7 +236,7 @@ export type MacPermission = 'screen' | 'accessibility' | 'automation'
 export const MAC_PERMISSION_MESSAGES: Record<MacPermission, string> = {
   screen:
     'macOS needs permission to see your screen. Open System Settings > Privacy & Security > ' +
-    'Screen Recording, turn on MyBuildy, then quit and reopen MyBuildy. ' +
+    'Screen Recording (Screen & System Audio Recording on newer macOS), turn on MyBuildy, then quit and reopen MyBuildy. ' +
     'macOS only applies this permission after a restart.',
   accessibility:
     'macOS needs permission to type for you. Open System Settings > Privacy & Security > ' +
@@ -564,6 +566,8 @@ export const IPC = {
   PROJECTS_LIST:       'projects:list',            // renderer → main → ProjectSummary[]
   PROJECTS_CREATE:     'projects:create',          // renderer → main (create + switch) → ProjectRecord
   PROJECTS_RENAME:     'projects:rename',          // renderer → main → ProjectRecord
+  CONFIRM_CUSTOM_KEY_ENDPOINT: 'mybuildy:confirm-custom-key-endpoint', // main window → main (link a legacy custom key to the saved endpoint)
+  STOPPED:             'mybuildy:stopped',         // main → main window (Stop pressed: cancel Guidance runs + auto timer)
   PROJECTS_SWITCHED:   'projects:switched',        // main → all windows (active project changed: drop per-project UI state)
   PROJECTS_SWITCH:     'projects:switch',          // renderer → main (set active) → ProjectRecord
   PROJECTS_GET_ACTIVE: 'projects:get-active',      // renderer → main → ProjectRecord | null

@@ -106,13 +106,15 @@ export function renameProject(projectId: string, name: string): ProjectRecord {
 }
 
 /**
- * Called when the goal is saved: keep the active record's goalText in sync
- * (and auto-name a brand-new default-named project from its first goal).
- * Editing the goal NEVER creates a project or wipes memory.
+ * Called when a goal save finishes: keep THAT project's record in sync (and
+ * auto-name a brand-new default-named project from its first goal). `projectId`
+ * is captured when the save started, so a save that finishes after a switch
+ * never touches the newly active project. Editing the goal NEVER creates a
+ * project or wipes memory.
  */
-export function noteGoalSaved(goalText: string): void {
+export function noteGoalSaved(projectId: string, goalText: string): void {
   try {
-    projectsFile = core.updateActiveProjectGoal(userDataDir(), goalText)
+    projectsFile = core.updateProjectGoal(userDataDir(), projectId, goalText)
   } catch (error) {
     console.warn('[Projects] could not sync goal text onto project record:', error)
   }

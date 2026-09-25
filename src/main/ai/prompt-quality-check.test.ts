@@ -42,12 +42,9 @@ function makeSettings(): AppSettings {
 function stubGraderResponse(graderJson: Record<string, unknown>): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        content: [{ type: 'text', text: JSON.stringify(graderJson) }],
-      }),
-    }))
+    vi.fn(async () =>
+      new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(graderJson) }] }), { status: 200 })
+    )
   )
 }
 

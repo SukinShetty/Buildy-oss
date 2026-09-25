@@ -179,6 +179,7 @@ export function redactSettings(nonSecret: NonSecretSettings): RedactedSettings {
     hasApiKey: providerSecret ? hasSecret(providerSecret) : false,
     hasElevenLabsKey: hasSecret('elevenLabsApiKey'),
     secretFlags: getAllRedacted(),
+    customKeyNeedsEndpoint: hasSecret('customApiKey') && !getCustomKeyOrigin(),
   }
 }
 

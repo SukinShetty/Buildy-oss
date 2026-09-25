@@ -4,7 +4,7 @@
 import type { WebContents } from 'electron'
 import { redactKnownSecrets } from '../../secure-store'
 import { providerFetch } from '../fetch-with-timeout'
-import { providerHttpError } from '../provider-errors'
+import { providerHttpError, readJson } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -164,9 +164,9 @@ export class GeminiProvider implements AIProvider {
       throw await providerHttpError(`Gemini`, response)
     }
 
-    const responseJson = (await response.json()) as {
+    const responseJson = await readJson<{
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-    }
+    }>(response, 'Gemini')
 
     const text = responseJson.candidates?.[0]?.content?.parts?.[0]?.text
     if (!text) throw new Error('Gemini API returned no text content')

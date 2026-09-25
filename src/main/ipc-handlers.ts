@@ -3,8 +3,8 @@
 // Every channel name is defined in types.ts (IPC constant) to prevent typos.
 
 import { app, ipcMain, clipboard, dialog, shell, systemPreferences, webContents } from 'electron'
-import { originOf } from './provider-origins'
-import { providerHttpError } from './ai/provider-errors'
+import { originOf, customKeyActionOnSave } from './provider-origins'
+import { providerHttpError, readJson } from './ai/provider-errors'
 import { providerFetch, withCancellation, CancelledError } from './ai/fetch-with-timeout'
 import { guardedSender } from './project-guard'
 import type { BrowserWindow } from 'electron'
@@ -19,14 +19,14 @@ import {
   loadSettings, loadNonSecretSettings, loadRedactedSettings, saveNonSecretSettings, resolveSettings,
   deleteAllMyBuildyData,
 } from './memory'
-import { setSecret, redactKnownSecrets, hasSecret, deleteSecret, getCustomKeyOrigin } from './secure-store'
+import { setSecret, redactKnownSecrets, hasSecret, deleteSecret, getCustomKeyOrigin, confirmCustomKeyOrigin } from './secure-store'
 import { debugLog, debugError } from './debug-log'
 import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
 import { fetchModelsForProvider } from './ai/model-fetch'
 import { hasVisionPass } from './vision-approvals'
-import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion, handleSendPromptRequest } from './analysis-loop'
+import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion, handleSendPromptRequest, stopSignal } from './analysis-loop'
 import {
   parseInput, assertFromMainWindow, assertFromGuidanceWindow, assertFromWindowIds, isAllowedBaseUrl,
   nonSecretSettingsSchema, setSecretSchema, captureResultSchema, projectMemorySchema,
@@ -131,7 +131,11 @@ export function registerIpcHandlers(
       const sid = rawSourceId == null ? null : parseInput(sourceIdSchema, 'CAPTURE_WINDOW', rawSourceId)
       const ename = rawExpectedName == null ? null : parseInput(windowNameSchema, 'CAPTURE_WINDOW', rawExpectedName)
       if (!(await captureNoticeAccepted('CAPTURE_WINDOW'))) throw new Error(CAPTURE_NOTICE_REQUIRED_MESSAGE)
-      return await captureWindowForAnalysis(sid, ename)
+      const stop = stopSignal()
+      if (stop.aborted) throw new CancelledError()
+      const outcome = await captureWindowForAnalysis(sid, ename)
+      if (stop.aborted) throw new CancelledError() // Stop pressed meanwhile: drop it
+      return outcome
     } catch (error) {
       console.error('[IPC] CAPTURE_WINDOW error:', error)
       throw error
@@ -148,7 +152,8 @@ export function registerIpcHandlers(
       if (!(await captureNoticeAccepted('ANALYZE'))) throw new Error(CAPTURE_NOTICE_REQUIRED_MESSAGE)
       assertModelUsable(settings)
       const provider = getProvider(settings.provider)
-      return await provider.analyzeScreen(capture as never, project as never, settings)
+      // Stop cancels a manual analysis in flight, like the watch loop.
+      return await withCancellation(stopSignal(), () => provider.analyzeScreen(capture as never, project as never, settings))
     } catch (error) {
       console.error('[IPC] ANALYZE error:', error)
       throw error
@@ -269,10 +274,13 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC.GOAL_SET, async (_event, goalRaw: unknown) => {
     try {
       const goal = parseInput(goalPartialSchema, 'GOAL_SET', goalRaw)
+      // The project this save is for, captured BEFORE any await: a save that
+      // finishes after a switch only ever touches this project's record.
+      const projectId = getActiveProject()?.id ?? null
       const saved = await setGoal(goal)
-      // Keep the active project record's goalText in sync. Editing the goal
-      // NEVER creates a new project or touches memory — same project, new text.
-      noteGoalSaved(saved.purpose)
+      // Keep that project record's goalText in sync. Editing the goal NEVER
+      // creates a new project or touches memory — same project, new text.
+      if (projectId) noteGoalSaved(projectId, saved.purpose)
       return saved
     } catch (error) {
       console.error('[IPC] GOAL_SET error:', error)
@@ -376,7 +384,7 @@ export function registerIpcHandlers(
       // A custom endpoint moved to a different origin: its key is not carried
       // over — the user enters it again for the new endpoint.
       if (nonSecret.provider === 'custom' && hasSecret('customApiKey') &&
-          getCustomKeyOrigin() !== originOf(nonSecret.baseUrl)) {
+          customKeyActionOnSave(getCustomKeyOrigin(), originOf(nonSecret.baseUrl)) === 'clear') {
         deleteSecret('customApiKey')
         console.log('[SecureStore] custom endpoint changed — its stored key was cleared')
       }
@@ -384,6 +392,23 @@ export function registerIpcHandlers(
     } catch (error) {
       console.error('[IPC] SAVE_SETTINGS error:', error)
       throw error
+    }
+  })
+
+  // Settings: the user confirms that a key saved by an earlier version (not yet
+  // linked to an endpoint, so unused) belongs to the custom endpoint now saved.
+  ipcMain.handle(IPC.CONFIRM_CUSTOM_KEY_ENDPOINT, async (event) => {
+    try {
+      assertFromMainWindow(event, mainWcId(), 'CONFIRM_CUSTOM_KEY_ENDPOINT')
+      const nonSecret = await loadNonSecretSettings()
+      const origin = nonSecret.provider === 'custom' ? originOf(nonSecret.baseUrl) : null
+      if (!origin) return false
+      const linked = confirmCustomKeyOrigin(origin)
+      invalidateSettingsCache()
+      return linked
+    } catch (error) {
+      console.error('[IPC] CONFIRM_CUSTOM_KEY_ENDPOINT error:', error)
+      return false
     }
   })
 
@@ -514,11 +539,15 @@ export function registerIpcHandlers(
     }
   )
 
-  // Stop: end the watch, cancel any in-flight analysis (stopAnalysisLoop aborts
-  // the session's provider requests) and tell the mascot nothing is watched.
+  // Stop: end the watch, cancel everything in flight (stopAnalysisLoop aborts
+  // the Stop signal: watch analysis, Guidance-screen analysis, transcription,
+  // spoken questions), tell the Guidance screen to cancel its runs and timer,
+  // and tell the mascot nothing is watched.
   ipcMain.handle(IPC.COMPANION_STOP, async () => {
     stopAnalysisLoop()
     hideGuidanceWindow()
+    const main = getMainWindow()
+    if (main && !main.isDestroyed()) main.webContents.send(IPC.STOPPED)
     const companion = getCompanionWindow()
     if (companion && !companion.isDestroyed()) {
       companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, { windowName: null, message: null })
@@ -561,8 +590,10 @@ export function registerIpcHandlers(
         return { success: false, text: '', error: CAPTURE_NOTICE_REQUIRED_MESSAGE }
       }
       const settings = await getFreshSettings()
-      return await transcribeWithElevenLabs(audioBuffer, settings)
+      // Stop cancels the upload itself, not only what happens after it.
+      return await withCancellation(stopSignal(), () => transcribeWithElevenLabs(audioBuffer, settings))
     } catch (error) {
+      if (error instanceof CancelledError) return { success: false, text: '', error: 'Stopped.' }
       console.error('[IPC] TRANSCRIBE_AUDIO error:', error)
       return { success: false, text: '', error: redactKnownSecrets(String(error)) }
     }
@@ -730,7 +761,7 @@ async function transcribeWithElevenLabs(
       return { success: false, text: '', error: err.message }
     }
 
-    const json = await response.json()
+    const json = await readJson<{ text?: string }>(response, 'ElevenLabs speech-to-text')
     debugLog('[ElevenLabs STT] Response body:', JSON.stringify(json).slice(0, 300))
 
     const text = json.text?.trim() || ''

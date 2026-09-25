@@ -24,4 +24,27 @@ describe('project switch resets per-project renderer state', () => {
     expect(after.lastExtractedProjectData).toBeNull()
     expect(after.latestAnalysis).toBeNull()
   })
+
+  it('clears the Guidance screen: window source, cached window captures, phase and auto-analysis', () => {
+    useAppStore.setState({
+      selectedWindowSourceId: 'window:42:0',
+      selectedWindowName: 'Project A terminal',
+      availableWindows: [{ id: 'window:42:0', name: 'Project A terminal', thumbnailBase64: 'AAAA' }],
+      analysisPhase: 'analyzing',
+      analysisErrorMessage: 'old error',
+      autoAnalysisEnabled: true,
+      secondsUntilNextAutoAnalysis: 12,
+    })
+
+    useAppStore.getState().resetForProjectSwitch()
+
+    const after = useAppStore.getState()
+    expect(after.selectedWindowSourceId).toBeNull()
+    expect(after.selectedWindowName).toBeNull()
+    expect(after.availableWindows).toEqual([])
+    expect(after.analysisPhase).toBe('idle')
+    expect(after.analysisErrorMessage).toBeNull()
+    expect(after.autoAnalysisEnabled).toBe(false)
+    expect(after.secondsUntilNextAutoAnalysis).toBe(0)
+  })
 })

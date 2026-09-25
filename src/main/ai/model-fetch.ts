@@ -6,7 +6,7 @@
 
 import type { AppSettings, ModelChoice, ModelListResult } from '../../renderer/src/types'
 import { redactKnownSecrets } from '../secure-store'
-import { providerHttpError } from './provider-errors'
+import { providerHttpError, readJson } from './provider-errors'
 import { fetchWithTimeout } from './fetch-with-timeout'
 import {
   filterOpenAIModels, filterGeminiModels, filterOpenRouterModels,
@@ -36,7 +36,7 @@ async function fetchJson(url: string, headers: Record<string, string>, isLocal: 
   if (!response.ok) {
     throw await providerHttpError('Model list', response)
   }
-  return response.json()
+  return readJson(response, 'Model list')
 }
 
 async function fetchRawModels(settings: AppSettings): Promise<ModelChoice[]> {

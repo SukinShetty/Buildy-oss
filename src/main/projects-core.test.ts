@@ -268,14 +268,14 @@ describe('project records', () => {
     const base = ensureProjectsInitialized(userDataDir, deps)
 
     // Default-named project with no goal yet → gets a derived name.
-    const renamed = applyGoalSaved(base, 'Recipe Box app for home cooks')
+    const renamed = applyGoalSaved(base, 'Recipe Box app for home cooks', base.activeProjectId)
     const activeAfter = renamed.projects.find((p) => p.id === renamed.activeProjectId)!
     expect(activeAfter.goalText).toBe('Recipe Box app for home cooks')
     expect(activeAfter.name).toBe('Recipe Box')
 
     // A custom-named project keeps its name when the goal changes.
     const custom = renameProjectRecord(userDataDir, base.activeProjectId, 'Project A')
-    const after = applyGoalSaved(custom, 'Notes app for students')
+    const after = applyGoalSaved(custom, 'Notes app for students', custom.activeProjectId)
     expect(after.projects.find((p) => p.id === after.activeProjectId)!.name).toBe('Project A')
     expect(after.projects.find((p) => p.id === after.activeProjectId)!.goalText).toBe('Notes app for students')
   })

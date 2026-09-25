@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { isAllowedBaseUrl } from './ipc-schemas'
-import { CLOUD_ORIGINS, originOf, customKeyAllowed, legacyCustomKeyOrigin } from './provider-origins'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { CLOUD_ORIGINS, originOf, customKeyAllowed, customKeyActionOnSave } from './provider-origins'
 
 describe('cloud providers: only their own HTTPS origin', () => {
   it('rejects the three reported cases', () => {
@@ -46,16 +48,27 @@ describe('local and custom providers', () => {
   })
 })
 
-describe('custom keys saved before origin binding existed', () => {
-  it('are bound once to the endpoint the user had saved, so they keep working', () => {
-    expect(legacyCustomKeyOrigin(true, null, 'https://llm.example.com/v1')).toBe('https://llm.example.com')
+describe('custom keys saved before origin binding existed (legacy keys)', () => {
+  it('are never sent anywhere until the user confirms the endpoint', () => {
+    // No bound origin → the key is not usable for ANY endpoint.
+    for (const url of ['https://llm.example.com/v1', 'http://localhost:8080/v1', 'https://attacker.example.net']) {
+      expect(customKeyAllowed(null, url)).toBe(false)
+    }
   })
 
-  it('are left alone when already bound, absent, or the saved endpoint is unusable', () => {
-    expect(legacyCustomKeyOrigin(true, 'https://llm.example.com', 'https://other.example.com/v1')).toBeNull()
-    expect(legacyCustomKeyOrigin(false, null, 'https://llm.example.com/v1')).toBeNull()
-    expect(legacyCustomKeyOrigin(true, null, '')).toBeNull()
-    expect(legacyCustomKeyOrigin(true, null, 'file:///etc/passwd')).toBeNull()
+  it('are kept (never silently deleted) when Settings are saved', () => {
+    expect(customKeyActionOnSave(null, 'https://llm.example.com')).toBe('keep')
+    expect(customKeyActionOnSave(null, null)).toBe('keep')
+  })
+
+  it('a bound key is cleared only when its endpoint actually changes', () => {
+    expect(customKeyActionOnSave('https://llm.example.com', 'https://llm.example.com')).toBe('keep')
+    expect(customKeyActionOnSave('https://llm.example.com', 'https://other.example.com')).toBe('clear')
+  })
+
+  it('the app no longer binds legacy keys automatically at startup', () => {
+    const source = readFileSync(join(__dirname, 'index.ts'), 'utf8')
+    expect(source).not.toMatch(/bindCustomKeyOrigin|legacyCustomKeyOrigin/)
   })
 })
 

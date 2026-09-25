@@ -62,11 +62,11 @@ export function customKeyAllowed(boundOrigin: string | null, baseUrl: string): b
 }
 
 /**
- * One-time upgrade for a custom key saved before keys were bound to an origin:
- * bind it to the endpoint the user had saved, so it keeps working. Returns the
- * origin to bind, or null when there is nothing to do.
+ * What a Settings save does to the stored custom key. A key bound to an origin
+ * is cleared only when the endpoint moves to a different origin. A legacy key
+ * (saved before binding existed, so unbound) is always KEPT: it stays unused
+ * until the user confirms its endpoint in Settings, and is never deleted silently.
  */
-export function legacyCustomKeyOrigin(hasKey: boolean, boundOrigin: string | null, savedBaseUrl: string): string | null {
-  if (!hasKey || boundOrigin) return null
-  return originOf(savedBaseUrl)
+export function customKeyActionOnSave(boundOrigin: string | null, newOrigin: string | null): 'keep' | 'clear' {
+  return boundOrigin && boundOrigin !== newOrigin ? 'clear' : 'keep'
 }

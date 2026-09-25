@@ -5,7 +5,7 @@
 import type { WebContents } from 'electron'
 import { redactKnownSecrets } from '../../secure-store'
 import { providerFetch } from '../fetch-with-timeout'
-import { providerHttpError } from '../provider-errors'
+import { providerHttpError, readJson } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -70,7 +70,7 @@ export class OllamaProvider implements AIProvider {
       throw await providerHttpError(`Ollama`, response)
     }
 
-    const responseJson = (await response.json()) as { message?: { content?: string } }
+    const responseJson = await readJson<{ message?: { content?: string } }>(response, 'Ollama')
     const text = responseJson.message?.content
     if (!text) throw new Error('Ollama returned no text content')
 

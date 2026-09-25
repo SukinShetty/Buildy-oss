@@ -297,6 +297,17 @@ const mybuildyAPI = {
   },
 
   // Companion mascot: transient send status (e.g. 'sent') for the status label.
+  // Settings: link a key saved by an earlier version to the custom endpoint now saved.
+  confirmCustomKeyEndpoint: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC.CONFIRM_CUSTOM_KEY_ENDPOINT),
+
+  // Stop was pressed: cancel the Guidance screen's runs and auto-analysis.
+  onStopped: (handler: () => void): (() => void) => {
+    const listener = () => handler()
+    ipcRenderer.on(IPC.STOPPED, listener)
+    return () => ipcRenderer.removeListener(IPC.STOPPED, listener)
+  },
+
   // The active project changed: drop per-project state (brainstorm, cached guidance).
   onProjectSwitched: (handler: () => void): (() => void) => {
     const listener = () => handler()

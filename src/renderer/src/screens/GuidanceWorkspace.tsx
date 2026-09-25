@@ -10,7 +10,8 @@ import { useAppStore } from '../store/useAppStore'
 import { GuidanceSections } from '../components/GuidanceSections'
 import { PromptCard } from '../components/PromptCard'
 import { WindowPicker } from '../components/WindowPicker'
-import { CAPTURE_NOTICE_MESSAGE, CAPTURE_NOTICE_REQUIRED_MESSAGE } from '../types'
+import { CAPTURE_NOTICE_MESSAGE } from '../types'
+import { guidanceController, setGuidanceNoticeHandler } from '../guidance/guidance-instance'
 
 const AUTO_ANALYSIS_INTERVAL_SECONDS = 30
 
@@ -37,89 +38,36 @@ export function GuidanceWorkspace(): React.ReactElement {
     setSettings,
   } = useAppStore()
 
-  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const countdownRef = useRef(AUTO_ANALYSIS_INTERVAL_SECONDS)
   const [windowPickerVisible, setWindowPickerVisible] = useState(false)
   const [pendingWindowId, setPendingWindowId] = useState<string | null>(null)
   // The one-time capture notice, shown before this screen captures anything.
   const [noticePending, setNoticePending] = useState<{ sourceId: string | null; expectedName: string | null } | null>(null)
-
-  // Refs so the auto-analysis timer reads CURRENT values, not stale closures.
-  const selectedSourceRef = useRef(selectedWindowSourceId)
-  selectedSourceRef.current = selectedWindowSourceId
-  const selectedNameRef = useRef(selectedWindowName)
-  selectedNameRef.current = selectedWindowName
-  const autoEnabledRef = useRef(autoAnalysisEnabled)
-  autoEnabledRef.current = autoAnalysisEnabled
 
   // settings is REDACTED (no raw keys) — check the has* boolean + base URL.
   const apiIsConfigured = settings.hasApiKey || settings.baseUrl.trim().length > 0
   const isAnalyzing = analysisPhase === 'capturing' || analysisPhase === 'analyzing'
   const projectIsConfigured = project.projectName.trim().length > 0
 
-  // Cleanup timers on unmount
+  // The controller owns capture/analysis and the auto timer (so Stop and project
+  // switches can cancel it from anywhere); this screen shows the notice it asks for.
   useEffect(() => {
+    setGuidanceNoticeHandler(setNoticePending)
     return () => {
-      clearAutoTimers()
+      setGuidanceNoticeHandler(() => {})
+      guidanceController.stopAuto()
     }
   }, [])
 
   // ─── Analysis flow ──────────────────────────────────────────────────────────
 
-  async function startAnalysis(sourceId: string | null, expectedName: string | null): Promise<void> {
-    if (isAnalyzing) return
-
-    setAnalysisError(null)
-
-    // First capture ever: show the one-time notice before anything is captured.
-    // (Main enforces this too and refuses until it is accepted.)
-    if (!settings.captureNoticeAccepted) {
-      setNoticePending({ sourceId, expectedName })
-      return
-    }
-
-    try {
-      // Step 1: Capture the window by id + selection-time name. If that exact
-      // window is gone (or its id was reused by another window), HALT — never
-      // capture a different window or the desktop.
-      setAnalysisPhase('capturing')
-      const outcome = await window.mybuildy.captureWindow(sourceId, expectedName)
-      if (!outcome.ok) {
-        setSelectedWindow(null, null)
-        setAnalysisError(
-          outcome.reason === 'window-missing'
-            ? 'The window you were watching is no longer open. Pick a window to analyze.'
-            : 'No window selected. Pick a window to analyze.'
-        )
-        setAnalysisPhase('error')
-        return
-      }
-
-      // Step 2: Send to the provider
-      setAnalysisPhase('analyzing')
-      const result = await window.mybuildy.analyze(outcome.capture, project, settings)
-
-      // Step 3: Show results
-      setLatestAnalysis(result)
-      setAnalysisPhase('done')
-    } catch (error) {
-      if (String(error).includes(CAPTURE_NOTICE_REQUIRED_MESSAGE)) {
-        setNoticePending({ sourceId, expectedName })
-        setAnalysisPhase('idle')
-        return
-      }
-      setAnalysisError(String(error))
-      setAnalysisPhase('error')
-    }
+  function startAnalysis(sourceId: string | null, expectedName: string | null): Promise<void> {
+    return guidanceController.analyze(sourceId, expectedName)
   }
 
   async function acceptNoticeAndContinue(): Promise<void> {
     const pending = noticePending
     setNoticePending(null)
-    await window.mybuildy.acceptCaptureNotice()
-    setSettings({ ...settings, captureNoticeAccepted: true })
-    if (pending) await startAnalysis(pending.sourceId, pending.expectedName)
+    await guidanceController.acceptNotice(pending)
   }
 
   async function handleAnalyzeNowClick(): Promise<void> {
@@ -165,48 +113,11 @@ export function GuidanceWorkspace(): React.ReactElement {
   // ─── Auto-analysis ──────────────────────────────────────────────────────────
 
   function enableAutoAnalysis(): void {
-    setAutoAnalysisEnabled(true)
-    setSecondsUntilNextAutoAnalysis(AUTO_ANALYSIS_INTERVAL_SECONDS)
-    scheduleNextAutoAnalysis()
+    guidanceController.startAuto()
   }
 
   function disableAutoAnalysis(): void {
-    setAutoAnalysisEnabled(false)
-    clearAutoTimers()
-    setSecondsUntilNextAutoAnalysis(0)
-  }
-
-  function scheduleNextAutoAnalysis(): void {
-    clearAutoTimers()
-
-    countdownRef.current = AUTO_ANALYSIS_INTERVAL_SECONDS
-    setSecondsUntilNextAutoAnalysis(AUTO_ANALYSIS_INTERVAL_SECONDS)
-
-    // Countdown display — pass a NUMBER to the (numeric) store setter, tracking the
-    // value in a ref (the previous code passed a function, corrupting the state).
-    countdownTimerRef.current = setInterval(() => {
-      countdownRef.current = Math.max(0, countdownRef.current - 1)
-      setSecondsUntilNextAutoAnalysis(countdownRef.current)
-    }, 1000)
-
-    // Actual analysis trigger — read CURRENT source + enabled flag from refs.
-    autoTimerRef.current = setTimeout(async () => {
-      await startAnalysis(selectedSourceRef.current, selectedNameRef.current)
-      if (autoEnabledRef.current) {
-        scheduleNextAutoAnalysis()
-      }
-    }, AUTO_ANALYSIS_INTERVAL_SECONDS * 1000)
-  }
-
-  function clearAutoTimers(): void {
-    if (autoTimerRef.current) {
-      clearTimeout(autoTimerRef.current)
-      autoTimerRef.current = null
-    }
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current)
-      countdownTimerRef.current = null
-    }
+    guidanceController.stopAuto()
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────

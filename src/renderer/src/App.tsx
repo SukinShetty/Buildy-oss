@@ -7,6 +7,7 @@
 // first launch opens the Goal screen so the user states their purpose.
 
 import React, { useEffect, useState } from 'react'
+import { guidanceController } from './guidance/guidance-instance'
 import { isModelConfigured } from './types'
 import { useAppStore } from './store/useAppStore'
 import { NavBar } from './components/NavBar'
@@ -69,7 +70,12 @@ function MainPanel(): React.ReactElement {
 
   // Project switched (from any screen): the brainstorm conversation, its
   // extracted data and the cached analysis belonged to the old project.
-  useEffect(() => window.mybuildy.onProjectSwitched(() => useAppStore.getState().resetForProjectSwitch()), [])
+  useEffect(() => window.mybuildy.onProjectSwitched(() => {
+    guidanceController.cancelAll()
+    useAppStore.getState().resetForProjectSwitch()
+  }), [])
+  // Stop (the mascot's Stop button): cancel Guidance-screen analysis and its timer too.
+  useEffect(() => window.mybuildy.onStopped(() => guidanceController.cancelAll()), [])
 
   useEffect(() => {
     let cancelled = false

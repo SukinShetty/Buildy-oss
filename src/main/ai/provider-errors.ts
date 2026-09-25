@@ -143,3 +143,30 @@ export function redactSecrets(text: string, knownSecrets: readonly string[]): st
   for (const pattern of KEY_PATTERNS) out = out.replace(pattern, '[redacted]')
   return out
 }
+
+// ─── Unreadable successful responses ─────────────────────────────────────────
+// JSON.parse errors quote the text they failed on, so a 200 body that is not
+// JSON (an HTML error page, a proxy message) could carry request data such as a
+// key into an exception, a log line or an IPC reply. readJson turns every such
+// failure into a plain code instead.
+
+export class ProviderResponseError extends Error {
+  constructor(label: string, readonly code: 'BODY_UNREADABLE' | 'BAD_JSON') {
+    super(`${label} sent a response MyBuildy could not read (${code}).`)
+    this.name = 'ProviderResponseError'
+  }
+}
+
+export async function readJson<T = unknown>(response: Response, label: string): Promise<T> {
+  let text: string
+  try {
+    text = await response.text()
+  } catch {
+    throw new ProviderResponseError(label, 'BODY_UNREADABLE')
+  }
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new ProviderResponseError(label, 'BAD_JSON')
+  }
+}

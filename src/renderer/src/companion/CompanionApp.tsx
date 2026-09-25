@@ -3,6 +3,7 @@
 // Flow: click orb → pick window → live watching → speak/bubble on changes → ask questions.
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { StopGeneration, transcribeAndAsk } from './voice-question'
 import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
 import type { MascotState, MascotAlignment, MascotReaction, MascotReactionType } from '../components/Mascot'
@@ -37,7 +38,7 @@ export function CompanionApp(): React.ReactElement {
   isMutedRef.current = isMuted
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
-  const discardRecordingRef = useRef(false)
+  const stopGenRef = useRef(new StopGeneration())
   const streamRef = useRef<MediaStream | null>(null)
 
   // ─── Mascot animation signals (Phase 6) ─────────────────────────────
@@ -197,6 +198,8 @@ export function CompanionApp(): React.ReactElement {
       streamRef.current = stream
 
       const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      // One Stop generation for the whole question: recording → transcription → question.
+      const startedAt = stopGenRef.current.current()
       audioChunksRef.current = []
 
       recorder.ondataavailable = (e) => {
@@ -207,9 +210,8 @@ export function CompanionApp(): React.ReactElement {
         stream.getTracks().forEach((t) => t.stop())
         streamRef.current = null
 
-        // Stop pressed mid-question: throw the recording away — never transcribe it.
-        if (discardRecordingRef.current) {
-          discardRecordingRef.current = false
+        // Stop pressed at any point since recording started: throw it away.
+        if (stopGenRef.current.current() !== startedAt) {
           audioChunksRef.current = []
           console.log('[Mic] Recording discarded (Stop) — not transcribed')
           setMicState('idle')
@@ -226,25 +228,21 @@ export function CompanionApp(): React.ReactElement {
           return
         }
 
-        setMicState('transcribing')
-
         try {
           const arrayBuffer = await blob.arrayBuffer()
-          console.log('[Mic] Sending to ElevenLabs STT...')
-          const result = await window.mybuildy.transcribeAudio(arrayBuffer)
-
-          if (!result.success || !result.text) {
-            console.error('[Mic] Transcription failed:', result.error)
+          const outcome = await transcribeAndAsk(arrayBuffer, startedAt, stopGenRef.current, {
+            transcribe: (audio) => window.mybuildy.transcribeAudio(audio),
+            // NOTE: never log the transcribed text itself (user speech content).
+            ask: (question) => window.mybuildy.askQuestion(question),
+            onStatus: (status, error) => {
+              setMicState(status)
+              setMicError(error ?? null)
+            },
+          })
+          if (outcome === 'cancelled') {
+            console.log('[Mic] Stopped — the question was not sent')
             setMicState('idle')
-            setMicError(result.error || 'Transcription failed.')
-            return
           }
-
-          // NOTE: never log the transcribed text itself (user speech content).
-          console.log(`[Mic] Transcription received (${result.text.length} chars)`)
-          setMicState('answering')
-          setMicError(null)
-          await window.mybuildy.askQuestion(result.text)
         } catch (err) {
           console.error('[Mic] Error:', err)
           setMicState('idle')
@@ -263,10 +261,11 @@ export function CompanionApp(): React.ReactElement {
     }
   }, [watchedWindowName])
 
-  // Stop: end the recording and discard it (no upload, no transcription).
+  // Stop: bump the generation (cancels a transcription or question already
+  // under way) and end any recording — it is discarded, never transcribed.
   const discardRecording = useCallback(() => {
+    stopGenRef.current.bump()
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      discardRecordingRef.current = true
       mediaRecorderRef.current.stop()
       mediaRecorderRef.current = null
     }

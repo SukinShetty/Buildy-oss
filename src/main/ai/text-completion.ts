@@ -8,7 +8,7 @@
 // Keys always go in headers, never the URL.
 
 import type { AppSettings } from '../../renderer/src/types'
-import { providerHttpError } from './provider-errors'
+import { providerHttpError, readJson } from './provider-errors'
 import { getProviderInfo } from './provider-registry'
 import { fetchWithTimeout } from './fetch-with-timeout'
 
@@ -64,7 +64,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
       body: JSON.stringify(body),
     }, isLocal)
     if (!res.ok) throw await providerHttpError(`Anthropic`, res)
-    const json = (await res.json()) as { content?: Array<{ type: string; text?: string }> }
+    const json = await readJson<{ content?: Array<{ type: string; text?: string }> }>(res, 'Provider')
     return json.content?.find((b) => b.type === 'text')?.text || ''
   }
 
@@ -85,7 +85,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
       body: JSON.stringify(body),
     }, isLocal)
     if (!res.ok) throw await providerHttpError(`Gemini`, res)
-    const json = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+    const json = await readJson<{ candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }>(res, 'Provider')
     return json.candidates?.[0]?.content?.parts?.[0]?.text || ''
   }
 
@@ -115,7 +115,7 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
       }),
     }, true)
     if (!res.ok) throw await providerHttpError(`Ollama`, res)
-    const json = (await res.json()) as { message?: { content?: string } }
+    const json = await readJson<{ message?: { content?: string } }>(res, 'Provider')
     return json.message?.content || ''
   }
 
@@ -142,6 +142,6 @@ export async function callTextCompletion(req: TextCompletionRequest): Promise<st
     body: JSON.stringify(body),
   }, isLocal)
   if (!res.ok) throw await providerHttpError(`${provider}`, res)
-  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+  const json = await readJson<{ choices?: Array<{ message?: { content?: string } }> }>(res, 'Provider')
   return json.choices?.[0]?.message?.content || ''
 }

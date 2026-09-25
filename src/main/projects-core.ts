@@ -311,12 +311,17 @@ export function setActiveProjectRecord(
  * with no goal yet). Editing the goal of an established project NEVER renames it
  * — and never creates a new project or wipes memory (A4).
  */
-export function applyGoalSaved(file: ProjectsFile, goalText: string): ProjectsFile {
+/**
+ * Record a saved goal on `projectId` — the project captured when the save
+ * STARTED, never whatever is active by the time it finishes.
+ */
+export function applyGoalSaved(file: ProjectsFile, goalText: string, projectId: string): ProjectsFile {
   const text = (goalText || '').trim()
+  if (!file.projects.some((p) => p.id === projectId)) return file
   return {
     ...file,
     projects: file.projects.map((p) => {
-      if (p.id !== file.activeProjectId) return p
+      if (p.id !== projectId) return p
       const shouldDeriveName = p.name === DEFAULT_PROJECT_NAME && !p.goalText.trim()
       return {
         ...p,
@@ -327,9 +332,9 @@ export function applyGoalSaved(file: ProjectsFile, goalText: string): ProjectsFi
   }
 }
 
-/** Load-modify-save wrapper around applyGoalSaved for the active project. */
-export function updateActiveProjectGoal(userDataDir: string, goalText: string): ProjectsFile {
-  const updated = applyGoalSaved(requireFile(userDataDir), goalText)
+/** Load-modify-save wrapper around applyGoalSaved for one specific project. */
+export function updateProjectGoal(userDataDir: string, projectId: string, goalText: string): ProjectsFile {
+  const updated = applyGoalSaved(requireFile(userDataDir), goalText, projectId)
   saveProjectsFile(userDataDir, updated)
   return updated
 }

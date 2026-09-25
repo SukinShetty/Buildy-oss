@@ -5,7 +5,7 @@
 import type { WebContents } from 'electron'
 import { redactKnownSecrets } from '../../secure-store'
 import { providerFetch } from '../fetch-with-timeout'
-import { providerHttpError } from '../provider-errors'
+import { providerHttpError, readJson } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -221,9 +221,9 @@ export class OpenAICompatibleProvider implements AIProvider {
       throw await providerHttpError(`${this.info.displayName}`, response)
     }
 
-    const responseJson = (await response.json()) as {
+    const responseJson = await readJson<{
       choices?: Array<{ message?: { content?: string } }>
-    }
+    }>(response, this.info.displayName)
 
     const content = responseJson.choices?.[0]?.message?.content
     if (!content) throw new Error(`${this.info.displayName} returned no text content`)

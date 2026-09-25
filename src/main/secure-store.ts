@@ -99,13 +99,17 @@ export function getSecret(key: SecretName): string {
 // it is only ever sent to that origin (see provider-origins.customKeyAllowed).
 const CUSTOM_KEY_ORIGIN = 'customApiKeyOrigin'
 
-/** Bind an already-stored custom key to an origin (one-time upgrade; see provider-origins). */
-export function bindCustomKeyOrigin(origin: string): void {
+/**
+ * The user confirmed, in Settings, that a legacy (unbound) custom key belongs to
+ * `origin`. Only then is it bound — and so used. Never called automatically.
+ */
+export function confirmCustomKeyOrigin(origin: string): boolean {
   const map = { ...load() }
-  if (!map.customApiKey || map[CUSTOM_KEY_ORIGIN]) return
+  if (!map.customApiKey || map[CUSTOM_KEY_ORIGIN]) return false
   map[CUSTOM_KEY_ORIGIN] = origin
   persist(map)
-  console.log('[SecureStore] existing custom key bound to its saved endpoint')
+  console.log('[SecureStore] custom key linked to its endpoint (confirmed by the user)')
+  return true
 }
 
 /** Origin the stored custom key was entered for, or null. */

@@ -4,7 +4,7 @@
 import type { WebContents } from 'electron'
 import { redactKnownSecrets } from '../../secure-store'
 import { providerFetch } from '../fetch-with-timeout'
-import { providerHttpError } from '../provider-errors'
+import { providerHttpError, readJson } from '../provider-errors'
 import type {
   ProjectMemory,
   CaptureResult,
@@ -169,9 +169,9 @@ export class AnthropicProvider implements AIProvider {
       throw await providerHttpError(`Anthropic`, response)
     }
 
-    const responseJson = (await response.json()) as {
+    const responseJson = await readJson<{
       content?: Array<{ type: string; text?: string }>
-    }
+    }>(response, 'Anthropic')
 
     const textBlock = responseJson.content?.find((block) => block.type === 'text')
     if (!textBlock?.text) throw new Error('Anthropic API returned no text content')

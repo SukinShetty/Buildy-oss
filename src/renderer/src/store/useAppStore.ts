@@ -223,5 +223,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       brainstormErrorMessage: null,
       lastExtractedProjectData: null,
       latestAnalysis: null,
+      // Guidance screen: nothing from the old project's window survives.
+      selectedWindowSourceId: null,
+      selectedWindowName: null,
+      availableWindows: [],
+      analysisPhase: 'idle',
+      analysisErrorMessage: null,
+      autoAnalysisEnabled: false,
+      secondsUntilNextAutoAnalysis: 0,
     }),
 }))

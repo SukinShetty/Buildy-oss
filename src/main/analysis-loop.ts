@@ -16,7 +16,7 @@
 //   Cleared on window switch. NOT persisted. NOT old project memory.
 
 import type { BrowserWindow } from 'electron'
-import { providerHttpError } from './ai/provider-errors'
+import { providerHttpError, readJson } from './ai/provider-errors'
 import type { AppSettings, AnalysisResult, Goal } from '../renderer/src/types'
 import { emptyProjectMemory, CHOOSE_MODEL_MESSAGE, MAC_PERMISSION_MESSAGES } from '../renderer/src/types'
 import { IPC } from '../renderer/src/types'
@@ -296,6 +296,11 @@ function scheduleNextCycle(companionWindow: BrowserWindow, mySession: number): v
   loopTimer = setTimeout(() => { void runCycleAndReschedule(companionWindow, mySession) }, LOOP_INTERVAL_MS)
 }
 
+/** The current Stop signal: aborted (and replaced) every time Stop is pressed. */
+export function stopSignal(): AbortSignal {
+  return watchAbort.signal
+}
+
 export function stopAnalysisLoop(): void {
   if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
   // Cancel whatever is in flight right now (a provider call mid-analysis).
@@ -501,6 +506,10 @@ async function answerQuestion(
   settings: AppSettings
 ): Promise<void> {
   if (companionWindow.isDestroyed()) return
+  // Stop bumps the session: after that, nothing for this question is captured,
+  // sent or spoken.
+  const questionSession = currentSession
+  const stoppedSinceAsked = (): boolean => currentSession !== questionSession
 
   debugLog(`[AnalysisLoop] Question: "${question}"`)
   notifyCompanionState(companionWindow, 'thinking')
@@ -508,14 +517,16 @@ async function answerQuestion(
   // Capture fresh screenshot if we have a watched window
   let screenshotBase64: string | null = null
   let windowTitle = watchedWindowName || 'unknown'
-  if (watchedSourceId) {
+  if (watchedSourceId && !stoppedSinceAsked()) {
     const capture = await captureWatchedWindow(watchedSourceId, watchedWindowName)
+    if (stoppedSinceAsked()) return
     if (capture) {
       screenshotBase64 = capture.imageBase64
       windowTitle = capture.windowTitle
     }
   }
 
+  if (stoppedSinceAsked()) return
   const provider = getProvider(settings.provider)
   const systemPrompt = buildQuestionSystemPrompt(windowTitle, session)
   const userPrompt = buildQuestionUserPrompt(question, session)
@@ -525,6 +536,7 @@ async function answerQuestion(
     // We need to call the provider's raw API since analyzeScreen returns AnalysisResult JSON
     // Use a text-only call via the brainstorm-style interface, but we want a single response
     const answer = await callProviderForAnswer(provider, systemPrompt, userPrompt, screenshotBase64, settings)
+    if (stoppedSinceAsked()) return // Stop pressed while answering: say nothing
 
     if (!companionWindow.isDestroyed()) {
       companionWindow.webContents.send(IPC.COMPANION_ANSWER, { question, answer })
@@ -533,6 +545,7 @@ async function answerQuestion(
     // Speak the answer
     await speakText(companionWindow, answer, settings)
   } catch (error) {
+    if (stoppedSinceAsked()) return
     debugError('[AnalysisLoop] Question answer failed:', error)
     if (!companionWindow.isDestroyed()) {
       companionWindow.webContents.send(IPC.COMPANION_ANSWER, {
@@ -635,7 +648,11 @@ async function callProviderForAnswer(
     throw await providerHttpError('Provider', response)
   }
 
-  const json = await response.json()
+  const json = await readJson<{
+    content?: Array<{ text?: string }>
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+    choices?: Array<{ message?: { content?: string } }>
+  }>(response, 'Provider')
 
   // Extract text from response
   if (providerType === 'anthropic') {

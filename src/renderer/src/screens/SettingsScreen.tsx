@@ -14,6 +14,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import type { ProviderType, NonSecretSettings, SecretName, ModelChoice } from '../types'
 import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX, NO_SECURE_STORAGE_MESSAGE, dataDestinationNote } from '../types'
+import { DEFAULT_VOICE_ID, ELEVENLABS_VOICES, voiceLabel } from '../voice-options'
 
 // IPC errors arrive wrapped ("Error invoking remote method ...: Error: <msg>").
 // Show the clean, user-facing message when we recognise it.
@@ -23,7 +24,6 @@ function friendlySaveError(error: unknown): string {
   return text
 }
 
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'
 
 // Which encrypted secret holds the API key for a provider (local providers: none).
 function secretNameForProvider(p: ProviderType): SecretName | null {
@@ -99,6 +99,11 @@ const ALL_PROVIDERS = [...RECOMMENDED_PROVIDERS, ...ADVANCED_PROVIDERS]
 
 function getProviderMeta(type: ProviderType): ProviderMeta {
   return ALL_PROVIDERS.find((p) => p.type === type) ?? RECOMMENDED_PROVIDERS[0]
+}
+
+/** Host of a saved endpoint, or null when it isn't a usable URL. */
+function endpointHost(url: string): string | null {
+  try { return new URL(url).host || null } catch { return null }
 }
 
 function isLocalProvider(type: ProviderType): boolean {
@@ -257,6 +262,11 @@ export function SettingsScreen(): React.ReactElement {
     }
   }
 
+  async function confirmLegacyKey(): Promise<void> {
+    await window.mybuildy.confirmCustomKeyEndpoint()
+    setSettings(await window.mybuildy.loadSettings())
+  }
+
   async function removeStoredKey(name: SecretName): Promise<void> {
     await window.mybuildy.setSecret(name, '') // empty value deletes the secret
     const redacted = await window.mybuildy.loadSettings()
@@ -380,7 +390,19 @@ export function SettingsScreen(): React.ReactElement {
                 <button className="btn-icon" onClick={() => { setReplacingKey(true); setApiKeyInput('') }}>Replace</button>
                 <button className="btn-icon" onClick={() => { if (providerSecret) void removeStoredKey(providerSecret) }}>Remove</button>
               </div>
-            ) : (
+            ) : null}
+            {provider === 'custom' && settings.customKeyNeedsEndpoint && !replacingKey && (
+              // A key saved by an earlier version isn't linked to an endpoint, so
+              // it is NOT used until the user says which endpoint it belongs to.
+              <div style={styles.sectionHint}>
+                This key was saved by an earlier version and isn't linked to an endpoint yet, so it isn't being used.
+                {endpointHost(settings.baseUrl) ? ` Use it for ${endpointHost(settings.baseUrl)}?` : ' Save the endpoint below first.'}
+                {endpointHost(settings.baseUrl) && (
+                  <button className="btn-icon" onClick={() => { void confirmLegacyKey() }}>Use it for this endpoint</button>
+                )}
+              </div>
+            )}
+            {(!keySaved || replacingKey) && (
               <div style={styles.inputWrapper}>
                 <input
                   type="password"
@@ -516,10 +538,10 @@ export function SettingsScreen(): React.ReactElement {
 
         {/* Cost guard */}
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>API budget</div>
+          <div style={styles.sectionLabel}>Usage limit</div>
           <div style={styles.sectionHint}>
-            Max provider calls per rolling hour ({HOURLY_CALL_CAP_MIN}–{HOURLY_CALL_CAP_MAX}).
-            Watching pauses automatically at the cap.
+            The most AI requests MyBuildy will make in any one hour ({HOURLY_CALL_CAP_MIN}–{HOURLY_CALL_CAP_MAX}).
+            Each one is billed to your key. Watching pauses when the limit is reached.
           </div>
           <input
             type="number"
@@ -559,13 +581,20 @@ export function SettingsScreen(): React.ReactElement {
               )}
             </div>
           )}
-          <input
-            type="text"
+          {/* Chosen by name; the ElevenLabs voice ID itself is never shown. */}
+          <select
+            aria-label="Voice"
             value={elevenLabsVoiceId}
             onChange={(e) => setElevenLabsVoiceId(e.target.value)}
-            placeholder="Voice ID (default: Rachel)"
             style={styles.textInput}
-          />
+          >
+            {!ELEVENLABS_VOICES.some((v) => v.id === elevenLabsVoiceId) && (
+              <option value={elevenLabsVoiceId}>{voiceLabel(elevenLabsVoiceId)}</option>
+            )}
+            {ELEVENLABS_VOICES.map((v) => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Status */}
@@ -620,7 +649,7 @@ export function SettingsScreen(): React.ReactElement {
         <div style={styles.infoSection}>
           <div style={styles.infoTitle}>About MyBuildy</div>
           <div style={styles.infoText}>
-            MyBuildy — a builder buddy for AI coding agents in your terminal.
+            MyBuildy — your AI coding agent, explained
           </div>
           <div style={styles.infoText}>
             {dataDestinationNote({
