@@ -228,6 +228,7 @@ export async function deleteAllMyBuildyData(): Promise<void> {
     'mybuildy-memory',         // every project's memory + Nemp stores (recursive)
     'logs',                  // the local watch log (watch-log.ts)
     'setup-state.json',      // where the setup wizard is up to (setup-state.ts)
+    'robot-prefs.json',      // the robot's size (robot-prefs.ts)
   ]
   const failed: string[] = []
   for (const name of targets) {

@@ -321,3 +321,18 @@ textarea::placeholder {
 /* The setup wizard has no top bar: start its header below the traffic lights,
    and let the user drag the window by it. */
 .platform-darwin .setup-header { padding-top: 48px !important; -webkit-app-region: drag; }
+
+/* ─── Robot bar buttons (CompanionApp.tsx) ──────────────────────────────────────
+   Colours come from the contrast-tested theme (companion/robot-theme.ts) as CSS
+   variables on .robot-bar: near-white at rest, orange with a tinted background
+   and ring on hover. */
+.robot-btn {
+  color: var(--robot-icon, #F2F2F7);
+  background: transparent;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.robot-btn:hover, .robot-btn.is-active {
+  color: var(--robot-icon-hover, #FF6B2B);
+  background: var(--robot-icon-hover-bg, rgba(255,107,43,0.12));
+}
+.robot-btn:hover { box-shadow: inset 0 0 0 1px rgba(255,107,43,0.55); }

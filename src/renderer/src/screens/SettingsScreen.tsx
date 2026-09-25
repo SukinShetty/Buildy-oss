@@ -12,6 +12,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useAppStore } from '../store/useAppStore'
+import { RobotSizeSetting } from '../components/RobotSizeSetting'
 import type { ProviderType, NonSecretSettings, SecretName, ModelChoice } from '../types'
 import { HOURLY_CALL_CAP_MIN, HOURLY_CALL_CAP_MAX, NO_SECURE_STORAGE_MESSAGE, dataDestinationNote } from '../types'
 import { DEFAULT_VOICE_ID, ELEVENLABS_VOICES, voiceLabel } from '../voice-options'
@@ -658,6 +659,16 @@ export function SettingsScreen(): React.ReactElement {
               hasElevenLabsKey: !!settings.secretFlags?.elevenLabsApiKey,
             })}
           </div>
+        </div>
+
+        {/* Robot size: Small / Medium / Large (Ctrl or Cmd + scroll over the robot too) */}
+        <div style={styles.section}>
+          <div style={styles.sectionLabel}>Robot size</div>
+          <div style={styles.sectionHint}>
+            Makes the robot, its buttons and its text bigger or smaller together. You can also hold{" "}
+            {window.mybuildy.platform === 'darwin' ? 'Cmd' : 'Ctrl'} and scroll over the robot.
+          </div>
+          <RobotSizeSetting />
         </div>
 
         {/* The guided first-run setup, again from the start */}

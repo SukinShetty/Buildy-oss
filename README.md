@@ -180,7 +180,7 @@ MyBuildy opens a **guided setup** on first launch — one step per screen, about
 6. **Open your coding agent** — the exact commands to type, with Copy buttons.
 7. **Show MyBuildy your coding agent** — choose the terminal window; this step explains exactly what gets captured and where it goes.
 
-Afterwards the line under the robot always says the next thing to do. Settings has **Run setup again**. Optional: add an **ElevenLabs** key in Settings for spoken guidance (the mic button only appears once a key is saved, and the microphone is only requested the first time you click it).
+Afterwards the line under the robot always says the next thing to do. The robot's bar can **Hide** it while it keeps watching (bring it back from the tray icon or **Ctrl+Shift+B**, **Cmd+Shift+B** on Mac) or **Quit** MyBuildy; Settings → **Robot size** makes it bigger or smaller (or hold Ctrl/Cmd and scroll over the robot). Settings has **Run setup again**. Optional: add an **ElevenLabs** key in Settings for spoken guidance (the mic button only appears once a key is saved, and the microphone is only requested the first time you click it).
 
 ---
 

@@ -15,6 +15,7 @@
 import { app, type BrowserWindow } from 'electron'
 import { showGuidanceWindow } from './guidance-window'
 import { e2eFakes, type E2eFakes } from './e2e-fakes'
+import { pressRobotShortcut } from './robot-shortcut'
 import type { SetupPermissions } from './setup-permissions'
 import { IPC, type AnalysisResult } from '../renderer/src/types'
 
@@ -51,6 +52,8 @@ interface E2eHooks {
   sendFixtureHandoff(analyzedAt?: string): string
   /** Show a spoken-question answer with a suggested goal, through the real display path. */
   showFixtureAnswer(): void
+  /** Press the bring-back shortcut (Ctrl/Cmd+Shift+B) — a test cannot send a system-wide key. */
+  pressRobotShortcut(): void
   /** The setup-wizard fakes (e2e-fakes.ts), or null when not enabled. */
   setupFakes(): E2eFakes | null
   /** Change the fake macOS permissions (the wizard's live status picks it up). */
@@ -80,6 +83,7 @@ export function registerE2eTestHooks(getCompanionWindow: () => BrowserWindow | n
       getCompanionWindow()?.webContents.send(IPC.COMPANION_ANALYSIS, analysis)
       return analyzedAt
     },
+    pressRobotShortcut: () => pressRobotShortcut(),
     setupFakes: () => e2eFakes(),
     setFakePermissions(p: Partial<SetupPermissions>): void {
       const fakes = e2eFakes()

@@ -129,6 +129,9 @@ export function showGuidanceWindow(payload: GuidancePayload): void {
   // Cache real guidance so it can be re-shown later (but not placeholder notices).
   if (payload.kind !== 'message' && payload.kind !== 'permission') lastGuidancePayload = payload
 
+  // The robot is hidden (robot-visibility.ts): keep it for later, show nothing.
+  if (suppressed) return
+
   // Renderer not loaded yet — remember and replay once it's ready.
   if (!isReady) {
     pendingPayload = payload
@@ -158,6 +161,13 @@ export function showLastGuidance(): void {
     console.log('[Guidance] showLastGuidance — no cache, showing placeholder')
     showGuidanceWindow({ kind: 'message', message: 'No guidance yet — start a watching session.' })
   }
+}
+
+let suppressed = false
+
+/** While the robot is hidden, guidance is remembered but never popped up. */
+export function setGuidanceSuppressed(value: boolean): void {
+  suppressed = value
 }
 
 /** Forget the cached guidance (project switch): "show last guidance" must not resurface it. */

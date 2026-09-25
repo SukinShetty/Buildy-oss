@@ -182,6 +182,20 @@ const mybuildyAPI = {
     restart: (): Promise<void> => ipcRenderer.invoke(IPC.SETUP_RESTART),
   },
 
+  // The robot: Hide (watching continues), Quit (after its confirmation), size.
+  robot: {
+    hide: (): void => ipcRenderer.send(IPC.ROBOT_HIDE),
+    quitApp: (): void => ipcRenderer.send(IPC.APP_QUIT),
+    getScale: (): Promise<number> => ipcRenderer.invoke(IPC.ROBOT_SCALE_GET),
+    setScale: (scale: number): Promise<number> => ipcRenderer.invoke(IPC.ROBOT_SCALE_SET, scale),
+    zoom: (direction: 'in' | 'out'): Promise<number> => ipcRenderer.invoke(IPC.ROBOT_ZOOM, direction),
+    onScaleChanged: (handler: (scale: number) => void): (() => void) => {
+      const listener = (_e: Electron.IpcRendererEvent, scale: number) => handler(scale)
+      ipcRenderer.on(IPC.ROBOT_SCALE_CHANGED, listener)
+      return () => ipcRenderer.removeListener(IPC.ROBOT_SCALE_CHANGED, listener)
+    },
+  },
+
   // Settings → Diagnostics: open the folder holding the local watch log.
   openLogFolder: (): Promise<void> =>
     ipcRenderer.invoke(IPC.OPEN_LOG_FOLDER),

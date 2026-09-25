@@ -10,6 +10,7 @@
 
 import { BrowserWindow, screen } from 'electron'
 import { floatingWindowOptions, floatOnAllWorkspaces } from './floating-window'
+import { clampRobotScale, robotWindowSize } from '../renderer/src/robot-size'
 import { join } from 'path'
 import { IPC } from '../renderer/src/types'
 import { repositionGuidanceWindow, hideGuidanceWindow } from './guidance-window'
@@ -18,8 +19,10 @@ import { repositionGuidanceWindow, hideGuidanceWindow } from './guidance-window'
 // Guidance renders in a separate window (see guidance-window.ts), so this window
 // never grows and the mascot is always visible. Width is sized to fit the
 // 7-control pill (a strict 200px would clip it).
-const COMPANION_WIDTH = 300
-const COMPANION_HEIGHT = 300
+// The robot window: 340×300 at Medium, scaled by the robot size (robot-size.ts).
+// The zoom factor scales robot, bar, icons and text together.
+let robotScale = 1
+const robotSize = (): { width: number; height: number } => robotWindowSize(robotScale)
 
 let companionRef: BrowserWindow | null = null
 
@@ -32,9 +35,37 @@ function safeDefaultPosition(): { x: number; y: number } {
   const { x: ox, y: oy } = display.workArea
 
   return {
-    x: ox + width - COMPANION_WIDTH - 80,
-    y: oy + Math.round((height - COMPANION_HEIGHT) / 2),
+    x: ox + width - robotSize().width - 80,
+    y: oy + Math.round((height - robotSize().height) / 2),
   }
+}
+
+/** The robot size to use when the window is created (saved preference). */
+export function setInitialRobotScale(scale: number): void {
+  robotScale = clampRobotScale(scale)
+}
+
+export function getRobotScale(): number {
+  return robotScale
+}
+
+/**
+ * Resize the robot: zoom its page and grow/shrink the window around its
+ * current centre, kept on screen; the guidance panel follows. Returns the
+ * (clamped) scale now in use.
+ */
+export function applyRobotScale(scale: number): number {
+  robotScale = clampRobotScale(scale)
+  if (!companionRef || companionRef.isDestroyed()) return robotScale
+  companionRef.webContents.setZoomFactor(robotScale)
+  const b = companionRef.getBounds()
+  const { width, height } = robotSize()
+  const area = screen.getDisplayMatching(b).workArea
+  const x = Math.round(Math.min(Math.max(b.x + b.width / 2 - width / 2, area.x), area.x + area.width - width))
+  const y = Math.round(Math.min(Math.max(b.y + b.height / 2 - height / 2, area.y), area.y + area.height - height))
+  companionRef.setBounds({ x, y, width, height })
+  repositionGuidanceWindow()
+  return robotScale
 }
 
 /**
@@ -73,11 +104,11 @@ function pullBackOnScreen(window: BrowserWindow): void {
 export function createCompanionWindow(): BrowserWindow {
   const pos = safeDefaultPosition()
 
-  console.log(`[Companion] Creating window at x=${pos.x} y=${pos.y} (${COMPANION_WIDTH}x${COMPANION_HEIGHT})`)
+  console.log(`[Companion] Creating window at x=${pos.x} y=${pos.y} (${robotSize().width}x${robotSize().height})`)
 
   const window = new BrowserWindow({
-    width: COMPANION_WIDTH,
-    height: COMPANION_HEIGHT,
+    width: robotSize().width,
+    height: robotSize().height,
     x: pos.x,
     y: pos.y,
     frame: false,
@@ -103,6 +134,8 @@ export function createCompanionWindow(): BrowserWindow {
 
   window.setAlwaysOnTop(true, 'screen-saver')
   floatOnAllWorkspaces(window)
+  // The robot size is a zoom factor; re-apply it whenever the page (re)loads.
+  window.webContents.on('did-finish-load', () => window.webContents.setZoomFactor(robotScale))
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(`${process.env['ELECTRON_RENDERER_URL']}?companion=true`)
@@ -147,7 +180,7 @@ export function createCompanionWindow(): BrowserWindow {
     if (!isOnScreen(bounds.x, bounds.y)) {
       console.log('[Companion] Window is off-screen, resetting position')
       const safe = safeDefaultPosition()
-      window.setBounds({ x: safe.x, y: safe.y, width: COMPANION_WIDTH, height: COMPANION_HEIGHT })
+      window.setBounds({ x: safe.x, y: safe.y, ...robotSize() })
     }
 
     window.show()
@@ -185,8 +218,7 @@ export function resetCompanionPosition(): void {
   companionRef.setBounds({
     x: pos.x,
     y: pos.y,
-    width: COMPANION_WIDTH,
-    height: COMPANION_HEIGHT,
+    ...robotSize(),
   })
 
   companionRef.show()

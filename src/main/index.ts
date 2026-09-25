@@ -8,11 +8,11 @@
 //   - All speech and analysis stop on quit
 //   - Tray provides Open/Quit shortcuts but the app does NOT hide to tray by default
 
-import { app, BrowserWindow, Tray, Menu, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, shell, globalShortcut } from 'electron'
 import { join } from 'path'
 import { IPC } from '../renderer/src/types'
 import { registerIpcHandlers } from './ipc-handlers'
-import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosition } from './companion-window'
+import { createCompanionWindow, showCompanion, hideCompanion, resetCompanionPosition, setInitialRobotScale } from './companion-window'
 import { createGuidanceWindow, destroyGuidanceWindow, showLastGuidance } from './guidance-window'
 import { stopAnalysisLoop } from './analysis-loop'
 import { initProjects } from './projects'
@@ -24,6 +24,10 @@ import { debugLog } from './debug-log'
 import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
 import { registerE2eTestHooks } from './e2e-hooks'
 import { macAppMenuTemplate, macDockMenuTemplate, type MenuActions } from './app-menu'
+import { createShutdown } from './app-shutdown'
+import { showRobot, hideRobot } from './robot-visibility'
+import { ROBOT_SHORTCUT, robotShortcutLabel, registerRobotShortcut } from './robot-shortcut'
+import { loadRobotScale } from './robot-prefs'
 import { loadSetupState, needsSetup } from './setup-state'
 import { initWatchLog } from './watch-log'
 
@@ -71,8 +75,8 @@ app.on('web-contents-created', (_event, contents) => {
 // Hide, Quit MyBuildy Cmd+Q), Edit and Window (app-menu.ts), plus a Dock menu.
 const menuActions: MenuActions = {
   openSettings: () => showMainPanel(),
-  showRobot: () => showCompanion(),
-  hideRobot: () => hideCompanion(),
+  showRobot: () => showRobot(),
+  hideRobot: () => hideRobot(),
   quit: () => shutdownApp(),
 }
 
@@ -119,57 +123,30 @@ function shutdownApp(): void {
   app.quit()
 }
 
-let cleanedUp = false
-
-/** Everything a quit must stop — idempotent, so every quit path can call it. */
-function cleanUpForQuit(): void {
-  ;(app as any).isQuitting = true
-  if (cleanedUp) return
-  cleanedUp = true
-
-  // 1. Stop the background analysis loop (watching)
-  stopAnalysisLoop('quit')
-
-  // 1b. Stop speaking and clear the voice queue
-  try {
-    stopVoice()
-  } catch {
-    // The voice player may already be gone
-  }
-
-  // 2. Tell the companion renderer to stop TTS immediately
-  if (companionWindow && !companionWindow.isDestroyed()) {
-    try {
-      companionWindow.webContents.send(IPC.COMPANION_SHUTDOWN)
-    } catch {
-      // Window may already be gone
-    }
-  }
-
-  // 3. Destroy companion + guidance windows
-  if (companionWindow && !companionWindow.isDestroyed()) {
-    companionWindow.destroy()
-  }
-  companionWindow = null
-
-  destroyGuidanceWindow()
-  guidanceWindow = null
-
-  destroyVoicePlayer()
-  voicePlayerWindow = null
-
-  // 4. Destroy main window (allow it to close for real)
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.destroy()
-  }
-  mainWindow = null
-
-  // 5. Destroy tray
-  if (tray && !tray.isDestroyed()) {
-    tray.destroy()
-  }
-  tray = null
-}
+/** Everything a quit must stop — one idempotent clean-up for every quit path (app-shutdown.ts). */
+const cleanUpForQuit = createShutdown({
+  markQuitting: () => { ;(app as any).isQuitting = true },
+  stopWatching: () => stopAnalysisLoop('quit'),
+  stopVoice: () => stopVoice(),
+  tellRobot: () => {
+    if (companionWindow && !companionWindow.isDestroyed()) companionWindow.webContents.send(IPC.COMPANION_SHUTDOWN)
+  },
+  destroyRobot: () => {
+    if (companionWindow && !companionWindow.isDestroyed()) companionWindow.destroy()
+    companionWindow = null
+  },
+  destroyGuidance: () => { destroyGuidanceWindow(); guidanceWindow = null },
+  destroyVoicePlayer: () => { destroyVoicePlayer(); voicePlayerWindow = null },
+  destroyMainWindow: () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.destroy()
+    mainWindow = null
+  },
+  destroyTray: () => {
+    if (tray && !tray.isDestroyed()) tray.destroy()
+    tray = null
+  },
+  releaseShortcuts: () => globalShortcut.unregisterAll(),
+})
 
 // ─── Main panel window (hidden by default — companion is primary UI) ─────────
 
@@ -249,16 +226,19 @@ function createSystemTray(): Tray {
 
   const contextMenu = Menu.buildFromTemplate([
     {
+      // The shortcut is shown next to the item (it works from any app).
       label: 'Show robot',
+      accelerator: ROBOT_SHORTCUT,
+      registerAccelerator: false,
       click: () => {
-        // showCompanion() re-asserts the screen-saver always-on-top level.
-        showCompanion()
+        // showRobot() → showCompanion() re-asserts the screen-saver always-on-top level.
+        showRobot()
       },
     },
     {
-      label: 'Hide robot',
+      label: 'Hide robot (keeps watching)',
       click: () => {
-        hideCompanion()
+        hideRobot()
       },
     },
     {
@@ -289,11 +269,15 @@ function createSystemTray(): Tray {
     },
   ])
 
-  newTray.setToolTip('MyBuildy — your builder buddy')
+  newTray.setToolTip(`MyBuildy — click to show the robot (${robotShortcutLabel(process.platform)})`)
   newTray.setContextMenu(contextMenu)
 
+  // Clicking the tray icon brings the robot back (e.g. after Hide).
+  newTray.on('click', () => {
+    showRobot()
+  })
   newTray.on('double-click', () => {
-    showCompanion()
+    showRobot()
   })
 
   return newTray
@@ -345,6 +329,7 @@ app.whenReady().then(async () => {
   await initProjects().catch((e) => console.error('[Projects] init failed:', e))
 
   mainWindow = createMainWindow()
+  setInitialRobotScale(loadRobotScale(app.getPath('userData'))) // Small / Medium / Large, remembered
   companionWindow = createCompanionWindow()
   guidanceWindow = createGuidanceWindow(companionWindow)
   voicePlayerWindow = createVoicePlayerWindow()
@@ -352,7 +337,10 @@ app.whenReady().then(async () => {
 
   // Register IPC handlers ONCE, with getters so they always target the current
   // window even if a window is recreated (see app.on('activate')).
-  registerIpcHandlers(() => mainWindow!, () => companionWindow)
+  registerIpcHandlers(() => mainWindow!, () => companionWindow, () => shutdownApp())
+
+  // Bring the robot back after Hide: Ctrl+Shift+B (Windows) / Cmd+Shift+B (macOS).
+  registerRobotShortcut(globalShortcut, () => showRobot())
 
   // Local diagnostic log of watch/send state changes (Settings → Open log folder).
   initWatchLog(app.getPath('userData'))

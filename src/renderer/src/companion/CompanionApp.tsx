@@ -10,6 +10,8 @@ import type { MascotState, MascotAlignment, MascotReaction, MascotReactionType }
 import { deriveMascotSignals } from './mascot-signals'
 import { nextStepLabel } from './next-step'
 import { ResolvedHandoffs } from '../handoff'
+import { robotSizeText } from '../robot-size'
+import { BAR_BACKGROUND_CSS, ICON_COLOR, ICON_HOVER_COLOR, ICON_HOVER_BACKGROUND_CSS } from './robot-theme'
 import type { AnalysisResult } from '../types'
 import { isModelConfigured, CAPTURE_NOTICE_MESSAGE } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
@@ -36,6 +38,9 @@ export function CompanionApp(): React.ReactElement {
   // pendingPick until the user hits Continue (Cancel aborts the pick).
   const [captureNoticeAccepted, setCaptureNoticeAccepted] = useState(true)
   const [pendingPick, setPendingPick] = useState<{ id: string; name: string } | null>(null)
+  const [confirmQuit, setConfirmQuit] = useState(false)
+  const [sizeToast, setSizeToast] = useState<string | null>(null)
+  const mascotWrapRef = useRef<HTMLDivElement | null>(null)
   const isMutedRef = useRef(isMuted)
   isMutedRef.current = isMuted
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -320,6 +325,36 @@ export function CompanionApp(): React.ReactElement {
   }
   function onQuiet(): void { const q = !isQuietMode; setQuietMode(q); window.mybuildy.setQuietMode(q) }
   function onSettings(): void { window.mybuildy.openPanel() }
+  // Hide: the robot and its guidance panel go away; watching carries on.
+  function onHide(): void { window.mybuildy.robot.hide() }
+
+  // Robot size: show it briefly whenever it changes (Settings or zooming).
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const off = window.mybuildy.robot.onScaleChanged((scale) => {
+      setSizeToast(robotSizeText(scale))
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setSizeToast(null), 1500)
+    })
+    return () => { off(); if (timer) clearTimeout(timer) }
+  }, [])
+
+  // Ctrl/Cmd + scroll wheel over the robot zooms it (one step per notch).
+  useEffect(() => {
+    const el = mascotWrapRef.current
+    if (!el) return
+    let last = 0
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault() // never the page's own zoom
+      const now = Date.now()
+      if (now - last < 120 || e.deltaY === 0) return
+      last = now
+      void window.mybuildy.robot.zoom(e.deltaY < 0 ? 'in' : 'out')
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
   // Re-summon the most recent guidance even when no new analysis has arrived.
   // User-opened panel — clear the "!" alert badge.
   function onShowLast(): void { setShowAlertBadge(false); window.mybuildy.showLastGuidance() }
@@ -362,6 +397,7 @@ export function CompanionApp(): React.ReactElement {
       <div style={S.drag} />
 
       <div
+        ref={mascotWrapRef}
         style={S.mascotWrap}
         onClick={onOrbClick}
         onContextMenu={(e) => { e.preventDefault(); openPicker() }}
@@ -380,7 +416,7 @@ export function CompanionApp(): React.ReactElement {
       <div style={S.watchLabel} title={watchLabel}>{watchLabel}</div>
 
       {/* Control pill */}
-      <div style={S.pill}>
+      <div style={S.pill} className="robot-bar">
         <Btn icon={stopIcon} onClick={onStop} active={false} title="Stop" />
         <Btn icon={isMuted ? muteOnIcon : muteOffIcon} onClick={onMute} active={isMuted} title={isMuted ? 'Unmute' : 'Mute'} />
         <Btn icon={isPaused ? playIcon : pauseIcon} onClick={onPause} active={isPaused} title={isPaused ? 'Resume' : 'Pause'} />
@@ -397,7 +433,27 @@ export function CompanionApp(): React.ReactElement {
         <Btn icon={showLastIcon} onClick={onShowLast} active={false} title="Show last guidance" />
         <Btn icon={monitorIcon} onClick={openPicker} active={false} title="Show MyBuildy your coding agent" />
         <Btn icon={gearIcon} onClick={onSettings} active={false} title="Settings" />
+        {/* Get it off the screen: Hide first, then a gap, then Quit (hard to hit by accident). */}
+        <div style={S.pillDivider} />
+        <Btn icon={eyeOffIcon} onClick={onHide} active={false} title={`Hide the robot (keeps watching). Bring it back: tray icon or ${SHORTCUT_LABEL}`} />
+        <div style={S.quitGap} />
+        <Btn icon={quitIcon} onClick={() => setConfirmQuit(true)} active={false} title="Quit MyBuildy" />
       </div>
+
+      {/* Robot size, shown briefly while zooming (Ctrl/Cmd + scroll wheel) */}
+      {sizeToast && <div style={S.sizeToast} role="status">{sizeToast}</div>}
+
+      {/* Quit asks first */}
+      {confirmQuit && (
+        <div style={S.picker} role="dialog" aria-labelledby="quit-title">
+          <div id="quit-title" style={S.noticeTitle}>Quit MyBuildy?</div>
+          <div style={S.noticeText}>This stops watching and closes MyBuildy, including the robot and the guidance panel.</div>
+          <div style={S.noticeButtons}>
+            <button onClick={() => setConfirmQuit(false)} style={S.noticeCancel} autoFocus>Cancel</button>
+            <button onClick={() => window.mybuildy.robot.quitApp()} style={S.noticeContinue}>Quit</button>
+          </div>
+        </div>
+      )}
 
       {/* Mic state indicator */}
       {micLabel && (
@@ -447,8 +503,10 @@ function Btn({ icon, onClick, active, title }: { icon: string; onClick: () => vo
   return (
     <button
       onClick={onClick}
-      style={{ ...S.btn, ...(active ? S.btnActive : {}) }}
+      className={`robot-btn${active ? ' is-active' : ''}`}
+      style={S.btn}
       title={title}
+      aria-label={title}
       dangerouslySetInnerHTML={{ __html: icon }}
     />
   )
@@ -463,6 +521,7 @@ function MicBtn({ micState, onClick, disabled }: { micState: MicState; onClick: 
   return (
     <button
       onClick={disabled || isBusy ? undefined : onClick}
+      className="robot-btn"
       style={{
         ...S.btn,
         ...(isActive ? S.micActive : isBusy ? S.micBusy : {}),
@@ -492,6 +551,9 @@ const micIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" str
 const monitorIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>'
 // Message-square (lucide-style) — re-show the last guidance panel.
 const showLastIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>'
+const eyeOffIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+const quitIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>'
+const SHORTCUT_LABEL = window.mybuildy.platform === 'darwin' ? 'Cmd+Shift+B' : 'Ctrl+Shift+B'
 const gearIcon = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>'
 
 function trunc(t: string, n: number): string { return t.length > n ? t.slice(0, n - 1) + '\u2026' : t }
@@ -528,12 +590,16 @@ const S = {
   },
   watchLabel: {
     marginTop: 4,
-    fontSize: 12,
-    fontWeight: 500,
-    color: 'rgba(255,255,255,0.7)',
-    letterSpacing: '0.02em',
+    // The "Next:" line: bright, on a dark backing, readable at every robot size.
+    fontSize: 13,
+    fontWeight: 600,
+    color: 'rgba(255,255,255,0.95)',
+    background: 'rgba(28,28,30,0.82)',
+    padding: '3px 9px',
+    borderRadius: 8,
+    letterSpacing: '0.01em',
     textAlign: 'center' as const,
-    maxWidth: 240,
+    maxWidth: 250,
     lineHeight: 1.3,
     flexShrink: 0,
     textShadow: '0 2px 10px rgba(0,0,0,0.9)',
@@ -550,7 +616,7 @@ const S = {
     alignItems: 'center',
     gap: 3,
     marginTop: 8,
-    background: 'rgba(0,0,0,0.5)',
+    background: BAR_BACKGROUND_CSS, // near-solid dark bar (robot-theme.ts, contrast-tested)
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
     borderRadius: 999,
@@ -559,11 +625,28 @@ const S = {
     flexShrink: 0,
     // Keep buttons clickable — exclude the pill from the window drag region.
     WebkitAppRegion: 'no-drag' as unknown as string,
+    // Icon colours for .robot-btn (global.css), from the contrast-tested theme.
+    ['--robot-icon' as string]: ICON_COLOR,
+    ['--robot-icon-hover' as string]: ICON_HOVER_COLOR,
+    ['--robot-icon-hover-bg' as string]: ICON_HOVER_BACKGROUND_CSS,
+  },
+  quitGap: {
+    width: 6,
+    flexShrink: 0,
+  },
+  sizeToast: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#F2F2F7',
+    background: 'rgba(28,28,30,0.92)',
+    padding: '3px 10px',
+    borderRadius: 999,
   },
   pillDivider: {
     width: 1,
     height: 14,
-    background: 'rgba(255,255,255,0.08)',
+    background: 'rgba(255,255,255,0.22)',
     margin: '0 2px',
     flexShrink: 0,
   },
@@ -574,16 +657,10 @@ const S = {
     width: 28,
     height: 28,
     borderRadius: 8,
-    background: 'transparent',
-    color: 'rgba(255,255,255,0.35)',
     border: 'none',
     cursor: 'pointer',
     padding: 0,
-    transition: 'color 0.15s, background 0.15s',
-  },
-  btnActive: {
-    background: 'rgba(255,107,43,0.15)',
-    color: '#FF6B2B',
+    // colour, hover and active looks: .robot-btn in global.css
   },
   micActive: {
     background: 'rgba(255,69,58,0.25)',

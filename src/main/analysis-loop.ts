@@ -58,6 +58,7 @@ import {
 import type { WatchContinuity } from './capture-guard'
 import { debugLog, debugError } from './debug-log'
 import { prepareForDisplay } from './display-consistency'
+import { noteAnalysisForRobot } from './robot-visibility'
 import { parseQuestionReply } from './ai/question-reply'
 import type { VerificationVerdict, SendEligibility, SendPromptResult, QuestionAnswer } from '../renderer/src/types'
 
@@ -840,6 +841,7 @@ async function runOneAnalysisCycle(
   displaySession = mySession
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)
+    noteAnalysisForRobot(displayAnalysis) // robot hidden → a system notification for alerts
   }
   void pushSendEligibility()
 
@@ -1148,6 +1150,7 @@ function patchDisplayAndResend(
   displayAnalysis = prepareForDisplay(displayAnalysis)
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)
+    noteAnalysisForRobot(displayAnalysis) // robot hidden → a system notification for alerts
   }
   void pushSendEligibility()
 }

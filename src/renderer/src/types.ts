@@ -616,6 +616,12 @@ export const IPC = {
   STOPPED:             'mybuildy:stopped',         // main → main window (Stop pressed: cancel Guidance runs + auto timer)
   PROJECTS_SWITCHED:   'projects:switched',        // main → all windows (active project changed: drop per-project UI state)
   PROJECTS_SWITCH:     'projects:switch',          // renderer → main (set active) → ProjectRecord
+  ROBOT_HIDE:          'robot:hide',               // robot → main (Hide: robot + guidance go away, watching continues)
+  APP_QUIT:            'app:quit',                 // robot / main window → main (confirmed Quit: shut everything down)
+  ROBOT_SCALE_GET:     'robot:scale-get',          // renderer → main → number (robot size)
+  ROBOT_SCALE_SET:     'robot:scale-set',          // main window / robot → main (Settings: Robot size)
+  ROBOT_ZOOM:          'robot:zoom',               // robot → main ('in' | 'out': Ctrl/Cmd + scroll wheel) → new scale
+  ROBOT_SCALE_CHANGED: 'robot:scale-changed',      // main → robot (show the new size briefly)
   PROJECTS_DELETE:     'projects:delete',          // main window → main (delete a project + its memory) → DeleteProjectResult
   PROJECTS_GET_ACTIVE: 'projects:get-active',      // renderer → main → ProjectRecord | null
   // ─── Memory layer (Nemp bridge) ──────────────────────────────────────────

@@ -9,6 +9,10 @@ import { providerFetch, withCancellation, CancelledError } from './ai/fetch-with
 import { guardedSender } from './project-guard'
 import { watchLogDir } from './watch-log'
 import { e2eFakes, FAKE_MODELS } from './e2e-fakes'
+import { hideRobot } from './robot-visibility'
+import { applyRobotScale, getRobotScale } from './companion-window'
+import { saveRobotScale } from './robot-prefs'
+import { zoomedRobotScale } from '../renderer/src/robot-size'
 import { loadSetupState, saveSetupState, needsSetup } from './setup-state'
 import {
   setupPlatform, getSetupPermissions, openPermissionPane, registerForScreenRecording,
@@ -55,7 +59,8 @@ import {
 // no duplicate-handler throws, no stacked listeners).
 export function registerIpcHandlers(
   getMainWindow: () => BrowserWindow,
-  getCompanionWindow: () => BrowserWindow | null
+  getCompanionWindow: () => BrowserWindow | null,
+  quitApp: () => void
 ): void {
 
   const mainWcId = (): number => getMainWindow().webContents.id
@@ -360,6 +365,50 @@ export function registerIpcHandlers(
       console.error('[IPC] PROJECTS_SWITCH error:', error)
       throw error
     }
+  })
+
+  // ─── The robot: Hide, Quit, size ───────────────────────────────────────────
+
+  const isRobot = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean =>
+    event.sender.id === getCompanionWindow()?.webContents.id
+  const isMainWindow = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean =>
+    event.sender.id === mainWcId()
+
+  /** Apply + remember a robot size, and let the robot show it briefly. */
+  const setRobotScale = (scale: number): number => {
+    const applied = applyRobotScale(scale)
+    saveRobotScale(app.getPath('userData'), applied)
+    const robot = getCompanionWindow()
+    if (robot && !robot.isDestroyed()) robot.webContents.send(IPC.ROBOT_SCALE_CHANGED, applied)
+    return applied
+  }
+
+  // Hide: the robot and its guidance panel go away; watching carries on.
+  ipcMain.on(IPC.ROBOT_HIDE, (event) => {
+    if (!isRobot(event)) return
+    hideRobot()
+  })
+
+  // Quit (after the robot's "Quit MyBuildy?" confirmation): shut everything down.
+  ipcMain.on(IPC.APP_QUIT, (event) => {
+    if (!isRobot(event) && !isMainWindow(event)) return
+    console.log('[App] Quit confirmed from the robot')
+    quitApp()
+  })
+
+  ipcMain.handle(IPC.ROBOT_SCALE_GET, async () => getRobotScale())
+
+  ipcMain.handle(IPC.ROBOT_SCALE_SET, async (event, scaleRaw: unknown) => {
+    if (!isRobot(event) && !isMainWindow(event)) throw new Error('Unauthorized sender')
+    if (typeof scaleRaw !== 'number' || !Number.isFinite(scaleRaw)) throw new Error('Invalid robot size')
+    return setRobotScale(scaleRaw)
+  })
+
+  // Ctrl/Cmd + scroll wheel over the robot.
+  ipcMain.handle(IPC.ROBOT_ZOOM, async (event, directionRaw: unknown) => {
+    if (!isRobot(event)) throw new Error('Unauthorized sender')
+    if (directionRaw !== 'in' && directionRaw !== 'out') throw new Error('Invalid zoom direction')
+    return setRobotScale(zoomedRobotScale(getRobotScale(), directionRaw))
   })
 
   // Delete a project (Goal screen → Manage projects). Main applies every rule
