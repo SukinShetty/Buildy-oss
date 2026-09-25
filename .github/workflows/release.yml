@@ -48,6 +48,10 @@ jobs:
       - name: Package Windows installer
         run: npx electron-builder --win nsis --x64 --publish never
 
+      # Tag, package.json and the packaged app must all carry the same version.
+      - name: Check versions agree
+        run: node scripts/check-release-version.mjs ${{ github.ref_name }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -83,6 +87,10 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --mac dmg --arm64 --x64 --publish never
+
+      # Tag, package.json and the packaged apps must all carry the same version.
+      - name: Check versions agree
+        run: node scripts/check-release-version.mjs ${{ github.ref_name }}
 
       - name: Verify the ad-hoc signature of each packaged app
         run: |
