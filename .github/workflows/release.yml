@@ -1,11 +1,16 @@
-# release.yml — installers on version tags (v*), as ONE DRAFT release.
+# release.yml — installers on version tags (v*), on ONE release per tag.
 #
 # Two build jobs run on the same tag — Windows (NSIS installer) and macOS (DMG
 # for Apple Silicon and Intel, ad-hoc signed, not notarized) — and upload their
 # files as workflow artifacts. A single final job then writes one
-# SHA256SUMS.txt over every file and creates the draft. Only that job talks to
-# the Releases API, so two jobs can never race into two drafts. Nothing is
-# published: a human reviews the draft and publishes it by hand.
+# SHA256SUMS.txt over every file and puts the files on the release. Only that
+# job talks to the Releases API, so two jobs can never race.
+#
+# Re-releasing the same version: move the tag with a force-update (never delete
+# it) and this workflow replaces the files of the EXISTING release in place, one
+# at a time (scripts/release-assets.mjs), so every download link keeps working,
+# and leaves it published or draft exactly as it was. With no release for the
+# tag yet it creates a DRAFT. Nothing is ever published here: a human does that.
 #
 # Guarded to the canonical repo so forks pushing tags don't try to cut releases.
 
@@ -111,6 +116,12 @@ jobs:
     if: github.repository == 'SukinShetty/mybuildy'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - uses: actions/download-artifact@v4
         with:
           path: release
@@ -122,12 +133,9 @@ jobs:
           sha256sum MyBuildy-* > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Draft GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          fail_on_unmatched_files: true
-          files: |
-            release/MyBuildy-Setup-*.exe
-            release/MyBuildy-*.dmg
-            release/SHA256SUMS.txt
+      # Replaces each file in place on the existing release (draft or published),
+      # SHA256SUMS.txt last, then re-downloads every file and checks its SHA256.
+      - name: Put the files on the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/release-assets.mjs ${{ github.ref_name }} release
