@@ -16,6 +16,15 @@
 export type CaptureHalt = 'no-source' | 'window-missing'
 
 /**
+ * Why a selected window could not be captured: on Windows a minimized or hidden
+ * window is left out of the capture list while it still exists — that is not a
+ * closed window, and the user's choice of window must be kept.
+ */
+export function missingWindowReason(presence: WindowPresence | null): 'window-minimized' | 'window-missing' {
+  return presence?.exists ? 'window-minimized' : 'window-missing'
+}
+
+/**
  * Decide whether a capture should halt (and why) instead of producing an image.
  * Returns null only when there IS a selected source AND it was found.
  * There is intentionally no "fall back to full screen" branch.
@@ -72,18 +81,35 @@ export interface WatchContinuity {
   title: string              // last title seen while confirmed to be the same window
   state: WatchContinuityState
   missingSinceMs: number | null
+  // Process that owned the window when the watch started (Windows; null when
+  // unknown). Lets an OS presence check confirm a missing id is still the SAME
+  // window — see pollContinuityWithPresence.
+  ownerPid: number | null
 }
+
+/** What the OS says about the watched window right now (window-presence.ts). */
+export interface WindowPresence {
+  exists: boolean
+  minimized: boolean
+  ownerPid: number | null
+}
+
+export type LostReason = 'missing-too-long' | 'returned-with-new-title' | 'closed'
 
 export type ContinuityEvent =
   | { kind: 'none' }
   | { kind: 'title-changed'; from: string; to: string }
-  | { kind: 'went-missing' }
+  // stillOpen: the OS confirmed the same window still exists (minimized/hidden).
+  | { kind: 'went-missing'; stillOpen?: boolean; minimized?: boolean }
   | { kind: 'resumed'; title: string }
-  | { kind: 'lost' }
+  // The rules would have declared the window lost, but the OS confirmed it is
+  // the same window, still open — the grace period starts again.
+  | { kind: 'still-open'; minimized: boolean }
+  | { kind: 'lost'; reason: LostReason }
 
 /** Begin tracking the user-selected window (called on watch start). */
-export function startContinuity(sourceId: string, title: string): WatchContinuity {
-  return { sourceId, title, state: 'watching', missingSinceMs: null }
+export function startContinuity(sourceId: string, title: string, ownerPid: number | null = null): WatchContinuity {
+  return { sourceId, title, state: 'watching', missingSinceMs: null, ownerPid }
 }
 
 /**
@@ -132,7 +158,7 @@ export function pollContinuity(
     // Already missing — check whether the grace window has run out.
     if (nowMs - (watch.missingSinceMs ?? nowMs) >= MISSING_LOST_MS) {
       watch.state = 'lost'
-      return { kind: 'lost' }
+      return { kind: 'lost', reason: 'missing-too-long' }
     }
     return { kind: 'none' }
   }
@@ -158,5 +184,60 @@ export function pollContinuity(
   // Back too late (≥ 60 s) or with a different identity after the 15 s
   // any-title grace — cannot distinguish from HWND reuse. Halt.
   watch.state = 'lost'
-  return { kind: 'lost' }
+  return { kind: 'lost', reason: missingForMs >= MISSING_LOST_MS ? 'missing-too-long' : 'returned-with-new-title' }
+}
+
+/**
+ * True when the OS confirms the watched window itself still exists: the same
+ * handle, owned by the same process as when the watch started. A handle value
+ * can only be reused after its window is destroyed, and a reused one would
+ * have to land in the same process too — so this is the same window.
+ */
+export function isSameWindowStillOpen(watch: WatchContinuity, presence: WindowPresence | null): boolean {
+  return !!presence && presence.exists && watch.ownerPid !== null && presence.ownerPid === watch.ownerPid
+}
+
+/**
+ * pollContinuity, plus an OS presence check at the two decision points:
+ *
+ *   - went-missing: is the window only minimized/hidden? (for the message and
+ *     the diagnostic log; the grace rules still run)
+ *   - lost: before halting, ask whether the same window still exists. On
+ *     Windows a minimized window drops out of the capture list — it is not
+ *     gone. If it still exists the watch resumes (id back in the list) or the
+ *     grace period starts again (still minimized). Only a window the OS says is
+ *     closed — or one that can't be confirmed — is lost.
+ *
+ * The probe is injected (window-presence.ts in the app), so this stays pure
+ * and unit-testable. Resolves null → the rules apply unchanged.
+ */
+export async function pollContinuityWithPresence(
+  watch: WatchContinuity,
+  sources: readonly { id: string; name: string }[],
+  nowMs: number,
+  probe: () => Promise<WindowPresence | null>
+): Promise<ContinuityEvent> {
+  const event = pollContinuity(watch, sources, nowMs)
+  if (event.kind === 'went-missing') {
+    const presence = await probe()
+    return isSameWindowStillOpen(watch, presence)
+      ? { kind: 'went-missing', stillOpen: true, minimized: presence!.minimized }
+      : event
+  }
+  if (event.kind !== 'lost') return event
+
+  const presence = await probe()
+  if (presence && !presence.exists) return { kind: 'lost', reason: 'closed' }
+  if (!isSameWindowStillOpen(watch, presence)) return event
+
+  const back = findWatchedSource(sources, watch.sourceId)
+  if (back) {
+    watch.state = 'watching'
+    watch.missingSinceMs = null
+    watch.title = back.name
+    return { kind: 'resumed', title: back.name }
+  }
+  watch.state = 'missing'
+  watch.missingSinceMs = nowMs
+  return { kind: 'still-open', minimized: presence!.minimized }
 }

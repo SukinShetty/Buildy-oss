@@ -252,7 +252,15 @@ JARGON RULE: The user is non-technical. If you need to reference technical terms
 Answer conversationally in 1-3 short sentences.
 Use what you can see in the screenshot and what you've observed so far.
 Be direct and helpful. No bullet lists. Just talk like a helpful friend.
-If you're not sure, say so briefly and give your best guess.`
+If you're not sure, say so briefly and give your best guess.
+
+GOALS AND PROMPTS: when the user asks for a goal ("give me a goal for…") or for something to tell the coding agent ("what should I tell the agent…", "write me a prompt…"), put it in "suggestion", NOT in "reply". The reply may say "Here's a goal you can use" but must never repeat or quote the suggestion.
+- A goal: "text" says what to build, in one or two plain sentences; "doneWhen" is ONE check the user can verify by looking (e.g. "the Invoices page lists saved invoices and the total matches the sum of the rows"). Never vague ("it works well").
+- A prompt: "text" is the exact, ready-to-paste instruction for the coding agent.
+When the user did not ask for a goal or prompt, "suggestion" is null.
+
+Respond with JSON only, no markdown:
+{"reply": "<the conversational answer>", "suggestion": null or {"kind": "goal", "text": "<what to build>", "doneWhen": "<verifiable check>"} or {"kind": "prompt", "text": "<the prompt>"}}`
 }
 
 /**

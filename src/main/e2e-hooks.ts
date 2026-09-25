@@ -12,9 +12,9 @@
 //
 // The fixture uses NEUTRAL sample data only (a generic recipe-box app).
 
-import { app } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import { showGuidanceWindow } from './guidance-window'
-import type { AnalysisResult } from '../renderer/src/types'
+import { IPC, type AnalysisResult } from '../renderer/src/types'
 
 const FIXTURE_ANALYSIS: AnalysisResult = {
   screenContentVisible: true,
@@ -45,16 +45,47 @@ const FIXTURE_ANALYSIS: AnalysisResult = {
 
 interface E2eHooks {
   showFixtureGuidance(): void
+  /** Send a hand-off analysis to the companion exactly as the loop does; returns its analyzedAt. */
+  sendFixtureHandoff(analyzedAt?: string): string
+  /** Show a spoken-question answer with a suggested goal, through the real display path. */
+  showFixtureAnswer(): void
 }
 
 /** Register the gated e2e test hooks. No-op outside MYBUILDY_E2E=1 dev runs. */
-export function registerE2eTestHooks(): void {
+export function registerE2eTestHooks(getCompanionWindow: () => BrowserWindow | null): void {
   if (process.env['MYBUILDY_E2E'] !== '1' || app.isPackaged) return
   const hooks: E2eHooks = {
     showFixtureGuidance(): void {
       showGuidanceWindow({
         kind: 'analysis',
         analysis: { ...FIXTURE_ANALYSIS, analyzedAt: new Date().toISOString() },
+      })
+    },
+    sendFixtureHandoff(analyzedAt = new Date().toISOString()): string {
+      const analysis: AnalysisResult = {
+        ...FIXTURE_ANALYSIS,
+        nextPrompt: '',
+        expectedOutcome: '',
+        verification: null,
+        needsHumanJudgment: true,
+        humanJudgmentReason: 'Recipes save now. Want to add photos next, or sharing with friends?',
+        analyzedAt,
+      }
+      getCompanionWindow()?.webContents.send(IPC.COMPANION_ANALYSIS, analysis)
+      return analyzedAt
+    },
+    showFixtureAnswer(): void {
+      showGuidanceWindow({
+        kind: 'answer',
+        answer: {
+          question: 'Give me a goal for the recipe photos',
+          answer: "Here's a goal you can use for recipe photos.",
+          suggestion: {
+            kind: 'goal',
+            text: 'Let people add a photo to each recipe and show it at the top of the recipe page.',
+            doneWhen: 'a saved recipe with a photo shows that photo at the top of its page after a restart',
+          },
+        },
       })
     },
   }

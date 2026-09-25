@@ -45,6 +45,7 @@ import { projectStoreDir } from './projects-core'
 import { loadProjectMemory, loadGoal } from './memory'
 import { isSemanticDuplicate, subjectKey } from './semantic-dedup'
 import { debugLog } from './debug-log'
+import { isMomentaryState, isPurgeable } from './memory-durability'
 
 // ─── Local typings for Nemp's internal modules (loaded via dynamic import) ─────
 
@@ -152,6 +153,35 @@ export async function init(projectId: string, storeDir?: string): Promise<void> 
 
   const ok = await ensureNemp()
   console.log(`[Nemp] init — projectId="${projectId}" path="${projectPath}" ready=${ok}`)
+  if (ok) purgeMomentaryMemories()
+}
+
+/**
+ * Remove entries earlier versions stored about the agent's momentary state
+ * (see memory-durability.ts). Runs whenever a project's memory is opened.
+ */
+export function purgeMomentaryMemories(): number {
+  if (!storage) return 0
+  const all = readAll()
+  const keep = all.filter((m) => !isPurgeable(m, TAG))
+  const removed = all.length - keep.length
+  if (removed === 0) return 0
+  try {
+    storage.writeMemories(keep, projectPath)
+    storage.updateMemoryIndex(projectPath)
+    console.log(`[Nemp] removed ${removed} momentary-state entries`)
+  } catch (error) {
+    console.error('[Nemp] purge failed:', error)
+    return 0
+  }
+  return removed
+}
+
+/** Momentary agent state is never stored (memory-durability.ts). */
+function rejectMomentary(kind: string, text: string): boolean {
+  if (!isMomentaryState(text)) return false
+  debugLog(`[Nemp] Skipped momentary-state ${kind}: ${subjectKey(text)}`)
+  return true
 }
 
 // ─── Reading ──────────────────────────────────────────────────────────────────
@@ -242,7 +272,7 @@ export async function searchMemories(query: string): Promise<MemoryEntry[]> {
 // ─── Writing ──────────────────────────────────────────────────────────────────
 
 export async function recordObservation(text: string, sourceAnalysisId?: string): Promise<void> {
-  if (!text?.trim()) return
+  if (!text?.trim() || rejectMomentary('observation', text)) return
   // Skip near-duplicate observations (compare against the last 20).
   const recent = readAll()
     .filter((m) => hasTag(m, 'observation'))
@@ -259,7 +289,7 @@ export async function recordObservation(text: string, sourceAnalysisId?: string)
 }
 
 export async function recordCompletion(feature: string): Promise<void> {
-  if (!feature?.trim()) return
+  if (!feature?.trim() || rejectMomentary('completion', feature)) return
   // Skip near-duplicate completions; bump the existing one's timestamp instead so
   // it stays "recent" without creating a second entry.
   const existing = readAll().filter((m) => hasTag(m, 'completion'))
@@ -273,7 +303,7 @@ export async function recordCompletion(feature: string): Promise<void> {
 }
 
 export async function recordBlocker(description: string): Promise<void> {
-  if (!description?.trim()) return
+  if (!description?.trim() || rejectMomentary('blocker', description)) return
   writeOne({ key: `blocker:${slug(description)}`, value: description.trim(), tags: [TAG, 'blocker', 'open'], timestamp: nowISO(), source: SOURCE, agent_id: AGENT_ID })
 }
 
@@ -296,7 +326,7 @@ export async function recordDecision(question: string, choice: string, reasoning
 }
 
 export async function recordPattern(observation: string, confidence: 'low' | 'medium' | 'high'): Promise<void> {
-  if (!observation?.trim()) return
+  if (!observation?.trim() || rejectMomentary('pattern', observation)) return
   writeOne({ key: `pattern:${slug(observation)}`, value: observation.trim(), tags: [TAG, 'pattern', confidence], timestamp: nowISO(), source: SOURCE, agent_id: AGENT_ID })
 }
 

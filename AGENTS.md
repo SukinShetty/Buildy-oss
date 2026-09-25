@@ -96,6 +96,12 @@ Providers must return the structured analysis JSON (see `src/main/ai/prompt-buil
 | `src/renderer/src/App.tsx` | Root component; routes windows by query param. |
 | `src/main/projects.ts`, `projects-core.ts` | Project system — per-project memory dirs under `userData/mybuildy-memory/<projectId>`. |
 | `src/main/turn-detector.ts` | Turn-end detection state machine (Electron-free, unit-tested). |
+| `src/main/capture-guard.ts`, `window-presence.ts` | Watch identity by source id; missing/lost grace rules. On Windows a minimized or hidden window drops out of Electron's window list, so before declaring a window lost the loop asks Windows (fixed PowerShell, handle via env) whether the same window — same handle, same owning process — still exists. |
+| `src/main/watch-log.ts` | Local diagnostic log of watch/send state changes (`userData/logs/watch.log`); titles only with `MYBUILDY_DEBUG`. |
+| `src/main/display-consistency.ts` | Last step before the guidance panel shows an analysis: hand-off text is a short user-facing question (never checker reasoning); partial/failed verdicts strip "goal reached" claims. |
+| `src/main/memory-durability.ts` | Project memory keeps durable facts only; momentary agent state ("currently reading", "idle") is never stored and is purged on load. |
+| `src/main/ai/question-reply.ts` | Spoken-question replies: conversational reply plus a separate goal/prompt suggestion (own box, own Copy button; goals need a "Done when" check). |
+| `src/renderer/src/handoff.ts` | Hand-off identity shared by the guidance and companion windows: an answered or skipped hand-off clears the mascot's "!" alert for good. |
 | `src/main/prompt-sender.ts`, `prompt-sender-core.ts` | Paste-into-watched-window (Windows: fixed PowerShell; macOS: fixed osascript/JXA that resolves the window owner via CGWindowList, verifies it is frontmost, then Cmd+V — never Enter/Return) + destructive-prompt guard. `send-authorization.ts` binds each paste at click time to the prompt, project, watch session and window, and allows it once. Prompt only via clipboard, target only via `MYBUILDY_TARGET_*` env vars. |
 | `src/main/mac-permissions-core.ts` | macOS Screen Recording / Accessibility / Automation decisions + fixed System Settings URLs (Electron-free, unit-tested). |
 | `src/main/secure-store.ts` | Encrypted API-key storage (Electron `safeStorage`). |

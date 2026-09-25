@@ -14,15 +14,22 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import type {
-  GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer, VerificationStatus,
+  GuidancePayload, GoalAlignment, AnalysisResult, QuestionAnswer, AnswerSuggestion, VerificationStatus,
   SendEligibility, MacPermission,
 } from '../types'
 import {
   MAC_PERMISSION_MESSAGES, permissionForSendFailure, PASTE_BUTTON_LABEL, PASTE_SUCCESS_MESSAGE, pasteFailureMessage,
 } from '../types'
 import { HandoffCard } from './HandoffCard'
+import { handoffRef } from '../handoff'
+import { suggestionCopyText, doneWhenLine } from '../answer-suggestion'
 
 const AUTO_HIDE_MS = 60_000
+
+// Analyses whose hand-off card was dismissed (Skip for now / decision saved):
+// main re-sends the same analysis when a background pass patches it, and the
+// card must not reappear for it.
+const dismissedHandoffs = new Set<string>()
 
 // Until main pushes real eligibility, the send button stays safely disabled.
 const DEFAULT_SEND_ELIGIBILITY: SendEligibility = {
@@ -278,10 +285,19 @@ function AnalysisBody({
         <VerificationBadge status={analysis.verification.status} note={analysis.verification.note} />
       )}
 
-      {analysis.needsHumanJudgment && (
+      {analysis.needsHumanJudgment && !dismissedHandoffs.has(analysis.analyzedAt) && (
         // Keyed by reason: dismissing one hand-off must not hide a DIFFERENT
         // later hand-off (the key remounts the card, resetting its state).
-        <HandoffCard key={analysis.humanJudgmentReason || 'handoff'} reason={analysis.humanJudgmentReason} />
+        <HandoffCard
+          key={analysis.humanJudgmentReason || 'handoff'}
+          reason={analysis.humanJudgmentReason}
+          // Either button means the user has seen and handled the alert.
+          onResolved={() => {
+            const ref = handoffRef(analysis)
+            if (ref) window.mybuildy.resolveHandoff(ref)
+          }}
+          onDismissed={() => dismissedHandoffs.add(analysis.analyzedAt)}
+        />
       )}
 
       {analysis.goalAlignment && (
@@ -410,21 +426,66 @@ function AnswerBody({ answer }: { answer: QuestionAnswer }): React.ReactElement 
     }
   }
 
+  // All answer text is selectable, so any part of it can be highlighted and copied.
   return (
     <>
       <div style={S.questionLabel}>You asked</div>
-      <div style={S.questionText}>{answer.question}</div>
-      <div style={S.guidance}>{answer.answer}</div>
+      <div style={S.questionText} data-selectable>{answer.question}</div>
+      <div style={S.guidance} data-selectable>{answer.answer}</div>
+      {answer.suggestion && <SuggestionBox suggestion={answer.suggestion} />}
       <div style={S.answerFooter}>
         <button onClick={copyAnswer} style={S.copyBtn} title="Copy answer">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-          </svg>
+          <CopyIcon />
           {copied ? 'Copied!' : 'Copy'}
         </button>
       </div>
     </>
+  )
+}
+
+function CopyIcon(): React.ReactElement {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+  )
+}
+
+/**
+ * A goal or prompt the user asked for, in its own box beneath the reply. Its
+ * Copy button copies only the suggestion (answer-suggestion.ts), never the reply.
+ */
+export function SuggestionBox({ suggestion }: { suggestion: AnswerSuggestion }): React.ReactElement {
+  const [copied, setCopied] = useState(false)
+
+  async function copySuggestion(): Promise<void> {
+    try {
+      await window.mybuildy.copyText(suggestionCopyText(suggestion))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch (e) {
+      console.warn('[GuidancePanel] Copy failed:', e)
+    }
+  }
+
+  const label = suggestion.kind === 'goal' ? 'Suggested goal' : 'Prompt for your agent'
+  return (
+    <div style={S.promptCard} data-testid="answer-suggestion">
+      <div style={S.promptHeader}>
+        <span style={S.promptLabel}>{label}</span>
+        <div style={S.promptActions}>
+          <button onClick={copySuggestion} style={S.copyBtn} title={`Copy ${suggestion.kind === 'goal' ? 'goal' : 'prompt'}`}>
+            <CopyIcon />
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      </div>
+      <div style={S.promptText} data-selectable>{suggestion.text}</div>
+      {suggestion.kind === 'goal' && suggestion.doneWhen && (
+        <div style={{ ...S.promptText, marginTop: 6 }} data-selectable>{doneWhenLine(suggestion.doneWhen)}</div>
+      )}
+    </div>
   )
 }
 

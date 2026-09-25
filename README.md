@@ -88,7 +88,7 @@ Loop engineering is the pattern of building a system that prompts the AI, checks
 | Block | Status | What it does in MyBuildy |
 |---|---|---|
 | **Goal** | ✅ Built | You state the goal once; every analysis reports on track / drifting / blocked against it. |
-| **Memory** | ✅ Built | Per-project memory (powered by [Nemp Memory](https://github.com/SukinShetty/Nemp-memory)) persists decisions, blockers, and completed features across sessions — local JSON, namespaced per project. |
+| **Memory** | ✅ Built | Per-project memory (powered by [Nemp Memory](https://github.com/SukinShetty/Nemp-memory)) persists decisions, blockers, and completed features across sessions — local JSON, namespaced per project. What the agent is doing at a given moment (reading, idle, waiting) is never stored. |
 | **Verifier** | ✅ Built | A separate AI check confirms whether the prompt you sent actually achieved its intended outcome. |
 | **Hand-off** | ✅ Built | Genuine decisions are detected and handed back to you with options, instead of being guessed. |
 | **Heartbeat** | 🗺️ Roadmap | Scheduled loop runs without a manual trigger. |
@@ -209,8 +209,9 @@ Nothing else is sent: MyBuildy makes no other network requests (no analytics, no
 | Project memory (goals, decisions, blockers) | `userData/mybuildy-memory/<projectId>` as plain JSON |
 | Settings | Plain JSON in the user-data folder, with keys stripped out |
 | Screenshots | Never written to disk — processed in memory only |
+| Diagnostic log (when watching starts, pauses or stops, and why; paste outcomes) | `userData/logs/watch.log`, no window titles or screen text. Settings → **Open log folder** |
 
-**Delete everything:** Settings has a **Delete all MyBuildy data** button that removes keys, settings, and every project's memory. Uninstalling and deleting the `MyBuildy` user-data folder does the same.
+**Delete everything:** Settings has a **Delete all MyBuildy data** button that removes keys, settings, every project's memory and the diagnostic log. Uninstalling and deleting the `MyBuildy` user-data folder does the same.
 
 Screenshots may contain whatever is visible in the watched window — code, secrets, personal data. Watch only the window you intend to share; your provider's data-retention policies apply to what you send.
 

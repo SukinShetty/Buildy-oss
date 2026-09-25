@@ -23,6 +23,7 @@ import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
 import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
 import { registerE2eTestHooks } from './e2e-hooks'
+import { initWatchLog } from './watch-log'
 
 // ─── Global web-contents security guard ──────────────────────────────────────
 // Applies to EVERY renderer (main, companion, guidance, voice — and anything
@@ -102,7 +103,7 @@ function shutdownApp(): void {
   ;(app as any).isQuitting = true
 
   // 1. Stop the background analysis loop
-  stopAnalysisLoop()
+  stopAnalysisLoop('quit')
 
   // 2. Tell the companion renderer to stop TTS immediately
   if (companionWindow && !companionWindow.isDestroyed()) {
@@ -316,8 +317,11 @@ app.whenReady().then(async () => {
   // window even if a window is recreated (see app.on('activate')).
   registerIpcHandlers(() => mainWindow!, () => companionWindow)
 
+  // Local diagnostic log of watch/send state changes (Settings → Open log folder).
+  initWatchLog(app.getPath('userData'))
+
   // e2e-only fixture hooks (no-op unless MYBUILDY_E2E=1 and not packaged).
-  registerE2eTestHooks()
+  registerE2eTestHooks(() => companionWindow)
 
   // First launch (or unconfigured install): there is NO default model, so open
   // the Settings panel automatically. The mascot label says
@@ -370,7 +374,7 @@ app.on('activate', () => {
 
 // Safety net: if all windows close for any reason, quit
 app.on('window-all-closed', () => {
-  stopAnalysisLoop()
+  stopAnalysisLoop('quit')
   app.quit()
 })
 
@@ -380,5 +384,5 @@ app.on('window-all-closed', () => {
 // would otherwise cancel the quit and leave the app running.
 app.on('before-quit', () => {
   ;(app as any).isQuitting = true
-  stopAnalysisLoop()
+  stopAnalysisLoop('quit')
 })

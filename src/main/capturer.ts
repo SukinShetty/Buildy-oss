@@ -11,7 +11,8 @@
 
 import { desktopCapturer } from 'electron'
 import type { WindowSource, CaptureResult, CaptureOutcome } from '../renderer/src/types'
-import { captureHaltReason, findWatchedSource } from './capture-guard'
+import { captureHaltReason, findWatchedSource, missingWindowReason } from './capture-guard'
+import { probeWindowPresence } from './window-presence'
 import { isBlankFrame } from './mac-permissions-core'
 
 // Picker thumbnails: small + lower quality to minimise exposure of other windows.
@@ -146,8 +147,10 @@ export async function captureWindowForAnalysis(
   }
   const capture = await captureWatchedWindow(sourceId, expectedName)
   if (captureHaltReason(sourceId, !!capture)) {
-    console.log(`[Capture] watched window ${sourceId} no longer exists — analysis halted, awaiting reselection`)
-    return { ok: false, reason: 'window-missing' }
+    // Not in the capture list: closed, or (Windows) minimized/hidden but open.
+    const reason = missingWindowReason(await probeWindowPresence(sourceId))
+    console.log(`[Capture] watched window ${sourceId} not capturable (${reason}) — analysis halted`)
+    return { ok: false, reason }
   }
   return { ok: true, capture: capture! }
 }

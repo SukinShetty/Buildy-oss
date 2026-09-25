@@ -114,12 +114,13 @@ describe('buildQualityPatch — converts human-directed prompts to a hand-off', 
     expect(patch!.needsHumanJudgment).toBeUndefined()
   })
 
-  it('blanks the prompt with an explanation when invalid with no improvement', () => {
+  it('blanks the prompt when invalid with no improvement — the grader reason is never shown', () => {
     const analysis = makeAnalysis('Continue building.')
     const result: PromptQualityResult = { valid: false, reason: 'Too generic.' }
     const patch = buildQualityPatch(analysis, result)
     expect(patch!.nextPrompt).toBe('')
-    expect(patch!.alignmentNote).toContain('Too generic.')
+    expect(patch!.alignmentNote).not.toContain('Too generic.')
+    expect(patch!.alignmentNote).toBeTruthy()
     expect(patch!.needsHumanJudgment).toBeUndefined()
   })
 })

@@ -8,6 +8,7 @@ import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
 import type { MascotState, MascotAlignment, MascotReaction, MascotReactionType } from '../components/Mascot'
 import { deriveMascotSignals } from './mascot-signals'
+import { ResolvedHandoffs } from '../handoff'
 import type { AnalysisResult } from '../types'
 import { isModelConfigured, CAPTURE_NOTICE_MESSAGE } from '../types'
 import type { CompanionState, MicState } from '../store/useCompanionStore'
@@ -51,6 +52,9 @@ export function CompanionApp(): React.ReactElement {
   // Previously seen analysis — reactions fire on transitions, not repeats.
   const prevAnalysisRef = useRef<AnalysisResult | null>(null)
   const reactionIdRef = useRef(0)
+  // Hand-offs the user answered or dismissed in the guidance window: their "!"
+  // badge clears at once and never comes back for them (handoff.ts).
+  const resolvedHandoffsRef = useRef(new ResolvedHandoffs())
 
   // Each event gets a fresh id so the same reaction type replays.
   const fireReaction = useCallback((type: MascotReactionType) => {
@@ -61,6 +65,7 @@ export function CompanionApp(): React.ReactElement {
   // New watching session (or none): forget analysis-derived mascot signals.
   const resetMascotSignals = useCallback(() => {
     prevAnalysisRef.current = null
+    resolvedHandoffsRef.current.clear()
     setAlignment(null)
     setShowAlertBadge(false)
   }, [])
@@ -94,13 +99,19 @@ export function CompanionApp(): React.ReactElement {
         // Mascot signals: alignment glow + transition reactions + "!" badge.
         // The badge is only CLEARED when the user opens the panel themselves
         // (orb click / show-last) — the auto-show below doesn't count as seen.
-        const signals = deriveMascotSignals(a, prevAnalysisRef.current)
+        const resolved = resolvedHandoffsRef.current
+        const signals = deriveMascotSignals(a, prevAnalysisRef.current, (x) => resolved.isResolved(x))
         prevAnalysisRef.current = a
         setAlignment(signals.alignment)
         if (signals.reaction) fireReaction(signals.reaction)
         if (signals.raiseAlertBadge) setShowAlertBadge(true)
         // Render guidance in its OWN window so it never overflows the mascot.
         window.mybuildy.showGuidance(a)
+      }),
+      // "I'll decide" / "Skip for now" on the hand-off card: the alert is handled.
+      window.mybuildy.onHandoffResolved((ref) => {
+        resolvedHandoffsRef.current.resolve(ref)
+        setShowAlertBadge(false)
       }),
       window.mybuildy.onCompanionState((_: unknown, s: string) => setAvatarState(s as CompanionState)),
       // NOTE: audio is no longer played here. Playback lives in the main-process

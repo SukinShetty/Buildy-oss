@@ -104,14 +104,14 @@ describe('watch continuity — same id in consecutive polls = same window', () =
     const watch = startContinuity(ID, 'CIVITAS')
     pollContinuity(watch, [], T0)
     const event = pollContinuity(watch, [{ id: ID, name: 'Windows PowerShell' }], T0 + 30_000)
-    expect(event).toEqual({ kind: 'lost' })
+    expect(event).toEqual({ kind: 'lost', reason: 'returned-with-new-title' })
     expect(watch.state).toBe('lost')
   })
 
   it('absent for 60s halts and stays lost', () => {
     const watch = startContinuity(ID, '✳ Claude Code')
     pollContinuity(watch, [], T0)
-    expect(pollContinuity(watch, [], T0 + MISSING_LOST_MS)).toEqual({ kind: 'lost' })
+    expect(pollContinuity(watch, [], T0 + MISSING_LOST_MS)).toEqual({ kind: 'lost', reason: 'missing-too-long' })
     expect(watch.state).toBe('lost')
     // Once lost, nothing revives it — the user must reselect.
     expect(pollContinuity(watch, [{ id: ID, name: '✳ Claude Code' }], T0 + MISSING_LOST_MS + 2000))
@@ -128,7 +128,7 @@ describe('watch continuity — same id in consecutive polls = same window', () =
     const tooLate = startContinuity(ID, 'CIVITAS')
     pollContinuity(tooLate, [], T0)
     expect(pollContinuity(tooLate, [{ id: ID, name: 'CIVITAS' }], T0 + MISSING_LOST_MS))
-      .toEqual({ kind: 'lost' })
+      .toEqual({ kind: 'lost', reason: 'missing-too-long' })
   })
 })
 

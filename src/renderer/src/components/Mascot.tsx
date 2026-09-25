@@ -340,6 +340,7 @@ export function Mascot({
       <AnimatePresence>
         {showAlertBadge && (
           <motion.div
+            data-testid="mascot-alert-badge"
             style={{
               ...styles.badge,
               width: Math.round(size * 0.17),

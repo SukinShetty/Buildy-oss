@@ -48,14 +48,18 @@ import { mapProviderError, isAuthOrBillingError } from './ai/provider-errors'
 import { hasVisionPass } from './vision-approvals'
 import { enqueueSpeech } from './voice-player'
 import { RecentTopics } from './semantic-dedup'
-import { isStaleSession, startContinuity, pollContinuity } from './capture-guard'
+import { isStaleSession, startContinuity, pollContinuityWithPresence, type ContinuityEvent, type LostReason } from './capture-guard'
+import { probeWindowPresence } from './window-presence'
+import { logWatchEvent } from './watch-log'
 import {
   TurnDetector, TURN_POLL_INTERVAL_MS,
   shouldAnnouncePermission, permissionAlertLine,
 } from './turn-detector'
 import type { WatchContinuity } from './capture-guard'
 import { debugLog, debugError } from './debug-log'
-import type { VerificationVerdict, SendEligibility, SendPromptResult } from '../renderer/src/types'
+import { prepareForDisplay } from './display-consistency'
+import { parseQuestionReply } from './ai/question-reply'
+import type { VerificationVerdict, SendEligibility, SendPromptResult, QuestionAnswer } from '../renderer/src/types'
 
 // Recently-spoken completion subjects + next-steps, for semantic (near-duplicate)
 // dedup within a 3-minute window. Cleared on each fresh watch session.
@@ -254,6 +258,14 @@ export function startWatching(
 
   // Track window identity by source id, independent of title changes.
   continuity = startContinuity(sourceId, windowName)
+  logWatchEvent('watch-started', { session: mySession, source: sourceId }, { title: windowName })
+  // Record which process owns the window, so a later missing id can be
+  // confirmed as the SAME window (minimized) rather than lost (window-presence.ts).
+  void probeWindowPresence(sourceId).then((presence) => {
+    if (!continuity || continuity.sourceId !== sourceId || isStaleSession(mySession, currentSession)) return
+    if (presence?.exists) continuity.ownerPid = presence.ownerPid
+    logWatchEvent('watch-owner', { session: mySession, known: continuity.ownerPid !== null })
+  })
   continuityTimer = setInterval(() => {
     void pollWatchContinuity(companionWindow, mySession)
   }, CONTINUITY_POLL_MS)
@@ -301,7 +313,9 @@ export function stopSignal(): AbortSignal {
   return watchAbort.signal
 }
 
-export function stopAnalysisLoop(): void {
+/** `reason` goes to the diagnostic watch log only (watch-log.ts). */
+export function stopAnalysisLoop(reason = 'stop'): void {
+  if (isRunning) logWatchEvent('watch-stopped', { session: currentSession, reason })
   if (loopTimer) { clearTimeout(loopTimer); loopTimer = null }
   // Cancel whatever is in flight right now (a provider call mid-analysis).
   watchAbort.abort()
@@ -337,7 +351,7 @@ export function stopAnalysisLoop(): void {
 export function stopWatchForProjectSwitch(): void {
   const wasWatching = isRunning
   const companion = companionRef
-  stopAnalysisLoop()
+  stopAnalysisLoop('project-switch')
   // The displayed analysis (and its paste authorization) belonged to the old project.
   displayAnalysis = null
   displaySession = -1
@@ -366,9 +380,13 @@ export function isAnalysisLoopRunning(): boolean { return isRunning && !isPaused
 async function pollWatchContinuity(companionWindow: BrowserWindow, mySession: number): Promise<void> {
   if (isStaleSession(mySession, currentSession) || !continuity || continuityPollBusy) return
   continuityPollBusy = true
-  let sources: { id: string; name: string }[]
+  let event: ContinuityEvent
   try {
-    sources = await listLiveWindowSources()
+    const sources = await listLiveWindowSources()
+    if (isStaleSession(mySession, currentSession) || !continuity) return
+    const watch = continuity
+    // The OS is only asked at decision points (going missing, about to be lost).
+    event = await pollContinuityWithPresence(watch, sources, Date.now(), () => probeWindowPresence(watch.sourceId))
   } catch (error) {
     console.warn('[Watch] continuity poll failed:', error)
     return
@@ -377,46 +395,64 @@ async function pollWatchContinuity(companionWindow: BrowserWindow, mySession: nu
   }
   if (isStaleSession(mySession, currentSession) || !continuity) return
 
-  const event = pollContinuity(continuity, sources, Date.now())
   switch (event.kind) {
     case 'title-changed':
       // Same source id in consecutive polls = same window; the title is cosmetic.
       watchedWindowName = event.to
       console.log('[Watch] title changed — same window, watch continues')
       debugLog(`[Watch] title: "${event.from}" -> "${event.to}"`)
+      logWatchEvent('title-changed', { session: mySession }, { from: event.from, to: event.to })
       notifyWatchedSource(companionWindow, event.to)
       void pushSendEligibility()
       break
     case 'went-missing':
-      // Unknown whether minimized windows drop out of the source list — log the
-      // possibilities and let the grace rules decide; no special-casing.
-      console.log('[Watch] watched window missing from source list (closed, minimized, or hidden?) — grace period started')
-      if (!companionWindow.isDestroyed()) {
-        companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-          windowName: watchedWindowName,
-          message: 'Looking for the watched window…',
-        })
-      }
+      // On Windows a MINIMIZED or hidden window drops out of the source list;
+      // the OS check says whether it is still open. The grace rules still run.
+      console.log(`[Watch] watched window missing from source list — ${event.stillOpen ? (event.minimized ? 'minimized' : 'hidden, still open') : 'not confirmed open'}; grace period started`)
+      logWatchEvent('missing', { session: mySession, stillOpen: !!event.stillOpen, minimized: !!event.minimized })
+      notifyWindowAway(companionWindow, !!event.stillOpen, !!event.minimized)
       void pushSendEligibility()
+      break
+    case 'still-open':
+      // The rules would have halted, but the OS confirms it is the same window,
+      // still open (minimized or hidden) — keep the watch, restart the grace.
+      console.log('[Watch] watched window still open (not in the capture list) — watch kept')
+      logWatchEvent('still-open', { session: mySession, minimized: event.minimized })
+      notifyWindowAway(companionWindow, true, event.minimized)
       break
     case 'resumed':
       watchedWindowName = event.title
       console.log('[Watch] resumed — watched window is back in the source list')
       debugLog(`[Watch] resumed with title "${event.title}"`)
+      logWatchEvent('resumed', { session: mySession }, { title: event.title })
       notifyWatchedSource(companionWindow, event.title)
       void pushSendEligibility()
       break
     case 'lost':
-      console.log('[Watch] watched window lost — halting, awaiting reselection')
-      haltWatchAsLost(companionWindow)
+      console.log(`[Watch] watched window lost (${event.reason}) — halting, awaiting reselection`)
+      haltWatchAsLost(companionWindow, event.reason, mySession)
       break
     case 'none':
       break
   }
 }
 
+/** Mascot label while the watched window is out of the capture list. */
+function notifyWindowAway(companionWindow: BrowserWindow, stillOpen: boolean, minimized: boolean): void {
+  if (companionWindow.isDestroyed()) return
+  companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
+    windowName: watchedWindowName,
+    message: minimized
+      ? 'The watched window is minimized. Restore it and MyBuildy carries on watching.'
+      : stillOpen
+        ? 'The watched window is hidden. Show it and MyBuildy carries on watching.'
+        : 'Looking for the watched window…',
+  })
+}
+
 /** Halt exactly as the old target-lost path did: pause and ask for reselection. */
-function haltWatchAsLost(companionWindow: BrowserWindow): void {
+function haltWatchAsLost(companionWindow: BrowserWindow, reason: LostReason, mySession: number): void {
+  logWatchEvent('lost', { session: mySession, reason })
   isPaused = true
   if (continuityTimer) { clearInterval(continuityTimer); continuityTimer = null }
   stopTurnPoll()
@@ -535,15 +571,18 @@ async function answerQuestion(
     // Build the messages for the provider
     // We need to call the provider's raw API since analyzeScreen returns AnalysisResult JSON
     // Use a text-only call via the brainstorm-style interface, but we want a single response
-    const answer = await callProviderForAnswer(provider, systemPrompt, userPrompt, screenshotBase64, settings)
+    const raw = await callProviderForAnswer(provider, systemPrompt, userPrompt, screenshotBase64, settings)
     if (stoppedSinceAsked()) return // Stop pressed while answering: say nothing
+    // The reply, plus any goal/prompt the user asked for as its own field.
+    const { reply, suggestion } = parseQuestionReply(raw)
+    const answer: QuestionAnswer = suggestion ? { question, answer: reply, suggestion } : { question, answer: reply }
 
     if (!companionWindow.isDestroyed()) {
-      companionWindow.webContents.send(IPC.COMPANION_ANSWER, { question, answer })
+      companionWindow.webContents.send(IPC.COMPANION_ANSWER, answer)
     }
 
-    // Speak the answer
-    await speakText(companionWindow, answer, settings)
+    // Speak the reply only — the suggestion is for reading and copying.
+    await speakText(companionWindow, reply, settings)
   } catch (error) {
     if (stoppedSinceAsked()) return
     debugError('[AnalysisLoop] Question answer failed:', error)
@@ -584,7 +623,7 @@ async function callProviderForAnswer(
     userContent.push({ type: 'text', text: userPrompt })
     body = {
       model: settings.modelId,
-      max_tokens: 500,
+      max_tokens: 800,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }],
     }
@@ -601,7 +640,7 @@ async function callProviderForAnswer(
     body = {
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: 'user', parts }],
-      generationConfig: { maxOutputTokens: 500 },
+      generationConfig: { maxOutputTokens: 800 },
     }
   } else {
     // OpenAI-compatible (openai, openrouter, ollama, lmstudio, custom)
@@ -629,7 +668,7 @@ async function callProviderForAnswer(
 
     body = {
       model: settings.modelId,
-      max_tokens: 500,
+      max_tokens: 800,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContent },
@@ -673,7 +712,7 @@ async function runOneAnalysisCycle(
   // Memory writes from this cycle go ONLY to the project active right now.
   const memScope = nemp.memoryScope()
   if (companionWindow.isDestroyed() || !watchedSourceId) {
-    stopAnalysisLoop()
+    stopAnalysisLoop('companion-window-gone')
     return
   }
 
@@ -794,10 +833,11 @@ async function runOneAnalysisCycle(
   // single-line patterns (e.g. "git push\n--force").
   analysis.sendGuard = detectDestructivePrompt(sanitizePromptForSend(analysis.nextPrompt || ''))
   analysis.callsThisHour = getCallsThisHour() // guidance panel footer
-  displayAnalysis = analysis
+  // Hand-off text and verdict/headline consistency (display-consistency.ts).
+  displayAnalysis = prepareForDisplay(analysis)
   displaySession = mySession
   if (!companionWindow.isDestroyed()) {
-    companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, analysis)
+    companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)
   }
   void pushSendEligibility()
 
@@ -1027,8 +1067,9 @@ async function speakText(
 function teeAnalysisToMemory(analysis: AnalysisResult, memScope: string): void {
   const memory = nemp.writerFor(memScope)
   try {
-    const id = analysis.analyzedAt
-    if (analysis.whatIsHappening) void memory.recordObservation(analysis.whatIsHappening, id)
+    // whatIsHappening is NOT stored: it describes this moment on screen (the
+    // agent reading, idle, waiting), not a durable fact about the project. It
+    // still feeds the in-session context via updateSession.
     if (analysis.goalAlignment === 'on-track') {
       for (const feature of analysis.whatIsBuilt.slice(0, 5)) void memory.recordCompletion(feature)
     }
@@ -1100,6 +1141,9 @@ function patchDisplayAndResend(
       sanitizePromptForSend(displayAnalysis.nextPrompt || '')
     )
   }
+  // A verdict or hand-off patched on after the first display gets the same
+  // clean-up: no "goal reached" next to a partial/failed badge, no checker text.
+  displayAnalysis = prepareForDisplay(displayAnalysis)
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_ANALYSIS, displayAnalysis)
   }
@@ -1161,6 +1205,18 @@ function currentSendContext(): SendContext {
  * Serialized: a second request while one is in flight is rejected, not queued.
  */
 export async function handleSendPromptRequest(promptId: string): Promise<SendPromptResult> {
+  logWatchEvent('send-requested', { session: currentSession })
+  const result = await sendPromptRequest(promptId)
+  // Outcome codes only — never the prompt text.
+  logWatchEvent(result.sent ? 'send-pasted' : 'send-refused', {
+    session: currentSession,
+    reason: result.sent ? undefined : result.reason,
+    detail: result.sent ? undefined : result.detail,
+  })
+  return result
+}
+
+async function sendPromptRequest(promptId: string): Promise<SendPromptResult> {
   console.log('[Send] request received')
 
   const authorization = sendAuthorizer.authorize(promptId, currentSendContext())

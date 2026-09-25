@@ -7,6 +7,8 @@ import { originOf, customKeyActionOnSave } from './provider-origins'
 import { providerHttpError, readJson } from './ai/provider-errors'
 import { providerFetch, withCancellation, CancelledError } from './ai/fetch-with-timeout'
 import { guardedSender } from './project-guard'
+import { watchLogDir } from './watch-log'
+import { mkdirSync } from 'fs'
 import type { BrowserWindow } from 'electron'
 import { IPC, CHOOSE_MODEL_MESSAGE, CAPTURE_NOTICE_REQUIRED_MESSAGE, MAC_PERMISSION_MESSAGES, MAC_BLANK_CAPTURE_MESSAGE } from '../renderer/src/types'
 import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
@@ -434,7 +436,7 @@ export function registerIpcHandlers(
     try {
       assertFromMainWindow(event, mainWcId(), 'DELETE_ALL_DATA')
       console.log('[IPC] DELETE_ALL_DATA — user-confirmed wipe, restarting to first run')
-      stopAnalysisLoop()
+      stopAnalysisLoop('delete-all-data')
       await deleteAllMyBuildyData()
       app.relaunch()
       app.exit(0)
@@ -544,7 +546,7 @@ export function registerIpcHandlers(
   // spoken questions), tell the Guidance screen to cancel its runs and timer,
   // and tell the mascot nothing is watched.
   ipcMain.handle(IPC.COMPANION_STOP, async () => {
-    stopAnalysisLoop()
+    stopAnalysisLoop('user-stop')
     hideGuidanceWindow()
     const main = getMainWindow()
     if (main && !main.isDestroyed()) main.webContents.send(IPC.STOPPED)
@@ -640,6 +642,31 @@ export function registerIpcHandlers(
   ipcMain.on(IPC.GUIDANCE_SET_FOCUSABLE, (event, focusable: unknown) => {
     if (event.sender.id !== getGuidanceWebContentsId()) return
     setGuidanceFocusable(focusable === true)
+  })
+
+  // Settings → "Open log folder": the local watch log (watch-log.ts). Main
+  // window only; opens a fixed folder, takes no path from the renderer.
+  ipcMain.handle(IPC.OPEN_LOG_FOLDER, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'OPEN_LOG_FOLDER')
+    const dir = watchLogDir()
+    if (!dir) return
+    mkdirSync(dir, { recursive: true })
+    const error = await shell.openPath(dir)
+    if (error) console.warn('[IPC] OPEN_LOG_FOLDER failed to open the folder')
+  })
+
+  // Hand-off card buttons ("I'll decide" / "Skip for now"): forward to the
+  // companion so the "!" badge clears for this hand-off. Only the guidance
+  // window may send it; the payload is two short strings and nothing else.
+  ipcMain.on(IPC.HANDOFF_RESOLVED, (event, ref: unknown) => {
+    if (event.sender.id !== getGuidanceWebContentsId()) return
+    const r = ref as { analyzedAt?: unknown; question?: unknown } | null
+    if (!r || typeof r.analyzedAt !== 'string' || typeof r.question !== 'string') return
+    if (r.analyzedAt.length > 64 || r.question.length > 1000) return
+    const companion = getCompanionWindow()
+    if (companion && !companion.isDestroyed()) {
+      companion.webContents.send(IPC.HANDOFF_RESOLVED, { analyzedAt: r.analyzedAt, question: r.question })
+    }
   })
 
   // Clipboard via main — reliable even from the non-focusable guidance window,

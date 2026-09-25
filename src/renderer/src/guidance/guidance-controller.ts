@@ -68,6 +68,12 @@ export class GuidanceController {
       const outcome = await this.api.captureWindow(sourceId, expectedName)
       if (!(await current())) return this.abandon(gen)
       if (!outcome.ok) {
+        if (outcome.reason === 'window-minimized') {
+          // Still open, just minimized or hidden: keep the user's choice.
+          store().setAnalysisError('The window you picked is minimized or hidden. Restore it, then analyze again.')
+          store().setAnalysisPhase('error')
+          return
+        }
         store().setSelectedWindow(null, null)
         store().setAnalysisError(
           outcome.reason === 'window-missing'

@@ -12,19 +12,31 @@
 //                       unvalidated IPC), then dismisses.
 //   • "Skip for now" → dismisses without recording.
 //
+// Both buttons call onResolved at once: the user has handled the hand-off, so
+// the mascot's "!" alert clears and does not come back for it (handoff.ts).
+//
 // Focus note: the guidance window is non-focusable by design, so typing needs
 // window.mybuildy.setGuidanceFocusable(true) while the answer box is open — it is
 // ALWAYS restored to false when the flow ends (save/skip/unmount).
 
 import React, { useEffect, useState } from 'react'
+import { HANDOFF_FALLBACK } from '../handoff'
 
-export function HandoffCard({ reason }: { reason?: string }): React.ReactElement | null {
+export function HandoffCard({
+  reason,
+  onResolved,
+  onDismissed,
+}: {
+  reason?: string
+  onResolved: () => void
+  onDismissed: () => void
+}): React.ReactElement | null {
   const [dismissed, setDismissed] = useState(false)
   const [answering, setAnswering] = useState(false)
   const [answer, setAnswer] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const question = reason || 'A decision that needs human judgment'
+  const question = reason || HANDOFF_FALLBACK
 
   // The window may only take keyboard focus while the answer box is open; always
   // restore non-focusable when the flow ends or the card unmounts.
@@ -38,7 +50,22 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
 
   function close(recordDone: boolean): void {
     setAnswering(false)
-    if (recordDone) setDismissed(true)
+    if (recordDone) dismiss()
+  }
+
+  function dismiss(): void {
+    setDismissed(true)
+    onDismissed()
+  }
+
+  function decide(): void {
+    onResolved()
+    setAnswering(true)
+  }
+
+  function skip(): void {
+    onResolved()
+    dismiss()
   }
 
   async function saveDecision(): Promise<void> {
@@ -60,14 +87,14 @@ export function HandoffCard({ reason }: { reason?: string }): React.ReactElement
   return (
     <div style={S.card}>
       <div style={S.title}>🤔 This needs your decision</div>
-      {reason && <div style={S.reason}>{reason}</div>}
+      <div style={S.reason}>{question}</div>
 
       {!answering ? (
         <div style={S.buttons}>
-          <button onClick={() => setAnswering(true)} style={S.primary} title="Type your answer — MyBuildy remembers it for this project">
+          <button onClick={decide} style={S.primary} title="Type your answer — MyBuildy remembers it for this project">
             I'll decide
           </button>
-          <button onClick={() => setDismissed(true)} style={S.ghost} title="Dismiss without recording">
+          <button onClick={skip} style={S.ghost} title="Dismiss without recording">
             Skip for now
           </button>
         </div>

@@ -13,6 +13,7 @@
 
 import type { AnalysisResult, AppSettings, Goal } from '../../renderer/src/types'
 import { readJson } from './provider-errors'
+import { userFacingHandoff } from '../display-consistency'
 import { fetchWithTimeout } from './fetch-with-timeout'
 import { debugLog } from '../debug-log'
 import { recordProviderCall } from '../cost-guard'
@@ -27,6 +28,10 @@ export interface PromptQualityResult {
   // HUMAN instead of an instruction for the coding agent. A human-directed
   // prompt is always dropped and converted to a hand-off — never "improved".
   humanDirected?: boolean
+  // The hand-off card's text for a humanDirected verdict: a short question or
+  // decision for the user. Generated separately from `reason`, which is the
+  // grader's own reasoning and is only ever written to the debug log.
+  userQuestion?: string
 }
 
 /**
@@ -63,12 +68,14 @@ export async function checkPromptQuality(
     // A human-directed prompt is NEVER valid, whatever the grader's overall verdict.
     const valid = json.valid !== false && !humanDirected
     const improved = typeof json.improvedPrompt === 'string' ? json.improvedPrompt.trim() : ''
+    const userQuestion = typeof json.userQuestion === 'string' ? json.userQuestion.trim() : ''
     debugLog(`[PromptQuality] valid=${valid} humanDirected=${humanDirected} reason="${json.reason || ''}" improved=${improved ? 'yes' : 'no'}`)
     return {
       valid,
       reason: typeof json.reason === 'string' ? json.reason : undefined,
       improvedPrompt: improved || undefined,
       humanDirected: humanDirected || undefined,
+      userQuestion: userQuestion || undefined,
     }
   } catch (error) {
     console.warn('[PromptQuality] Grader error — keeping original prompt:', error)
@@ -81,7 +88,8 @@ export async function checkPromptQuality(
  *
  *   - humanDirected → the analysis BECOMES a hand-off (Block 6): the prompt is
  *     dropped entirely (empty nextPrompt/expectedOutcome) and needsHumanJudgment
- *     is set. An improvedPrompt is deliberately IGNORED here — a prompt that
+ *     is set. The card shows only the grader's userQuestion (cleaned by
+ *     userFacingHandoff) — never its reasoning, which stays in the debug log. An improvedPrompt is deliberately IGNORED here — a prompt that
  *     asked the human a question must not be silently rewritten into an
  *     instruction the user never approved.
  *   - invalid with an improvedPrompt → swap in the improved prompt.
@@ -97,19 +105,17 @@ export function buildQualityPatch(
       nextPrompt: '',
       expectedOutcome: '',
       needsHumanJudgment: true,
-      humanJudgmentReason:
-        (result.reason || '').trim() ||
-        (analysis.humanJudgmentReason || '').trim() ||
-        'MyBuildy needs your answer before it can suggest the next prompt.',
+      humanJudgmentReason: userFacingHandoff(
+        (result.userQuestion || '').trim() || (analysis.humanJudgmentReason || '').trim()
+      ),
     }
   }
   if (result.valid) return null
   if (result.improvedPrompt) return { nextPrompt: result.improvedPrompt }
+  // The grader's reason is its own reasoning — debug log only, never shown.
   return {
     nextPrompt: '',
-    alignmentNote: result.reason
-      ? `No prompt suggested: ${result.reason}`
-      : (analysis.alignmentNote || 'No high-quality next prompt right now.'),
+    alignmentNote: analysis.alignmentNote || 'No high-quality next prompt right now.',
   }
 }
 
@@ -144,7 +150,8 @@ Respond JSON only:
   "valid": true/false,
   "humanDirected": true/false — true when the prompt asks the human a question or requests a decision/clarification from the human (criterion 6),
   "reason": "<why if not valid>",
-  "improvedPrompt": "<rewritten prompt if you can improve it, otherwise empty string>"
+  "improvedPrompt": "<rewritten prompt if you can improve it, otherwise empty string>",
+  "userQuestion": "<ONLY when humanDirected is true: the question or decision for the user, in plain English, at most two short sentences, spoken directly to them (e.g. 'Tests pass. Want to open the app in your browser and check the Invoices screen before saving your work?'). Never mention criteria, grading, the prompt or project memory, and never quote anything. Otherwise empty string>"
 }`
 }
 
@@ -181,7 +188,7 @@ async function callGrader(
 
   const body = {
     model,
-    max_tokens: 400,
+    max_tokens: 500,
     system,
     messages: [{ role: 'user', content: [{ type: 'text', text: user }] }],
   }

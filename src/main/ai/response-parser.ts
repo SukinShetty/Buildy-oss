@@ -13,6 +13,7 @@
 // This parser handles all of those cases gracefully.
 
 import type { AgentName, AnalysisResult, ExtractedProjectData, GoalAlignment, TerminalState } from '../../renderer/src/types'
+import { userFacingHandoff } from '../display-consistency'
 
 /**
  * Parse raw model output text into a structured AnalysisResult.
@@ -95,10 +96,11 @@ export function routeHumanQuestionToHandoff(analysis: AnalysisResult): AnalysisR
     nextPrompt: '',
     expectedOutcome: '',
     needsHumanJudgment: true,
-    humanJudgmentReason:
-      (analysis.humanJudgmentReason || '').trim() ||
-      'MyBuildy needs your answer before it can suggest the next prompt: ' +
-        (analysis.nextPrompt || '').trim(),
+    // The question itself is addressed to the user, so it can be the card text —
+    // userFacingHandoff falls back when it is not a clean, short question.
+    humanJudgmentReason: userFacingHandoff(
+      (analysis.humanJudgmentReason || '').trim() || (analysis.nextPrompt || '').trim()
+    ),
   }
 }
 

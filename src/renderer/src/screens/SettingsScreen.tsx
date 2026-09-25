@@ -660,6 +660,18 @@ export function SettingsScreen(): React.ReactElement {
           </div>
         </div>
 
+        {/* Diagnostics: the local watch log a tester can send with a report */}
+        <div style={styles.section}>
+          <div style={styles.sectionLabel}>Diagnostics</div>
+          <div style={styles.sectionHint}>
+            MyBuildy keeps a small log of when watching starts, pauses or stops, and why, on this computer only.
+            Window titles and screen text are left out. Send it along with a bug report.
+          </div>
+          <button className="btn-icon" style={{ alignSelf: 'flex-start' }} onClick={() => { void window.mybuildy.openLogFolder() }}>
+            Open log folder
+          </button>
+        </div>
+
         {/* Danger zone: delete everything and restart to first run */}
         <div style={styles.section}>
           <div style={styles.sectionLabel}>Danger zone</div>

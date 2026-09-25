@@ -7,6 +7,7 @@
 
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC } from '../renderer/src/types'
+import type { HandoffRef } from '../renderer/src/handoff'
 import type {
   WindowSource,
   CaptureResult,
@@ -162,6 +163,10 @@ const mybuildyAPI = {
   deleteAllData: (): Promise<void> =>
     ipcRenderer.invoke(IPC.DELETE_ALL_DATA),
 
+  // Settings → Diagnostics: open the folder holding the local watch log.
+  openLogFolder: (): Promise<void> =>
+    ipcRenderer.invoke(IPC.OPEN_LOG_FOLDER),
+
   // ─── Companion mode ───────────────────────────────────────────────────────
   startCompanion: (): Promise<void> =>
     ipcRenderer.invoke(IPC.COMPANION_START),
@@ -275,6 +280,18 @@ const mybuildyAPI = {
   setGuidanceFocusable: (focusable: boolean): void =>
     ipcRenderer.send(IPC.GUIDANCE_SET_FOCUSABLE, focusable),
 
+  // Hand-off card: the user clicked "I'll decide" or "Skip for now". Main
+  // forwards it to the companion, which clears the "!" badge for this hand-off.
+  resolveHandoff: (ref: HandoffRef): void =>
+    ipcRenderer.send(IPC.HANDOFF_RESOLVED, ref),
+
+  // Companion: a hand-off was answered or dismissed in the guidance window.
+  onHandoffResolved: (handler: (ref: HandoffRef) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, ref: HandoffRef) => handler(ref)
+    ipcRenderer.on(IPC.HANDOFF_RESOLVED, listener)
+    return () => ipcRenderer.removeListener(IPC.HANDOFF_RESOLVED, listener)
+  },
+
   copyText: (text: string): Promise<void> =>
     ipcRenderer.invoke(IPC.COPY_TEXT, text),
 
@@ -296,7 +313,6 @@ const mybuildyAPI = {
     return () => ipcRenderer.removeListener(IPC.SEND_ELIGIBILITY, listener)
   },
 
-  // Companion mascot: transient send status (e.g. 'sent') for the status label.
   // Settings: link a key saved by an earlier version to the custom endpoint now saved.
   confirmCustomKeyEndpoint: (): Promise<boolean> =>
     ipcRenderer.invoke(IPC.CONFIRM_CUSTOM_KEY_ENDPOINT),
@@ -315,6 +331,7 @@ const mybuildyAPI = {
     return () => ipcRenderer.removeListener(IPC.PROJECTS_SWITCHED, listener)
   },
 
+  // Companion mascot: transient send status (e.g. 'sent') for the status label.
   onSendStatus: (handler: (event: unknown, status: string) => void): (() => void) => {
     const listener = (_event: Electron.IpcRendererEvent, status: string) =>
       handler(_event, status)

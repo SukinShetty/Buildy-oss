@@ -14,6 +14,8 @@
 //   - When several events coincide in one analysis, the most urgent wins:
 //     blocked > success > permission. The badge is raised regardless of which
 //     reaction animates.
+//   - A hand-off the user already answered or dismissed (isResolved) no longer
+//     counts: it raises no badge and no reaction, however often it is re-sent.
 
 import type { AnalysisResult } from '../types'
 // Type-only import — erased at build time, so this module never pulls the
@@ -29,17 +31,19 @@ export interface MascotSignals {
   raiseAlertBadge: boolean
 }
 
-/** BLOCKED alignment and hand-off moments share one alert treatment. */
-function isBlocked(a: AnalysisResult): boolean {
-  return a.goalAlignment === 'blocked' || !!a.needsHumanJudgment
+/** BLOCKED alignment and unresolved hand-off moments share one alert treatment. */
+function isBlocked(a: AnalysisResult, isResolved: (a: AnalysisResult) => boolean): boolean {
+  return a.goalAlignment === 'blocked' || (!!a.needsHumanJudgment && !isResolved(a))
 }
 
 export function deriveMascotSignals(
   current: AnalysisResult,
-  previous: AnalysisResult | null
+  previous: AnalysisResult | null,
+  isResolved: (a: AnalysisResult) => boolean = () => false
 ): MascotSignals {
   // Transition into blocked / hand-off.
-  const newBlocked = isBlocked(current) && (previous === null || !isBlocked(previous))
+  const newBlocked =
+    isBlocked(current, isResolved) && (previous === null || !isBlocked(previous, isResolved))
 
   // Verifier success: fires when a success verdict is first seen — either on a
   // fresh analysis, or when the verdict is patched onto the one already shown.

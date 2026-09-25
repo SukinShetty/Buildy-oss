@@ -355,7 +355,8 @@ export interface CaptureResult {
 // for reselection instead of sending the whole desktop to a provider.
 export type CaptureOutcome =
   | { ok: true; capture: CaptureResult }
-  | { ok: false; reason: 'no-source' | 'window-missing' }
+  // window-minimized: not capturable right now, but the OS says it is still open.
+  | { ok: false; reason: 'no-source' | 'window-missing' | 'window-minimized' }
 
 // ─── Analysis ─────────────────────────────────────────────────────────────────
 
@@ -475,9 +476,19 @@ export interface SendPromptResult {
 // window) so guidance content can never overflow or push the mascot out of view.
 // The companion forwards either an analysis result or a spoken-question answer.
 
+// A goal or prompt the user asked for in a spoken question ("give me a goal
+// for…", "what should I tell the agent…"). Shown in its own box beneath the
+// conversational reply, with a Copy button that copies only this.
+export interface AnswerSuggestion {
+  kind: 'goal' | 'prompt'
+  text: string        // goal: what to build; prompt: the exact prompt for the agent
+  doneWhen?: string   // goal only: a check that can be verified ("Done when …")
+}
+
 export interface QuestionAnswer {
   question: string
-  answer: string
+  answer: string                 // the conversational reply (never contains the suggestion)
+  suggestion?: AnswerSuggestion
 }
 
 export type GuidancePayload =
@@ -546,6 +557,8 @@ export const IPC = {
   GUIDANCE_RESIZE:     'guidance:resize',           // guidance window → main (report content height)
   GUIDANCE_SHOW_LAST:  'guidance:show-last',         // companion/tray → main (re-show cached guidance)
   GUIDANCE_SET_FOCUSABLE: 'guidance:set-focusable',  // guidance window → main (temporarily focusable while typing a hand-off answer)
+  OPEN_LOG_FOLDER:     'mybuildy:open-log-folder',   // main window → main (Settings: open the watch-log folder)
+  HANDOFF_RESOLVED:    'guidance:handoff-resolved',  // guidance window → main → companion ("I'll decide" / "Skip for now": clear the "!" badge)
   COPY_TEXT:           'mybuildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
   SEND_PROMPT:         'mybuildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)
   SEND_ELIGIBILITY:    'mybuildy:send-eligibility',   // main → guidance window (canSend + sendBlockedReason)

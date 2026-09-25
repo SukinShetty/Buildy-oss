@@ -111,3 +111,22 @@ describe('capture notice: Continue resumes with the newly accepted settings', ()
     expect(api.analyze.mock.calls[0][2]).toMatchObject({ captureNoticeAccepted: true })
   })
 })
+
+describe('Guidance screen capture: a minimized window is not a closed one', () => {
+  it('minimized (still open): the chosen window is kept and nothing is sent', async () => {
+    const { api } = fakeApi({ captureWindow: vi.fn<GuidanceApi['captureWindow']>(async () => ({ ok: false as const, reason: 'window-minimized' as const })) })
+    await new GuidanceController(api, () => {}).analyze('window:1:0', 'Terminal')
+    const s = useAppStore.getState()
+    expect(s.selectedWindowSourceId).toBe('window:1:0')
+    expect(s.analysisErrorMessage).toMatch(/minimized/)
+    expect(s.analysisErrorMessage).not.toMatch(/no longer open/)
+    expect(api.analyze).not.toHaveBeenCalled()
+  })
+
+  it('really closed: the choice is cleared and the user picks again', async () => {
+    const { api } = fakeApi({ captureWindow: vi.fn<GuidanceApi['captureWindow']>(async () => ({ ok: false as const, reason: 'window-missing' as const })) })
+    await new GuidanceController(api, () => {}).analyze('window:1:0', 'Terminal')
+    expect(useAppStore.getState().selectedWindowSourceId).toBeNull()
+    expect(useAppStore.getState().analysisErrorMessage).toMatch(/no longer open/)
+  })
+})
