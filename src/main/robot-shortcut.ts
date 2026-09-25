@@ -1,12 +1,12 @@
 // robot-shortcut.ts — main process. The keyboard shortcut that brings the
-// robot back after "Hide": Ctrl+Shift+B on Windows, Cmd+Shift+B on macOS.
+// robot back after "Hide": Ctrl+Alt+B on Windows, Cmd+Option+B on macOS.
 // Global (it works while another app is in front), registered once at start.
 
-export const ROBOT_SHORTCUT = 'CommandOrControl+Shift+B'
+export const ROBOT_SHORTCUT = 'CommandOrControl+Alt+B'
 
 /** How the shortcut is written for people on this platform (tray menu, tooltips). */
 export function robotShortcutLabel(platform: string): string {
-  return platform === 'darwin' ? 'Cmd+Shift+B' : 'Ctrl+Shift+B'
+  return platform === 'darwin' ? 'Cmd+Option+B' : 'Ctrl+Alt+B'
 }
 
 export interface ShortcutRegistry {

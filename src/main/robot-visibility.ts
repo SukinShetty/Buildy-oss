@@ -1,6 +1,6 @@
 // robot-visibility.ts — main process. The robot's Hide button: the robot and
 // the guidance panel go away but watching carries on. It comes back from the
-// tray icon or Ctrl/Cmd+Shift+B (robot-shortcut.ts). While hidden, a hand-off
+// tray icon or Ctrl/Cmd+Alt+B (robot-shortcut.ts). While hidden, a hand-off
 // or an alert (blocked, the agent asking a question) arrives as a system
 // notification instead — the same moments that raise the robot's "!" badge.
 

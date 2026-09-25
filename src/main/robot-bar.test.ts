@@ -110,19 +110,19 @@ describe('hidden robot', () => {
   it('alerts: blocked, and the agent asking a question; the notification says how to bring the robot back', () => {
     const blocked = hiddenAlertFor(analysis({ goalAlignment: 'blocked' }), analysis(), 'win32')
     expect(blocked?.title).toMatch(/stuck/)
-    expect(blocked?.body).toContain('Ctrl+Shift+B')
+    expect(blocked?.body).toContain('Ctrl+Alt+B')
     const asking = hiddenAlertFor(analysis({ terminalState: 'permission_prompt' }), analysis(), 'darwin')
     expect(asking?.title).toMatch(/asking you something/)
-    expect(asking?.body).toContain('Cmd+Shift+B')
+    expect(asking?.body).toContain('Cmd+Option+B')
     expect(hiddenAlertFor(analysis(), analysis(), 'win32')).toBeNull()
   })
 })
 
 describe('bring-back shortcut', () => {
-  it('is Ctrl+Shift+B on Windows and Cmd+Shift+B on Mac', () => {
-    expect(ROBOT_SHORTCUT).toBe('CommandOrControl+Shift+B')
-    expect(robotShortcutLabel('win32')).toBe('Ctrl+Shift+B')
-    expect(robotShortcutLabel('darwin')).toBe('Cmd+Shift+B')
+  it('is Ctrl+Alt+B on Windows and Cmd+Option+B on Mac', () => {
+    expect(ROBOT_SHORTCUT).toBe('CommandOrControl+Alt+B')
+    expect(robotShortcutLabel('win32')).toBe('Ctrl+Alt+B')
+    expect(robotShortcutLabel('darwin')).toBe('Cmd+Option+B')
   })
   it('registers globally and brings the robot back when pressed', () => {
     const registered = new Map<string, () => void>()

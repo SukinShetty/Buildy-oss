@@ -14,7 +14,7 @@ export interface ShutdownSteps {
   destroyVoicePlayer: () => void
   destroyMainWindow: () => void
   destroyTray: () => void
-  releaseShortcuts: () => void   // Ctrl/Cmd+Shift+B
+  releaseShortcuts: () => void   // Ctrl/Cmd+Alt+B
 }
 
 export function createShutdown(steps: ShutdownSteps): () => void {

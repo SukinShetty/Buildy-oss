@@ -52,7 +52,7 @@ interface E2eHooks {
   sendFixtureHandoff(analyzedAt?: string): string
   /** Show a spoken-question answer with a suggested goal, through the real display path. */
   showFixtureAnswer(): void
-  /** Press the bring-back shortcut (Ctrl/Cmd+Shift+B) — a test cannot send a system-wide key. */
+  /** Press the bring-back shortcut (Ctrl/Cmd+Alt+B) — a test cannot send a system-wide key. */
   pressRobotShortcut(): void
   /** The setup-wizard fakes (e2e-fakes.ts), or null when not enabled. */
   setupFakes(): E2eFakes | null

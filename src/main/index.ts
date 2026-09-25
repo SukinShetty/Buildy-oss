@@ -339,7 +339,7 @@ app.whenReady().then(async () => {
   // window even if a window is recreated (see app.on('activate')).
   registerIpcHandlers(() => mainWindow!, () => companionWindow, () => shutdownApp())
 
-  // Bring the robot back after Hide: Ctrl+Shift+B (Windows) / Cmd+Shift+B (macOS).
+  // Bring the robot back after Hide: Ctrl+Alt+B (Windows) / Cmd+Option+B (macOS).
   registerRobotShortcut(globalShortcut, () => showRobot())
 
   // Local diagnostic log of watch/send state changes (Settings → Open log folder).

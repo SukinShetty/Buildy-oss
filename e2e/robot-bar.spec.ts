@@ -102,7 +102,7 @@ test('Hide: robot and guidance panel go away, new guidance stays hidden; the sho
   expect((await robotWindow(m)).guidanceVisible).toBe(false)
 
   // The shortcut is registered system-wide, and pressing it brings the robot back.
-  expect(await m.app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Shift+B'))).toBe(true)
+  expect(await m.app.evaluate(({ globalShortcut }) => globalShortcut.isRegistered('CommandOrControl+Alt+B'))).toBe(true)
   await m.app.evaluate(() => (globalThis as unknown as Record<string, { pressRobotShortcut(): void }>)['__mybuildyE2E'].pressRobotShortcut())
   await expect.poll(async () => (await robotWindow(m)).visible).toBe(true)
 })
