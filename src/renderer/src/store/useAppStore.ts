@@ -40,6 +40,9 @@ export type BrainstormPhase = 'idle' | 'waiting-for-response' | 'streaming' | 'd
 interface AppState {
   // ── Navigation
   currentScreen: AppScreen
+  // The first-run setup wizard, when it is showing (platform + step to resume at).
+  setupWizard: { platform: string; step: string | null } | null
+  setSetupWizard: (wizard: { platform: string; step: string | null } | null) => void
 
   // ── Project memory (persisted via IPC)
   project: ProjectMemory
@@ -110,6 +113,8 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   // ── Navigation
   currentScreen: 'brainstorm',
+  setupWizard: null,
+  setSetupWizard: (setupWizard) => set({ setupWizard }),
 
   // ── Project
   project: emptyProjectMemory(),

@@ -1,6 +1,6 @@
 // CompanionApp.tsx
 // Live companion UI — orb + controls + speech bubble + push-to-talk.
-// Flow: click orb → pick window → live watching → speak/bubble on changes → ask questions.
+// Flow: click orb → show MyBuildy your coding agent → live watching → speak/bubble on changes → ask questions.
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { StopGeneration, transcribeAndAsk } from './voice-question'
@@ -8,6 +8,7 @@ import { useCompanionStore } from '../store/useCompanionStore'
 import { Mascot } from '../components/Mascot'
 import type { MascotState, MascotAlignment, MascotReaction, MascotReactionType } from '../components/Mascot'
 import { deriveMascotSignals } from './mascot-signals'
+import { nextStepLabel } from './next-step'
 import { ResolvedHandoffs } from '../handoff'
 import type { AnalysisResult } from '../types'
 import { isModelConfigured, CAPTURE_NOTICE_MESSAGE } from '../types'
@@ -331,15 +332,16 @@ export function CompanionApp(): React.ReactElement {
 
   // ─── Render ─────────────────────────────────────────────────────────
 
-  const watchLabel = sentFlash
-    ? 'Pasted'
-    : needsSetup
-      ? 'Set me up: click the gear'
-      : watchedSourceMessage
-        ? watchedSourceMessage
-        : watchedWindowName
-          ? watchedWindowName
-          : 'click orb to pick a window'
+  // Always the next action, in plain words (next-step.ts).
+  const watchLabel = nextStepLabel({
+    needsSetup,
+    pastedJustNow: sentFlash,
+    watchedSourceMessage,
+    watchedWindowName,
+    isPaused,
+    thinking: avatarState === 'thinking',
+    analysis: latestAnalysis,
+  })
 
   const micLabel = micState === 'listening' ? 'listening...'
     : micState === 'transcribing' ? 'transcribing...'
@@ -363,7 +365,7 @@ export function CompanionApp(): React.ReactElement {
         style={S.mascotWrap}
         onClick={onOrbClick}
         onContextMenu={(e) => { e.preventDefault(); openPicker() }}
-        title="Click to interact — right-click to pick a window"
+        title="Click to interact — right-click to show MyBuildy your coding agent"
       >
         <Mascot
           state={mascotState}
@@ -393,7 +395,7 @@ export function CompanionApp(): React.ReactElement {
           />
         )}
         <Btn icon={showLastIcon} onClick={onShowLast} active={false} title="Show last guidance" />
-        <Btn icon={monitorIcon} onClick={openPicker} active={false} title="Pick window" />
+        <Btn icon={monitorIcon} onClick={openPicker} active={false} title="Show MyBuildy your coding agent" />
         <Btn icon={gearIcon} onClick={onSettings} active={false} title="Settings" />
       </div>
 
@@ -411,7 +413,7 @@ export function CompanionApp(): React.ReactElement {
       {/* Window picker — full-window overlay (guidance lives in its own window now) */}
       {showWindowPicker && (
         <div style={S.picker}>
-          <div style={S.pickerHead}>Pick a window to watch</div>
+          <div style={S.pickerHead}>Show MyBuildy your coding agent</div>
           <div style={S.pickerScroll}>
             {windowList.map((w) => (
               <button key={w.id} onClick={() => pickWindow(w.id, w.name)} style={S.pickerRow}>
@@ -470,7 +472,7 @@ function MicBtn({ micState, onClick, disabled }: { micState: MicState; onClick: 
       title={
         isActive ? 'Click to stop'
         : isBusy ? 'Processing...'
-        : disabled ? 'Pick a window first'
+        : disabled ? 'Show MyBuildy your coding agent first'
         : 'Click to talk'
       }
       dangerouslySetInnerHTML={{ __html: micIcon }}

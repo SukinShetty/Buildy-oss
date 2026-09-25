@@ -285,3 +285,24 @@ textarea::placeholder {
 .mt-2        { margin-top: var(--space-2); }
 .mt-3        { margin-top: var(--space-3); }
 .mt-4        { margin-top: var(--space-4); }
+
+/* ─── Setup wizard choice cards (SetupWizard.tsx) ─────────────────────────────── */
+.setup-choice {
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+}
+.setup-choice:hover { border-color: var(--color-text-dim); }
+.setup-choice.is-on {
+  background: var(--color-accent-muted);
+  border-color: var(--color-accent);
+}
+.setup-model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

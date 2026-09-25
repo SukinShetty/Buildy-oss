@@ -30,6 +30,10 @@
         <sub>The mascot watches with you</sub>
       </td>
       <td align="center">
+        <img src="docs/assets/setup.png" width="260" alt="Guided setup: welcome step" /><br/>
+        <sub>Guided first-run setup</sub>
+      </td>
+      <td align="center">
         <img src="docs/assets/set-goal.png" width="260" alt="Goal screen" /><br/>
         <sub>Set the goal once</sub>
       </td>
@@ -55,7 +59,7 @@ MyBuildy is a companion for any AI coding agent that runs in a terminal window. 
 
 MyBuildy is a desktop companion that sits next to your AI coding agent's terminal and translates:
 
-- **Watches only the window you pick** — one explicit choice, never your whole screen
+- **Watches only the window you choose** — one explicit choice, never your whole screen
 - **Explains what just happened** in plain English, no jargon
 - **Judges every step against your goal** — on track, drifting, or blocked
 - **Writes the exact next prompt to paste** — no guessing, no googling
@@ -166,12 +170,17 @@ Linux runs from source but is **untested** — see [Known limitations](#known-li
 
 ## First run
 
-1. MyBuildy opens **Settings** on first launch.
-2. Pick a provider and paste your API key (it is encrypted on save — see [Security model](#security-model)).
-3. Choose a model from the live list. MyBuildy runs the **vision check**; watching stays disabled until a model passes it.
-4. Optionally add an **ElevenLabs** key for spoken guidance (the mic button only appears once a key is saved).
-5. Pick or create a **project** — each project gets its own memory.
-6. Set your **goal**, pick the terminal window your agent is running in, and start. The first time you pick a window, MyBuildy shows a one-time disclosure explaining exactly what gets captured and where it goes.
+MyBuildy opens a **guided setup** on first launch — one step per screen, about two minutes:
+
+1. **Your AI key** — pick a provider and paste your key (each has a *Where do I get a key?* link). It is encrypted on save — see [Security model](#security-model).
+2. **Your model** — the **Suggested** one is highlighted and checked automatically; watching stays off until a model passes the **vision check**.
+3. **macOS only: see your screen** — one click opens the right System Settings pane; the status turns green by itself, and **Restart MyBuildy** reopens the app on the same step when macOS needs a restart.
+4. **macOS only: paste for you** (optional) — both macOS prompts appear here, explained, instead of by surprise later. **Skip — I'll paste myself** keeps pasting copy-only.
+5. **What do you want to build?** — tap one of four ready-made goals (each with a "Done when…" check) or write your own.
+6. **Open your coding agent** — the exact commands to type, with Copy buttons.
+7. **Show MyBuildy your coding agent** — choose the terminal window; this step explains exactly what gets captured and where it goes.
+
+Afterwards the line under the robot always says the next thing to do. Settings has **Run setup again**. Optional: add an **ElevenLabs** key in Settings for spoken guidance (the mic button only appears once a key is saved, and the microphone is only requested the first time you click it).
 
 ---
 
@@ -191,7 +200,7 @@ No accounts, no MyBuildy servers, **no telemetry**. Your settings, keys and proj
 
 | Flow | What is sent | Sent to |
 |---|---|---|
-| **Screen analysis** (watching, and Analyze on the Guidance screen) | An image of the window you picked, its title, your goal and this project's memory | **Your AI provider** |
+| **Screen analysis** (watching, and Analyze on the Guidance screen) | An image of the window you chose, its title, your goal and this project's memory | **Your AI provider** |
 | **Brainstorm** | Your messages and the conversation so far | **Your AI provider** |
 | **Spoken questions** (mic button) | Your recording | **ElevenLabs** speech-to-text |
 | | The transcript, plus a fresh screenshot of the watched window and the project context | **Your AI provider** |

@@ -217,7 +217,7 @@ export const NO_SECURE_STORAGE_MESSAGE =
 // One-time privacy disclosure shown the FIRST time the user picks a window to
 // watch. Continue persists captureNoticeAccepted; Cancel aborts the pick.
 export const CAPTURE_NOTICE_MESSAGE =
-  "MyBuildy sends screenshots of the window you pick, plus this project's memory, " +
+  "MyBuildy sends screenshots of the one window you choose, plus this project's memory, " +
   'to the AI provider you chose. Your keys and memory are stored only on this computer.'
 
 // Main refuses every capture/upload path until the notice above is accepted —
@@ -485,6 +485,25 @@ export interface AnswerSuggestion {
   doneWhen?: string   // goal only: a check that can be verified ("Done when …")
 }
 
+// Result of choosing a window to watch: started, or the plain-English reason not.
+export interface WatchStartResult {
+  started: boolean
+  message: string | null
+}
+
+// ─── First-run setup wizard ──────────────────────────────────────────────────
+export interface SetupPermissionStatus {
+  screen: 'granted' | 'not-granted' | 'unknown'
+  accessibility: boolean
+  automation: 'granted' | 'denied' | 'unknown'
+}
+
+export interface SetupInfo {
+  needed: boolean          // show the wizard on launch
+  step: string | null      // where to resume (saved on every step change)
+  platform: string         // which platform's steps to show
+}
+
 export interface QuestionAnswer {
   question: string
   answer: string                 // the conversational reply (never contains the suggestion)
@@ -558,6 +577,15 @@ export const IPC = {
   GUIDANCE_SHOW_LAST:  'guidance:show-last',         // companion/tray → main (re-show cached guidance)
   GUIDANCE_SET_FOCUSABLE: 'guidance:set-focusable',  // guidance window → main (temporarily focusable while typing a hand-off answer)
   OPEN_LOG_FOLDER:     'mybuildy:open-log-folder',   // main window → main (Settings: open the watch-log folder)
+  SETUP_INFO:          'setup:info',                 // main window → main (show the wizard? where to resume? platform)
+  SETUP_SAVE_STEP:     'setup:save-step',            // main window → main (remember the current step, for resume)
+  SETUP_FINISH:        'setup:finish',               // main window → main (setup completed)
+  SETUP_RESET:         'setup:reset',                // main window → main (Settings: Run setup again)
+  SETUP_PERMISSIONS:   'setup:permissions',          // main window → main (live macOS permission status)
+  SETUP_OPEN_PANE:     'setup:open-pane',            // main window → main (open a macOS Privacy & Security pane)
+  SETUP_REGISTER_SCREEN: 'setup:register-screen',    // main window → main (make macOS list MyBuildy under Screen Recording)
+  SETUP_REQUEST_PASTE: 'setup:request-paste',        // main window → main (show the Accessibility + Automation prompts now)
+  SETUP_RESTART:       'setup:restart',              // main window → main (quit and reopen; resumes at the saved step)
   HANDOFF_RESOLVED:    'guidance:handoff-resolved',  // guidance window → main → companion ("I'll decide" / "Skip for now": clear the "!" badge)
   COPY_TEXT:           'mybuildy:copy-text',          // renderer → main (write to clipboard; works in non-focusable windows)
   SEND_PROMPT:         'mybuildy:send-prompt',        // guidance window → main (send displayed prompt by id into watched window)

@@ -12,6 +12,9 @@ import type {
   WindowSource,
   CaptureResult,
   CaptureOutcome,
+  WatchStartResult,
+  SetupInfo,
+  SetupPermissionStatus,
   AnalysisResult,
   ProjectMemory,
   NonSecretSettings,
@@ -163,6 +166,19 @@ const mybuildyAPI = {
   deleteAllData: (): Promise<void> =>
     ipcRenderer.invoke(IPC.DELETE_ALL_DATA),
 
+  // First-run setup wizard (main window only; see setup-state.ts / setup-permissions.ts).
+  setup: {
+    info: (): Promise<SetupInfo> => ipcRenderer.invoke(IPC.SETUP_INFO),
+    saveStep: (step: string): Promise<void> => ipcRenderer.invoke(IPC.SETUP_SAVE_STEP, step),
+    finish: (): Promise<void> => ipcRenderer.invoke(IPC.SETUP_FINISH),
+    reset: (): Promise<void> => ipcRenderer.invoke(IPC.SETUP_RESET),
+    permissions: (): Promise<SetupPermissionStatus> => ipcRenderer.invoke(IPC.SETUP_PERMISSIONS),
+    openPane: (pane: 'screen' | 'accessibility' | 'automation'): Promise<void> => ipcRenderer.invoke(IPC.SETUP_OPEN_PANE, pane),
+    registerScreen: (): Promise<void> => ipcRenderer.invoke(IPC.SETUP_REGISTER_SCREEN),
+    requestPaste: (): Promise<SetupPermissionStatus> => ipcRenderer.invoke(IPC.SETUP_REQUEST_PASTE),
+    restart: (): Promise<void> => ipcRenderer.invoke(IPC.SETUP_RESTART),
+  },
+
   // Settings → Diagnostics: open the folder holding the local watch log.
   openLogFolder: (): Promise<void> =>
     ipcRenderer.invoke(IPC.OPEN_LOG_FOLDER),
@@ -174,7 +190,7 @@ const mybuildyAPI = {
   stopCompanion: (): Promise<void> =>
     ipcRenderer.invoke(IPC.COMPANION_STOP),
 
-  selectWatchSource: (sourceId: string, windowName: string): Promise<void> =>
+  selectWatchSource: (sourceId: string, windowName: string): Promise<WatchStartResult> =>
     ipcRenderer.invoke(IPC.SELECT_WATCH_SOURCE, sourceId, windowName),
 
   onWatchedSourceChanged: (handler: (event: unknown, data: { windowName: string | null; message: string | null }) => void): (() => void) => {

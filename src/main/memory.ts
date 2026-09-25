@@ -227,6 +227,7 @@ export async function deleteAllMyBuildyData(): Promise<void> {
     'vision-approvals.json', // vision-check passes (keyed to key fingerprints)
     'mybuildy-memory',         // every project's memory + Nemp stores (recursive)
     'logs',                  // the local watch log (watch-log.ts)
+    'setup-state.json',      // where the setup wizard is up to (setup-state.ts)
   ]
   const failed: string[] = []
   for (const name of targets) {

@@ -12,6 +12,7 @@ interface Props {
   onSelect: (windowId: string) => void
   onConfirm: () => void
   onCancel: () => void
+  confirmLabel?: string
 }
 
 export function WindowPicker({
@@ -20,14 +21,15 @@ export function WindowPicker({
   onSelect,
   onConfirm,
   onCancel,
+  confirmLabel = 'Confirm — analyze this window',
 }: Props): React.ReactElement {
   return (
     <div style={styles.overlay}>
       <div style={styles.panel}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Which window should MyBuildy watch?</h2>
+          <h2 style={styles.title}>Show MyBuildy your coding agent</h2>
           <p style={styles.subtitle}>
-            Pick the window you want guidance on (e.g. your AI coding tool), then hit Confirm.
+            Choose the window your AI coding agent is running in (for example Terminal or PowerShell), then click Confirm. MyBuildy only looks at this one window.
           </p>
         </div>
 
@@ -57,7 +59,7 @@ export function WindowPicker({
             onClick={onConfirm}
             disabled={!selectedId}
           >
-            Confirm — analyze this window
+            {confirmLabel}
           </button>
         </div>
       </div>
@@ -76,6 +78,7 @@ function WindowItem({
 }): React.ReactElement {
   return (
     <button
+      data-window-id={win.id}
       onClick={onSelect}
       style={{
         ...styles.windowItem,

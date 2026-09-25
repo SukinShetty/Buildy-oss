@@ -660,6 +660,28 @@ export function SettingsScreen(): React.ReactElement {
           </div>
         </div>
 
+        {/* The guided first-run setup, again from the start */}
+        <div style={styles.section}>
+          <div style={styles.sectionLabel}>Setup</div>
+          <div style={styles.sectionHint}>
+            Walk through the guided setup again: your AI key, your model, what you want to build, and showing MyBuildy
+            your coding agent.
+          </div>
+          <button
+            className="btn-icon"
+            style={{ alignSelf: 'flex-start' }}
+            onClick={() => {
+              void (async () => {
+                await window.mybuildy.setup.reset()
+                const info = await window.mybuildy.setup.info()
+                useAppStore.getState().setSetupWizard({ platform: info.platform, step: null })
+              })()
+            }}
+          >
+            Run setup again
+          </button>
+        </div>
+
         {/* Diagnostics: the local watch log a tester can send with a report */}
         <div style={styles.section}>
           <div style={styles.sectionLabel}>Diagnostics</div>

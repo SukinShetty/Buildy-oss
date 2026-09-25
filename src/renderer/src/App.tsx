@@ -19,6 +19,7 @@ import { SettingsScreen } from './screens/SettingsScreen'
 import { CompanionApp } from './companion/CompanionApp'
 import { GuidancePanel } from './guidance/GuidancePanel'
 import { VoicePlayer } from './voice/VoicePlayer'
+import { SetupWizard } from './setup/SetupWizard'
 
 // Which window is this renderer instance? Routed via query parameter.
 const params = new URLSearchParams(window.location.search)
@@ -67,6 +68,8 @@ function MainPanel(): React.ReactElement {
   } = useAppStore()
 
   const [goalNudgeVisible, setGoalNudgeVisible] = useState(false)
+  const setupWizard = useAppStore((s) => s.setupWizard)
+  const setSetupWizard = useAppStore((s) => s.setSetupWizard)
 
   // Project switched (from any screen): the brainstorm conversation, its
   // extracted data and the cached analysis belonged to the old project.
@@ -81,9 +84,10 @@ function MainPanel(): React.ReactElement {
     let cancelled = false
     async function loadPersistedState(): Promise<void> {
       try {
-        const [savedSettings, savedProject] = await Promise.all([
+        const [savedSettings, savedProject, setup] = await Promise.all([
           window.mybuildy.loadSettings(),
           window.mybuildy.loadProject(),
+          window.mybuildy.setup.info(),
         ])
         if (cancelled) return
 
@@ -91,6 +95,14 @@ function MainPanel(): React.ReactElement {
         setSettingsAreLoaded(true)
         setProject(savedProject)
         setProjectIsLoaded(true)
+
+        // First launch, or setup not finished: the guided setup, resuming at
+        // the saved step (after a restart, for instance).
+        if (setup.needed) {
+          setSetupWizard({ platform: setup.platform, step: setup.step })
+          setCurrentScreen('guidance')
+          return
+        }
 
         // Unconfigured install (no provider key or no model chosen) → open the
         // Settings screen so setup comes first. Same isModelConfigured check
@@ -142,6 +154,23 @@ function MainPanel(): React.ReactElement {
     } catch (error) {
       console.warn('Failed to update goal review time:', error)
     }
+  }
+
+  if (setupWizard) {
+    return (
+      <div className="app-root">
+        <SetupWizard
+          key={setupWizard.step ?? 'start'}
+          platform={setupWizard.platform}
+          savedStep={setupWizard.step}
+          onFinished={() => {
+            // Main hides the panel on finish; the mascot carries on.
+            setSetupWizard(null)
+            setCurrentScreen('guidance')
+          }}
+        />
+      </div>
+    )
   }
 
   return (

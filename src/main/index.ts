@@ -18,11 +18,12 @@ import { stopAnalysisLoop } from './analysis-loop'
 import { initProjects } from './projects'
 import { createVoicePlayerWindow, destroyVoicePlayer } from './voice-player'
 import { migratePlaintextSecrets } from './secure-store'
-import { settingsFilePath, loadRedactedSettings } from './memory'
+import { settingsFilePath, loadRedactedSettings, loadGoal } from './memory'
 import { isModelConfigured } from '../renderer/src/types'
 import { debugLog } from './debug-log'
 import { isSafeExternalUrl, isAllowedAppNavigation, isBlockedDevShortcut } from './navigation-guard'
 import { registerE2eTestHooks } from './e2e-hooks'
+import { loadSetupState, needsSetup } from './setup-state'
 import { initWatchLog } from './watch-log'
 
 // ─── Global web-contents security guard ──────────────────────────────────────
@@ -323,12 +324,14 @@ app.whenReady().then(async () => {
   // e2e-only fixture hooks (no-op unless MYBUILDY_E2E=1 and not packaged).
   registerE2eTestHooks(() => companionWindow)
 
-  // First launch (or unconfigured install): there is NO default model, so open
-  // the Settings panel automatically. The mascot label says
-  // "Set me up: click the gear" until a provider key + model are chosen.
+  // First launch (or setup not finished): open the panel automatically — it
+  // shows the setup wizard (setup-state.ts), resuming at the saved step after
+  // a restart. The mascot label points to it until a provider key + model are chosen.
   try {
     const redacted = await loadRedactedSettings()
-    if (!isModelConfigured(redacted)) {
+    const goal = await loadGoal().catch(() => null)
+    const setupNeeded = needsSetup(loadSetupState(app.getPath('userData')), isModelConfigured(redacted), !!goal?.purpose?.trim())
+    if (setupNeeded || !isModelConfigured(redacted)) {
       mainWindow.once('ready-to-show', () => { mainWindow?.show(); mainWindow?.focus() })
       // ready-to-show may already have fired for a fast-loading window:
       if (mainWindow.webContents.isLoading() === false) { mainWindow.show(); mainWindow.focus() }

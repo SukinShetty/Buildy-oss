@@ -70,15 +70,15 @@ export class GuidanceController {
       if (!outcome.ok) {
         if (outcome.reason === 'window-minimized') {
           // Still open, just minimized or hidden: keep the user's choice.
-          store().setAnalysisError('The window you picked is minimized or hidden. Restore it, then analyze again.')
+          store().setAnalysisError('The window you chose is minimized or hidden. Restore it, then analyze again.')
           store().setAnalysisPhase('error')
           return
         }
         store().setSelectedWindow(null, null)
         store().setAnalysisError(
           outcome.reason === 'window-missing'
-            ? 'The window you were watching is no longer open. Pick a window to analyze.'
-            : 'No window selected. Pick a window to analyze.'
+            ? 'The window you were watching is no longer open. Show MyBuildy your coding agent again.'
+            : 'Show MyBuildy your coding agent first.'
         )
         store().setAnalysisPhase('error')
         return

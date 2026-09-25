@@ -88,7 +88,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "MyBuildy uses the microphone only when you click the mic to ask a question.",
-        "NSAppleEventsUsageDescription": "MyBuildy asks System Events to press Cmd+V and Return in your terminal when you click Send."
+        "NSAppleEventsUsageDescription": "MyBuildy asks System Events to bring your terminal to the front and press Cmd+V when you click Paste into terminal. It never presses Return."
       }
     },
     "dmg": {

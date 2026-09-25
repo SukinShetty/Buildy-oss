@@ -98,7 +98,16 @@ function windowKind(url: string): 'main' | 'companion' | 'guidance' | 'voice' {
   return 'main'
 }
 
-export async function launchMyBuildy(): Promise<MyBuildyApp> {
+export interface LaunchOptions {
+  /** Reuse this profile dir instead of a fresh one (e.g. to relaunch after a restart). */
+  profileDir?: string
+  /** Leave the profile on disk after close (the caller relaunches with it, then cleans up). */
+  keepProfile?: boolean
+  /** Extra environment for the app (e.g. MYBUILDY_E2E_FAKES, see src/main/e2e-fakes.ts). */
+  env?: Record<string, string>
+}
+
+export async function launchMyBuildy(options: LaunchOptions = {}): Promise<MyBuildyApp> {
   if (IS_PACKAGED_RUN) {
     if (!fs.existsSync(PACKAGED_EXE!)) {
       throw new Error(
@@ -112,8 +121,9 @@ export async function launchMyBuildy(): Promise<MyBuildyApp> {
     )
   }
 
-  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mybuildy-e2e-'))
+  const profileDir = options.profileDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'mybuildy-e2e-'))
   const removeProfile = (): void => {
+    if (options.keepProfile) return
     // Best effort — Windows may keep locks briefly; a leaked temp dir must
     // never turn a teardown into a test failure.
     try {
@@ -131,6 +141,7 @@ export async function launchMyBuildy(): Promise<MyBuildyApp> {
     // Never inherit a debug/dev-server environment into the tested app.
     MYBUILDY_DEBUG: '',
     ELECTRON_RENDERER_URL: '',
+    ...options.env,
   }
 
   let app: ElectronApplication

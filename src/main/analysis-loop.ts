@@ -358,7 +358,7 @@ export function stopWatchForProjectSwitch(): void {
   if (wasWatching && companion && !companion.isDestroyed()) {
     companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
       windowName: null,
-      message: 'Project switched — pick a window to watch.',
+      message: 'Project switched — show MyBuildy your coding agent.',
     })
     notifyCompanionState(companion, 'idle')
   }
@@ -459,7 +459,7 @@ function haltWatchAsLost(companionWindow: BrowserWindow, reason: LostReason, myS
   if (!companionWindow.isDestroyed()) {
     companionWindow.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
       windowName: null,
-      message: `"${watchedWindowName}" is no longer open. Pick a window to watch.`,
+      message: `"${watchedWindowName}" is no longer open. Show MyBuildy your coding agent again.`,
     })
   }
   notifyCompanionState(companionWindow, 'idle')

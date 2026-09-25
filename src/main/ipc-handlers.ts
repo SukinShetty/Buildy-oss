@@ -8,10 +8,17 @@ import { providerHttpError, readJson } from './ai/provider-errors'
 import { providerFetch, withCancellation, CancelledError } from './ai/fetch-with-timeout'
 import { guardedSender } from './project-guard'
 import { watchLogDir } from './watch-log'
+import { e2eFakes, FAKE_MODELS } from './e2e-fakes'
+import { loadSetupState, saveSetupState, needsSetup } from './setup-state'
+import {
+  setupPlatform, getSetupPermissions, openPermissionPane, registerForScreenRecording,
+  requestPastePermissions, restartApp,
+} from './setup-permissions'
 import { mkdirSync } from 'fs'
 import type { BrowserWindow } from 'electron'
+import { isModelConfigured } from '../renderer/src/types'
 import { IPC, CHOOSE_MODEL_MESSAGE, CAPTURE_NOTICE_REQUIRED_MESSAGE, MAC_PERMISSION_MESSAGES, MAC_BLANK_CAPTURE_MESSAGE } from '../renderer/src/types'
-import type { AppSettings, NonSecretSettings, GuidancePayload } from '../renderer/src/types'
+import type { AppSettings, NonSecretSettings, GuidancePayload, WatchStartResult } from '../renderer/src/types'
 import { showGuidanceWindow, hideGuidanceWindow, resizeGuidanceWindow, showLastGuidance, getGuidanceWebContentsId, setGuidanceFocusable, clearGuidanceCache } from './guidance-window'
 import { handleVoiceEnded, handleVoiceError, stopVoice, setVoiceMuted, resetVoiceDedup } from './voice-player'
 import * as nemp from './nemp-bridge'
@@ -27,7 +34,7 @@ import { getProvider } from './ai/provider-registry'
 import { allProviderInfos } from './ai/provider-registry'
 import { testProviderConnection } from './ai/connection-test'
 import { fetchModelsForProvider } from './ai/model-fetch'
-import { hasVisionPass } from './vision-approvals'
+import { hasVisionPass, recordVisionPass } from './vision-approvals'
 import { startWatching, stopAnalysisLoop, pauseAnalysisLoop, resumeAnalysisLoop, setQuietMode, handleQuestion, handleSendPromptRequest, stopSignal } from './analysis-loop'
 import {
   parseInput, assertFromMainWindow, assertFromGuidanceWindow, assertFromWindowIds, isAllowedBaseUrl,
@@ -199,6 +206,11 @@ export function registerIpcHandlers(
     try {
       assertFromMainWindow(event, mainWcId(), 'TEST_CONNECTION')
       const settings = resolveValidatedSettings('TEST_CONNECTION', settingsRaw)
+      if (e2eFakes()) {
+        // e2e only (e2e-fakes.ts): a local "pass" — no provider is called.
+        recordVisionPass(settings.provider, settings.modelId, settings.apiKey)
+        return { success: true, message: 'Vision check passed — this model can see your screen. (1ms)', latencyMs: 1, visionPassed: true }
+      }
       return await testProviderConnection(settings)
     } catch (error) {
       return { success: false, message: redactKnownSecrets(String(error)), latencyMs: null, visionPassed: false }
@@ -217,6 +229,7 @@ export function registerIpcHandlers(
       }
       // Use the on-disk settings but target the REQUESTED provider/baseUrl so
       // the Settings UI can browse models before saving. Keys stay main-owned.
+      if (e2eFakes()) return { models: FAKE_MODELS, error: null } // e2e only (e2e-fakes.ts)
       const nonSecret = await loadNonSecretSettings()
       const settings = resolveSettings({ ...nonSecret, provider, baseUrl })
       return await fetchModelsForProvider(settings)
@@ -472,9 +485,15 @@ export function registerIpcHandlers(
   // NOTE: Companion uses NO project memory — it analyzes only what it sees on screen
   ipcMain.handle(
     IPC.SELECT_WATCH_SOURCE,
-    async (_event, sourceIdRaw: unknown, windowNameRaw: unknown) => {
+    // Returns whether watching started and, if not, the plain-English reason
+    // (the setup wizard shows it; the mascot gets the same message as before).
+    async (_event, sourceIdRaw: unknown, windowNameRaw: unknown): Promise<WatchStartResult> => {
       const companion = getCompanionWindow()
-      if (!companion) return
+      if (!companion) return { started: false, message: null }
+      const refuse = (message: string): WatchStartResult => {
+        companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, { windowName: null, message })
+        return { started: false, message }
+      }
       try {
         const sid = parseInput(sourceIdSchema, 'SELECT_WATCH_SOURCE', sourceIdRaw)
         const wname = parseInput(windowNameSchema, 'SELECT_WATCH_SOURCE', windowNameRaw)
@@ -483,29 +502,15 @@ export function registerIpcHandlers(
         const settings = await loadSettings()
         const missingModel = !settings.modelId.trim() ||
           (KEYED_PROVIDERS.has(settings.provider) && !settings.apiKey)
-        if (missingModel) {
-          companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-            windowName: null, message: CHOOSE_MODEL_MESSAGE,
-          })
-          return
-        }
+        if (missingModel) return refuse(CHOOSE_MODEL_MESSAGE)
         // Gate 2: watching is allowed ONLY after the vision check passed for
         // this exact provider+model (with the current key).
         if (!hasVisionPass(settings.provider, settings.modelId, settings.apiKey)) {
-          companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-            windowName: null,
-            message: "This model can't see your screen. Pick one that passes the check.",
-          })
-          return
+          return refuse("This model can't see your screen. Pick one that passes the check.")
         }
         // Gate 3: the one-time capture disclosure — enforced in main, before
         // any capture (including the macOS frame probe below).
-        if (!(await captureNoticeAccepted('SELECT_WATCH_SOURCE'))) {
-          companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-            windowName: null, message: CAPTURE_NOTICE_REQUIRED_MESSAGE,
-          })
-          return
-        }
+        if (!(await captureNoticeAccepted('SELECT_WATCH_SOURCE'))) return refuse(CAPTURE_NOTICE_REQUIRED_MESSAGE)
         // Gate 4 (macOS): Screen Recording. Without it macOS returns captures
         // with nothing in them, so watching would analyse blank frames forever.
         // Check the reported status, then one real frame of the chosen window.
@@ -514,29 +519,25 @@ export function registerIpcHandlers(
           const blank = (await probeWatchedWindowFrame(sid)) === 'blank'
           if (screenPermissionMissing(process.platform, status) || (blank && status !== 'granted')) {
             console.log(`[Watch] macOS Screen Recording not granted (status ${status}) — watch not started`)
-            companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-              windowName: null, message: MAC_PERMISSION_MESSAGES.screen,
-            })
             showGuidanceWindow({ kind: 'permission', permission: 'screen' })
-            return
+            return refuse(MAC_PERMISSION_MESSAGES.screen)
           }
           if (blank) {
             // Granted, yet nothing visible: granted this session (restart
             // pending) or the window is minimized / on another Space.
             console.log('[Watch] macOS capture of the chosen window is blank — watch not started')
-            companion.webContents.send(IPC.COMPANION_WATCHED_SOURCE, {
-              windowName: null, message: MAC_BLANK_CAPTURE_MESSAGE,
-            })
             showGuidanceWindow({ kind: 'message', message: MAC_BLANK_CAPTURE_MESSAGE })
-            return
+            return refuse(MAC_BLANK_CAPTURE_MESSAGE)
           }
         }
 
         // The loop reloads settings + goal at the START of each cycle (async getters),
         // so editing the goal or settings mid-watch takes effect without restarting.
         startWatching(companion, sid, wname, () => loadSettings(), () => loadGoal())
+        return { started: true, message: null }
       } catch (error) {
         console.error('[IPC] SELECT_WATCH_SOURCE error:', error)
+        return { started: false, message: null }
       }
     }
   )
@@ -653,6 +654,68 @@ export function registerIpcHandlers(
     mkdirSync(dir, { recursive: true })
     const error = await shell.openPath(dir)
     if (error) console.warn('[IPC] OPEN_LOG_FOLDER failed to open the folder')
+  })
+
+  // ─── First-run setup wizard (main window only) ─────────────────────────────
+  // Where setup is up to lives in main (setup-state.ts) so it survives the
+  // restart the macOS Screen Recording step needs.
+
+  const setupDir = (): string => app.getPath('userData')
+
+  ipcMain.handle(IPC.SETUP_INFO, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_INFO')
+    const state = loadSetupState(setupDir())
+    const [redacted, goal] = await Promise.all([loadRedactedSettings(), loadGoal().catch(() => null)])
+    return {
+      needed: needsSetup(state, isModelConfigured(redacted), !!goal?.purpose?.trim()),
+      step: state?.step ?? null,
+      platform: setupPlatform(),
+    }
+  })
+
+  ipcMain.handle(IPC.SETUP_SAVE_STEP, async (event, stepRaw: unknown) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_SAVE_STEP')
+    if (typeof stepRaw !== 'string' || !/^[a-z-]{1,40}$/.test(stepRaw)) throw new Error('Invalid setup step')
+    saveSetupState(setupDir(), { completed: false, step: stepRaw })
+  })
+
+  ipcMain.handle(IPC.SETUP_FINISH, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_FINISH')
+    saveSetupState(setupDir(), { completed: true, step: null })
+    // Setup done: tuck the panel away so the mascot is in view (never destroy it).
+    const main = getMainWindow()
+    if (!main.isDestroyed()) main.hide()
+  })
+
+  ipcMain.handle(IPC.SETUP_RESET, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_RESET')
+    saveSetupState(setupDir(), { completed: false, step: null })
+  })
+
+  ipcMain.handle(IPC.SETUP_PERMISSIONS, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_PERMISSIONS')
+    return getSetupPermissions()
+  })
+
+  ipcMain.handle(IPC.SETUP_OPEN_PANE, async (event, paneRaw: unknown) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_OPEN_PANE')
+    if (paneRaw !== 'screen' && paneRaw !== 'accessibility' && paneRaw !== 'automation') throw new Error('Invalid pane')
+    await openPermissionPane(paneRaw)
+  })
+
+  ipcMain.handle(IPC.SETUP_REGISTER_SCREEN, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_REGISTER_SCREEN')
+    await registerForScreenRecording()
+  })
+
+  ipcMain.handle(IPC.SETUP_REQUEST_PASTE, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_REQUEST_PASTE')
+    return requestPastePermissions()
+  })
+
+  ipcMain.handle(IPC.SETUP_RESTART, async (event) => {
+    assertFromMainWindow(event, mainWcId(), 'SETUP_RESTART')
+    restartApp()
   })
 
   // Hand-off card buttons ("I'll decide" / "Skip for now"): forward to the

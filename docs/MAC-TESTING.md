@@ -72,9 +72,9 @@ For any step that doesn't match what it says you should see, send:
 
 Tick each one. "You should see" is what passing looks like.
 
-**1. The app opens.**
+**1. The app opens on the guided setup.**
 Open MyBuildy from Applications.
-*You should see:* the orange robot mascot floating on screen, the **Settings** window open (first launch), a MyBuildy icon in the Dock and a small orange icon in the menu bar. The mascot's label says **"Set me up: click the gear"**.
+*You should see:* the orange robot mascot floating on screen, the **setup** window open on **Welcome** ("Step 1 of 9"), a MyBuildy icon in the Dock and a small orange icon in the menu bar. Click **Let's set up (2 minutes)**.
 *If not:* send the log (step 3 above).
 
 **2. The mascot floats above a terminal.**
@@ -83,23 +83,21 @@ Click your terminal window, then make it full screen (green button, or Ctrl+Cmd+
 *You should see:* it moves smoothly, and when dropped mostly off-screen it slides back fully on screen. New guidance appearing later never takes keyboard focus away from your terminal.
 *If not:* screenshot + which terminal app + whether it was full screen.
 
-**3. Screen Recording: the prompt appears, and capture works after granting.**
-Right-click the mascot to open the window picker.
-*You should see:* macOS asks to let MyBuildy record the screen (or the picker shows windows without real previews). If watching is refused, the mascot and the guidance panel say **"macOS needs permission to see your screen…"** with an **Open System Settings** button.
-Click the button, turn on **MyBuildy** under Screen Recording (**Screen & System Audio Recording** on newer macOS), then **quit and reopen MyBuildy**.
-*You should see:* after reopening, the window picker shows real miniature previews of your windows.
-*If not:* screenshot of the picker + screenshot of the Screen Recording list in System Settings + the log.
+**3. Your AI key and model (setup steps 2 and 3).**
+Pick a provider, paste your API key (the **Where do I get a key?** link opens the provider's page), click **Next**. If macOS asks about the "MyBuildy Safe Storage" keychain item, choose **Always Allow**.
+*You should see:* the model list with a **Suggested** model highlighted, checked automatically, then a green tick and "This model can see your screen".
+*If not:* the exact message shown + the log.
 
-**4. The key saves and the vision check passes.**
-In Settings, pick a provider, paste your API key, click Save. If macOS asks about the "MyBuildy Safe Storage" keychain item, choose **Always Allow**.
-*You should see:* **Saved** next to the key (the key itself is never shown again), then a live list of models. Pick a model that can see images (the list marks a **Suggested** one; there is no default).
-*You should see:* the vision check runs and shows it **passed**.
-*If not:* the exact message shown under the model list + the log.
+**4. Let MyBuildy see your screen (setup step 4).**
+*You should see:* one sentence on why, a grey status line, and an **Open System Settings** button. macOS may also show its own Screen Recording prompt here — that's expected. Click the button, turn on **MyBuildy** (Screen Recording, or **Screen & System Audio Recording** on newer macOS).
+*You should see:* either the status turns green by itself, or — after you've opened System Settings — a **Restart MyBuildy** button. Click it: MyBuildy quits, reopens by itself, and setup continues **on this same step**, now green.
+*If not:* screenshot of the step + screenshot of the Screen Recording list in System Settings + the log.
 
-**5. A terminal window can be picked.**
-Right-click the mascot, pick your terminal window. Accept the one-time privacy notice (Continue).
-*You should see:* the mascot's label changes to the terminal window's title and the mascot looks "watching".
-*If not:* the exact label text + the log.
+**5. Let MyBuildy paste for you (setup step 5), then the rest of setup.**
+Click **Allow pasting**. macOS asks **"MyBuildy wants to control System Events"** — click **OK** — and shows its Accessibility prompt: click **Open System Settings** and turn on MyBuildy under Accessibility.
+*You should see:* both status lines turn green by themselves. (Try **Skip — I'll paste myself** on a second run: setup moves on and pasting stays copy-only.) Then pick one of the four ready-made goals, follow **Open your coding agent** (Terminal: `mkdir my-project && cd my-project`, then `claude`), and on **Show MyBuildy your coding agent** click **Choose the window** and pick your terminal.
+*You should see:* "MyBuildy is watching: <your terminal's title>", then **Finish**. The mascot's label says what to do next (for example **"Your prompt is ready — click Paste into terminal"**). No microphone prompt appears at any point during setup — only when you first click the mic.
+*If not:* which step, what you saw instead + the log.
 
 **6. The guidance panel shows an analysis.**
 Wait up to ~30 seconds (or type something in the terminal).
@@ -108,8 +106,8 @@ Wait up to ~30 seconds (or type something in the terminal).
 
 **7. Paste into terminal pastes (and never submits).**
 With your agent (or a shell) waiting for input in the watched terminal, click **Paste into terminal** in the panel.
-- If Accessibility is missing: the panel says **"macOS needs permission to type for you…"** with **Open System Settings**, and macOS shows its own Accessibility prompt. Turn on MyBuildy under Accessibility and click **Paste into terminal** again.
-- The first successful send makes macOS ask **"MyBuildy wants to control System Events"** — click **OK**. (If you clicked Don't Allow, the panel says so and the button opens Automation settings.)
+- If you allowed pasting during setup, no macOS prompt should appear now.
+- If you skipped it: the panel says what to turn on, with **Open System Settings**, and macOS asks **"MyBuildy wants to control System Events"** the first time — click **OK**.
 
 *You should see:* the terminal comes to the front and the prompt is pasted but **not** run: MyBuildy never presses Return. The panel says **"Pasted into your terminal. Read it, then press Enter to run it."** and the mascot briefly says **Pasted**. Press Return yourself to run it.
 *If not:* what happened in the terminal (nothing / pasted into another window / it ran without you pressing Return) + the log. If you had several windows of the same terminal app open, say so.
@@ -126,7 +124,7 @@ Make sure quiet mode is off on the mascot (speaker icon).
 
 **10. Delete all data returns to first run.**
 Settings > **Delete all MyBuildy data** > confirm.
-*You should see:* MyBuildy restarts to first run: Settings opens, no key saved, no model selected, the mascot says **"Set me up: click the gear"**, and the Memory tab is empty.
+*You should see:* MyBuildy restarts to first run: the guided setup opens on **Welcome**, no key saved, no model selected, and the Memory tab is empty. (Settings also has **Run setup again**, which starts setup over without deleting anything.)
 *If not:* screenshot + the log.
 
 ---

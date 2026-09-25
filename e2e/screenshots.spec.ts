@@ -37,7 +37,19 @@ test('mascot (companion window)', async () => {
   })
 })
 
-test('Settings screen (first-run default)', async () => {
+test('setup wizard (first launch)', async () => {
+  await expect(mybuildy.main.getByTestId('setup-wizard')).toHaveAttribute('data-step', 'welcome')
+  await mybuildy.main.screenshot({ path: path.join(ASSETS_DIR, 'setup.png') })
+})
+
+test('Settings screen (after setup, nothing configured)', async () => {
+  // Finish setup without configuring anything: the panel then opens on Settings.
+  await mybuildy.main.evaluate(async () => {
+    await (window as unknown as { mybuildy: { setup: { finish(): Promise<void> } } }).mybuildy.setup.finish()
+  })
+  // Finishing hides the panel; reopen it the way the mascot's gear does.
+  await mybuildy.companion.evaluate(() => (window as unknown as { mybuildy: { openPanel(): void } }).mybuildy.openPanel())
+  await mybuildy.main.reload()
   await expect(mybuildy.main.getByText('Anthropic', { exact: true })).toBeVisible()
   await mybuildy.main.screenshot({ path: path.join(ASSETS_DIR, 'settings.png') })
 })
@@ -75,7 +87,7 @@ test('guidance panel rendered from the canned fixture analysis', async () => {
 })
 
 test('all screenshots exist and are non-trivial PNGs', async () => {
-  for (const name of ['mascot.png', 'settings.png', 'set-goal.png', 'memory.png', 'guidance-panel.png']) {
+  for (const name of ['mascot.png', 'setup.png', 'settings.png', 'set-goal.png', 'memory.png', 'guidance-panel.png']) {
     const file = path.join(ASSETS_DIR, name)
     expect(fs.existsSync(file), `${name} missing`).toBe(true)
     expect(fs.statSync(file).size, `${name} suspiciously small`).toBeGreaterThan(5_000)
